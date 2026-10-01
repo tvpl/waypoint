@@ -1,0 +1,62 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+import { customAlphabet } from "nanoid";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
+/** Short, URL-safe, lowercase ids. */
+export const newId = customAlphabet(alphabet, 16);
+export const newToken = customAlphabet(alphabet + "ABCDEFGHIJKLMNOPQRSTUVWXYZ", 32);
+
+export function slugify(input: string): string {
+  return (
+    input
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "plan"
+  );
+}
+
+export function normalizeTag(input: string): string {
+  return input
+    .trim()
+    .replace(/^#+/, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]/gu, "")
+    .slice(0, 48);
+}
+
+export function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** Relative time in pt-BR ("há 2 h", "ontem", "3 dias"). */
+export function timeAgo(date: Date | number | null | undefined, now = Date.now()): string {
+  if (date == null) return "";
+  const t = typeof date === "number" ? date : date.getTime();
+  const s = Math.round((now - t) / 1000);
+  if (s < 60) return "agora";
+  const m = Math.round(s / 60);
+  if (m < 60) return `há ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.round(h / 24);
+  if (d === 1) return "ontem";
+  if (d < 7) return `há ${d} dias`;
+  return new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: d > 300 ? "numeric" : undefined }).format(t);
+}
+
+export function formatDateTime(date: Date | number): string {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+}

@@ -56,7 +56,7 @@ export function SiteIcon({ src, label, size = 28, className }: { src?: string | 
     return (
       <span className={cn("inline-flex shrink-0 items-center justify-center overflow-hidden border border-line bg-surface", className)} style={{ width: size, height: size, borderRadius: radius }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="" width={Math.round(size * 0.62)} height={Math.round(size * 0.62)} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} />
+        <img src={src} alt="" width={Math.round(size * 0.62)} height={Math.round(size * 0.62)} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} ref={(el) => { if (el?.complete && el.naturalWidth === 0) setFailed(true); }} />
       </span>
     );
   }

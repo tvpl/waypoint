@@ -17,6 +17,10 @@ export function Cover({ link }: { link: { title: string; domain: string; coverIm
         loading="lazy"
         decoding="async"
         onError={() => setFailed(true)}
+        // errors that happen before hydration never fire onError
+        ref={(el) => {
+          if (el?.complete && el.naturalWidth === 0) setFailed(true);
+        }}
         className="absolute inset-0 h-full w-full object-cover"
       />
     );

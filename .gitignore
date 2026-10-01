@@ -10,3 +10,6 @@ next-env.d.ts
 *.tsbuildinfo
 coverage/
 .DS_Store
+.e2e/
+test-results/
+playwright-report/

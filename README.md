@@ -72,3 +72,9 @@ Decisões principais:
 | Viewer | consultar; nunca vê ferramentas de edição |
 
 Plans e coleções têm visibilidade `Privado`, `Workspace`, `Pessoas específicas` (plans), `Qualquer pessoa com o link` ou `Público`.
+
+## Testes
+
+- `npm test` — testes unitários (Vitest): domínio do Planner, adapter do canvas, SSRF, parser de favoritos, serviços com banco em memória.
+- `npm run e2e` — smoke tests de ponta a ponta (Playwright): gera o build, sobe o app com um banco descartável e cobre cadastro, criação/edição/publicação de plan, links, busca global e layout mobile. Use `E2E_BASE_URL=http://localhost:3000 npm run e2e` para rodar contra um servidor já em execução.
+- O CI (`.github/workflows/ci.yml`) roda typecheck, testes unitários, build e e2e em cada PR.

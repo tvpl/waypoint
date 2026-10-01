@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Salvar no Waypoint",
+  "short_name": "Waypoint",
+  "version": "1.0.0",
+  "description": "Salve a página atual ou qualquer link na sua Link Library do Waypoint, com coleção, tags e nota.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Salvar no Waypoint (Ctrl+Shift+S)",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "contextMenus"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Abrir o Salvar no Waypoint"
+    },
+    "quick-save": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Salvar a aba atual direto, na última coleção usada"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "salvar@waypoint.app",
+      "strict_min_version": "128.0"
+    }
+  }
+}

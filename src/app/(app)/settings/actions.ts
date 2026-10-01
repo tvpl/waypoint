@@ -5,6 +5,8 @@ import { z } from "zod";
 import { getDb, schema } from "@/server/db";
 import { hashPassword, verifyPassword } from "@/server/auth";
 import { ROLES } from "@/server/db/schema";
+import { createApiToken, listApiTokens, revokeApiToken, type ApiTokenView } from "@/server/services/api-tokens";
+import { rateLimit } from "@/server/lib/rate-limit";
 import {
   findUserByEmail,
   removeMember,
@@ -100,4 +102,28 @@ export async function removeMemberAction(userId: string): Promise<Result> {
     revalidatePath("/settings");
     return { ok: true };
   });
+}
+
+// ------------------------------------------------------------------ personal API tokens
+
+/** Creates a token in the active workspace. The raw token is returned once and never stored. */
+export async function createApiTokenAction(name: string): Promise<{ ok: true; token: string; tokens: ApiTokenView[] } | { ok: false; error: string }> {
+  try {
+    const ctx = await requireWorkspace();
+    const clean = z.string().trim().min(1, "Dê um nome ao token.").max(80, "Nome muito longo.").parse(name);
+    if (!rateLimit(`token-create:${ctx.user.id}`, 10, 60 * 60_000).ok) return { ok: false, error: "Muitos tokens criados em pouco tempo. Tente mais tarde." };
+    const { token } = createApiToken(ctx.user.id, ctx.workspace.id, clean);
+    return { ok: true, token, tokens: listApiTokens(ctx.user.id) };
+  } catch (e) {
+    if (e instanceof UserError) return { ok: false, error: e.message };
+    if (e instanceof z.ZodError) return { ok: false, error: e.issues[0]?.message ?? "Dados inválidos." };
+    throw e;
+  }
+}
+
+export async function revokeApiTokenAction(tokenId: string): Promise<{ ok: true; tokens: ApiTokenView[] } | { ok: false; error: string }> {
+  const ctx = await requireWorkspace();
+  const id = z.string().min(1).max(64).safeParse(tokenId);
+  if (!id.success || !revokeApiToken(ctx.user.id, id.data)) return { ok: false, error: "Token não encontrado." };
+  return { ok: true, tokens: listApiTokens(ctx.user.id) };
 }

@@ -78,3 +78,31 @@ Plans e coleções têm visibilidade `Privado`, `Workspace`, `Pessoas específic
 - `npm test` — testes unitários (Vitest): domínio do Planner, adapter do canvas, SSRF, parser de favoritos, serviços com banco em memória.
 - `npm run e2e` — smoke tests de ponta a ponta (Playwright): gera o build, sobe o app com um banco descartável e cobre cadastro, criação/edição/publicação de plan, links, busca global e layout mobile. Use `E2E_BASE_URL=http://localhost:3000 npm run e2e` para rodar contra um servidor já em execução.
 - O CI (`.github/workflows/ci.yml`) roda typecheck, testes unitários, build e e2e em cada PR.
+
+## Links quebrados
+
+Em **Links**, use **Verificar links** (barra lateral, menu “…” de uma coleção ou seleção em lote) para checar se os links ainda respondem. O filtro rápido **Quebrados** reúne links quebrados (404, 410, 5xx…) e inacessíveis (DNS, timeout, 429). Links que hoje redirecionam para outro endereço ganham um ponto âmbar e a ação **Atualizar para a nova URL**; redirecionamentos de idioma, `http → https`, `www.` e barra final não contam.
+
+A verificação (`src/server/services/link-health.ts`) usa `HEAD` com fallback para `GET` (corpo de até 16 KB), sempre via `safeFetch`, com no máximo 4 requisições simultâneas e intervalo mínimo por host. Links verificados nas últimas 24 h são pulados, a menos que a verificação seja forçada. A rota `POST /api/links/health` (sessão, editores) processa lotes de até 200 links e devolve `{ checked, ok, broken, redirect, unreachable, remaining }`; a interface chama em lotes pequenos e mostra o progresso.
+
+## API & extensão
+
+**Tokens de API.** Em *Configurações → Tokens de API*, crie um token pessoal (`wp_` + 40 caracteres). Ele aparece **uma única vez**; o banco guarda apenas o hash SHA-256 e um prefixo para identificação. Cada token vale para o workspace em que foi criado e age com o papel **atual** do seu dono ali (verificado a cada requisição): tokens de viewers só leem, e quem sai do workspace perde o acesso na hora. Revogue quando quiser.
+
+**REST API (`/api/v1`).** Autenticação só por `Authorization: Bearer wp_…` (o cookie de sessão é ignorado), respostas JSON, erros como `{ "error": { "code", "message" } }`, limite por token (120 leituras e 30 escritas por minuto). CORS liberado apenas para origens de extensão (`chrome-extension://…`, `moz-extension://…`), com preflight `OPTIONS`.
+
+| Método | Rota | Retorna |
+| --- | --- | --- |
+| `GET` | `/api/v1/me` | usuário, workspace, papel e `canWrite` |
+| `GET` | `/api/v1/collections` | coleções visíveis em ordem de árvore, com `path` (“Development / Frontend”) |
+| `GET` | `/api/v1/tags` | nomes das tags, mais usadas primeiro |
+| `GET` | `/api/v1/links/lookup?url=` | `{ link }` já salvo para a URL, ou `{ link: null }` |
+| `POST` | `/api/v1/links` | cria um link (`url`, `title?`, `description?`, `collectionId?`, `tags?`, `openBehavior?`); título, descrição, favicon e capa ausentes são buscados na página. Resposta `201 { link }` com `appUrl` (`/links?open=<id>`) |
+
+```bash
+curl -H "Authorization: Bearer $WAYPOINT_TOKEN" https://waypoint.example.com/api/v1/me
+curl -X POST -H "Authorization: Bearer $WAYPOINT_TOKEN" -H "Content-Type: application/json" \
+  -d '{"url":"https://react.dev/learn","tags":["react"]}' https://waypoint.example.com/api/v1/links
+```
+
+**Extensão “Salvar no Waypoint”.** A pasta [`extension/`](extension/README.md) tem uma extensão Manifest V3 (Chrome, Edge e Firefox, sem build): popup com coleção, tags e nota, menu de contexto e atalho <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>. Veja como instalar e configurar em [`extension/README.md`](extension/README.md).

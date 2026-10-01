@@ -1,14 +1,14 @@
-import type { OpenBehavior, SummaryBehavior, Visibility } from "@/server/db/schema";
+import type { LinkHealth, OpenBehavior, SummaryBehavior, Visibility } from "@/server/db/schema";
 
-export type { OpenBehavior, SummaryBehavior, Visibility };
+export type { LinkHealth, OpenBehavior, SummaryBehavior, Visibility };
 
 export type ViewMode = "cards" | "compact" | "list";
 export type SummaryMode = "default" | SummaryBehavior;
-export type Scope = "all" | "recent" | "starred" | "unsorted" | "archived" | "shared";
+export type Scope = "all" | "recent" | "starred" | "unsorted" | "broken" | "archived" | "shared";
 export type SortMode = "manual" | "recent" | "title" | "opened";
 
 export const VIEW_MODES: ViewMode[] = ["cards", "compact", "list"];
-export const SCOPES: Scope[] = ["all", "recent", "starred", "unsorted", "archived", "shared"];
+export const SCOPES: Scope[] = ["all", "recent", "starred", "unsorted", "broken", "archived", "shared"];
 export const SORT_MODES: SortMode[] = ["manual", "recent", "title", "opened"];
 
 /** Client-safe collection tree node (dates stripped). */
@@ -48,6 +48,11 @@ export type LinkItem = {
   createdAt: number;
   updatedAt: number;
   archived: boolean;
+  /** Last link health check (see server/services/link-health.ts). */
+  healthStatus: LinkHealth;
+  healthCode: number | null;
+  healthCheckedAt: number | null;
+  healthFinalUrl: string | null;
 };
 
 export type CurrentCollection = TreeNode & {
@@ -58,7 +63,7 @@ export type CurrentCollection = TreeNode & {
 
 export type TagCount = { name: string; count: number };
 
-export type LibraryCounts = { all: number; starred: number; unsorted: number; archived: number; recent: number; shared: number };
+export type LibraryCounts = { all: number; starred: number; unsorted: number; archived: number; recent: number; shared: number; broken: number };
 
 export type Backlink = { planId: string; planTitle: string; nodeId: string; nodeTitle: string | null };
 

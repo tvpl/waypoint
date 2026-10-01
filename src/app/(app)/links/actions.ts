@@ -20,6 +20,7 @@ import {
   updateFavorite,
 } from "@/server/services/links";
 import { tagsForFavorites } from "@/server/services/tags";
+import { markHealthy } from "@/server/services/link-health";
 import { ensureShareLink, revokeShareLink } from "@/server/services/plans";
 import { favoritesInWorkspace } from "@/features/links/server-data";
 import type { ActionResult } from "@/features/links/types";
@@ -109,6 +110,22 @@ export async function updateLinkAction(linkId: string, input: Partial<LinkInput>
     updateFavorite(linkId, data);
     done();
     return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Replaces a link's URL with the final URL its last health check was redirected to. */
+export async function applyRedirectAction(linkId: string): Promise<ActionResult<{ url: string }>> {
+  try {
+    const ctx = await editor();
+    const fav = assertFavorite(ctx, id.parse(linkId));
+    if (fav.healthStatus !== "redirect" || !fav.healthFinalUrl) throw new UserError("Este link não tem um redirecionamento pendente.");
+    const url = fav.healthFinalUrl;
+    updateFavorite(fav.id, { url });
+    markHealthy(fav.id, fav.healthCode);
+    done();
+    return { ok: true, data: { url } };
   } catch (e) {
     return fail(e);
   }

@@ -8,11 +8,13 @@ import {
   Download,
   FolderPlus,
   MoreHorizontal,
+  PanelLeft,
   Pencil,
   Pin,
   PinOff,
   Plus,
   Share2,
+  ShieldCheck,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -126,6 +128,8 @@ export function LibraryHeader({
   onArchive,
   onDelete,
   onAdd,
+  onCheckHealth,
+  onOpenCollections,
 }: {
   current: CurrentCollection | null;
   title: string;
@@ -141,12 +145,23 @@ export function LibraryHeader({
   onArchive: () => void;
   onDelete: () => void;
   onAdd: () => void;
+  onCheckHealth: () => void;
+  /** Phones: opens the collections drawer. */
+  onOpenCollections: () => void;
 }) {
   const router = useRouter();
   const exportHref = (format: string) => `/api/export/links?format=${format}${current ? `&c=${current.id}` : ""}`;
   return (
     <div className="flex flex-col gap-1.5">
-      <nav aria-label="Caminho" className="flex min-h-5 items-center gap-1.5 text-[13px] text-muted">
+      <button
+        type="button"
+        onClick={onOpenCollections}
+        className="-ml-1 mb-1 inline-flex h-8 items-center gap-1.5 self-start rounded-lg border border-line-2 bg-surface px-2.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink md:hidden [&_svg]:size-4"
+      >
+        <PanelLeft aria-hidden />
+        Coleções
+      </button>
+      <nav aria-label="Caminho" className="flex min-h-5 min-w-0 items-center gap-1.5 text-[13px] text-muted">
         <Link href="/links" className="hover:text-ink">
           Links
         </Link>
@@ -167,8 +182,8 @@ export function LibraryHeader({
         {pending && <span className="ml-2 h-3 w-3 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Carregando" />}
       </nav>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h1 className="font-display text-[40px] font-normal leading-[1.05] tracking-[-0.005em]">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 max-sm:basis-full">
+          <h1 className="font-display text-[32px] font-normal leading-[1.05] tracking-[-0.005em] sm:text-[40px]">
             {current ? (
               <InlineEdit
                 value={current.name}
@@ -176,7 +191,7 @@ export function LibraryHeader({
                 label="Nome da coleção"
                 canEdit={canEdit}
                 onSave={(v) => v && onRename(v)}
-                inputClassName="font-display text-[40px] leading-[1.05] px-1.5 -mx-1.5"
+                inputClassName="font-display text-[32px] sm:text-[40px] leading-[1.05] px-1.5 -mx-1.5"
               />
             ) : (
               title
@@ -198,7 +213,7 @@ export function LibraryHeader({
             subtitle && <p className="text-sm text-muted">{subtitle}</p>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 max-sm:w-full max-sm:justify-end">
           {current && canEdit && (
             <Tooltip content="Compartilhar coleção">
               <Button size="icon" variant="ghost" aria-label="Compartilhar coleção" onClick={onShare} className="h-9 w-9">
@@ -232,6 +247,15 @@ export function LibraryHeader({
                   <DropdownMenuItem onSelect={onTogglePin}>
                     {current.pinned ? <PinOff /> : <Pin />}
                     {current.pinned ? "Desafixar da Início" : "Fixar na Início"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {canEdit && (
+                <>
+                  <DropdownMenuItem onSelect={onCheckHealth}>
+                    <ShieldCheck />
+                    {current ? "Verificar links desta coleção" : "Verificar links"}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

@@ -12,8 +12,10 @@ import {
   MoreHorizontal,
   PanelRight,
   Pencil,
+  ShieldCheck,
   Star,
   Trash2,
+  Waypoints,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { SiteIcon } from "@/components/ui/misc";
@@ -22,6 +24,7 @@ import { recordOpen, useLinkOpener } from "./link-opener";
 import { useLibrary } from "./library-context";
 import { Cover } from "./cover";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
+import { HealthDot, shortUrl } from "./health";
 import type { LinkItem, ViewMode } from "./types";
 
 // ------------------------------------------------------------------ shared bits
@@ -134,6 +137,21 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
         {lib.canEdit && (
           <>
             <DropdownMenuSeparator />
+            {link.healthStatus === "redirect" && link.healthFinalUrl && (
+              <DropdownMenuItem onSelect={() => lib.applyRedirect(link)} title={link.healthFinalUrl}>
+                <Waypoints />
+                <span className="flex min-w-0 flex-col">
+                  <span>Atualizar para a nova URL</span>
+                  <span className="max-w-[220px] truncate font-mono text-[11px] text-muted">{shortUrl(link.healthFinalUrl, 40)}</span>
+                </span>
+              </DropdownMenuItem>
+            )}
+            {!link.archived && (
+              <DropdownMenuItem onSelect={() => lib.checkLinks([link.id])}>
+                <ShieldCheck />
+                Verificar link
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => lib.edit(link)}>
               <Pencil />
               Editar
@@ -240,7 +258,10 @@ function LinkCard({ link }: { link: LinkItem }) {
             {link.title}
           </a>
         </div>
-        <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
+          <HealthDot link={link} />
+        </span>
         <Summary link={link} className="line-clamp-2 text-[13px] leading-[19px] text-ink-2" />
         {link.tags.length > 0 && (
           <div className="mt-0.5 flex flex-wrap gap-1.5">
@@ -252,12 +273,12 @@ function LinkCard({ link }: { link: LinkItem }) {
         <Checkbox link={link} className="h-[18px] w-[18px]" />
       </div>
       {link.starred && (
-        <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-[0_1px_3px_rgba(23,23,28,.15)] transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
+        <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex pointer-coarse:hidden h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-[0_1px_3px_rgba(23,23,28,.15)] transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
           <Star className="size-[15px] fill-amber-ink text-amber-ink" aria-label="Favorito" />
         </span>
       )}
-      <div className="absolute right-2.5 top-2.5 z-10 flex gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        <button type="button" aria-label="Abrir no app" title="Abrir no app" className={floatBtn} onClick={() => opener.openInApp(link)}>
+      <div className="absolute right-2.5 top-2.5 z-10 flex gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
+        <button type="button" aria-label="Abrir no app" title="Abrir no app" className={cn(floatBtn, "pointer-coarse:hidden")} onClick={() => opener.openInApp(link)}>
           <PanelRight />
         </button>
         <a
@@ -267,7 +288,7 @@ function LinkCard({ link }: { link: LinkItem }) {
           aria-label="Abrir em nova aba"
           title="Abrir em nova aba"
           draggable={false}
-          className={floatBtn}
+          className={cn(floatBtn, "pointer-coarse:hidden")}
           onClick={() => recordOpen(link.id)}
         >
           <ExternalLink />
@@ -311,17 +332,20 @@ function CompactRow({ link }: { link: LinkItem }) {
         </span>
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <a
-          href={link.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          draggable={false}
-          onClick={onClick}
-          onAuxClick={onAuxClick}
-          className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-[10px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
-        >
-          {link.title}
-        </a>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            draggable={false}
+            onClick={onClick}
+            onAuxClick={onAuxClick}
+            className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-[10px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+          >
+            {link.title}
+          </a>
+          <HealthDot link={link} />
+        </span>
         <Summary link={link} className="truncate text-xs text-muted" />
         {lib.summaryFor(link) === "hidden" || !link.description ? <span className="truncate font-mono text-[11px] text-muted">{link.domain}</span> : null}
       </div>
@@ -336,7 +360,7 @@ function CompactRow({ link }: { link: LinkItem }) {
         <LinkMenu
           link={link}
           trigger={
-            <button type="button" aria-label="Mais ações" className={cn(rowIconBtn, "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100")}>
+            <button type="button" aria-label="Mais ações" className={cn(rowIconBtn, "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100")}>
               <MoreHorizontal />
             </button>
           }
@@ -359,7 +383,7 @@ function CompactRow({ link }: { link: LinkItem }) {
 
 // ------------------------------------------------------------------ list
 
-const listCols = "grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_130px] gap-4";
+const listCols = "grid grid-cols-[minmax(0,1fr)_108px] gap-3 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_130px] md:gap-4";
 
 function ListRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, lib } = useLinkHandlers(link);
@@ -371,7 +395,7 @@ function ListRow({ link }: { link: LinkItem }) {
       {...dnd.props}
       className={cn(
         listCols,
-        "group relative min-h-[52px] items-center border-b border-line px-4 py-1.5 text-[13px] last:border-b-0 hover:bg-surface-2",
+        "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-[13px] last:border-b-0 hover:bg-surface-2 md:px-4",
         selected && "bg-accent-soft/60 hover:bg-accent-soft/80",
         dnd.dragging && "opacity-50",
       )}
@@ -398,12 +422,13 @@ function ListRow({ link }: { link: LinkItem }) {
               {link.title}
             </a>
             <span className="hidden shrink truncate font-mono text-xs text-muted lg:inline">{link.domain}</span>
+            <HealthDot link={link} className="self-center" />
             {link.starred && <Star className="size-3 shrink-0 fill-amber-ink text-amber-ink" aria-label="Favorito" />}
           </span>
           <Summary link={link} className="truncate text-xs text-muted" />
         </span>
       </span>
-      <span role="cell" className="min-w-0 truncate text-ink-2">
+      <span role="cell" className="min-w-0 truncate text-ink-2 max-md:hidden">
         {link.collectionId ? (
           <Link href={`/links?c=${link.collectionId}`} className="relative z-10 hover:text-accent-ink hover:underline">
             {link.collectionName}
@@ -412,12 +437,12 @@ function ListRow({ link }: { link: LinkItem }) {
           <span className="text-muted">—</span>
         )}
       </span>
-      <span role="cell" className="flex min-w-0 gap-1.5 overflow-hidden">
+      <span role="cell" className="flex min-w-0 gap-1.5 overflow-hidden max-md:hidden">
         <Tags link={link} max={3} />
       </span>
       <span role="cell" className="flex items-center justify-between gap-2 text-muted">
-        <span suppressHydrationWarning>{timeAgo(link.updatedAt)}</span>
-        <span className="relative z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
+        <span suppressHydrationWarning className="whitespace-nowrap">{timeAgo(link.updatedAt)}</span>
+        <span className="relative z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100">
           <LinkMenu
             link={link}
             trigger={
@@ -450,10 +475,10 @@ function ListView({ links }: { links: LinkItem[] }) {
     );
   return (
     <div role="table" aria-label="Links" className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface">
-      <div role="row" className={cn(listCols, "h-[38px] items-center border-b border-line bg-surface-2 px-4 text-xs font-medium text-muted")}>
+      <div role="row" className={cn(listCols, "h-[38px] items-center border-b border-line bg-surface-2 px-3 text-xs font-medium text-muted md:px-4")}>
         <span role="columnheader">{head("Nome", "title")}</span>
-        <span role="columnheader">Coleção</span>
-        <span role="columnheader">Tags</span>
+        <span role="columnheader" className="max-md:hidden">Coleção</span>
+        <span role="columnheader" className="max-md:hidden">Tags</span>
         <span role="columnheader">{head("Atualizado", "recent")}</span>
       </div>
       {links.map((l) => (
@@ -475,7 +500,7 @@ export function LinkViews({ links, view }: { links: LinkItem[]; view: ViewMode }
     );
   }
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
       {links.map((l) => (
         <LinkCard key={l.id} link={l} />
       ))}

@@ -278,6 +278,7 @@ export function updateFavorite(id: string, patch: Partial<FavoriteInput>) {
   if (patch.url !== undefined) {
     set.url = normalizeUrl(patch.url);
     set.domain = domainOf(set.url);
+    if (set.url !== fav.url) Object.assign(set, { healthStatus: "unknown", healthCode: null, healthFinalUrl: null, healthCheckedAt: null });
   }
   if (patch.title !== undefined) set.title = patch.title.trim() || fav.domain;
   for (const k of ["description", "keywords", "favicon", "coverImage", "icon"] as const) {
@@ -378,7 +379,7 @@ export type FavoriteFilter = {
   collectionId?: string | null;
   /** include links of nested collections */
   deep?: boolean;
-  scope?: "all" | "recent" | "starred" | "unsorted" | "archived";
+  scope?: "all" | "recent" | "starred" | "unsorted" | "archived" | "broken";
   tags?: string[];
   q?: string;
   sort?: "manual" | "recent" | "title" | "opened";
@@ -398,6 +399,7 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
   }
   if (f.scope === "unsorted") conds.push(isNull(schema.favorites.collectionId));
   if (f.scope === "recent") conds.push(isNotNull(schema.favorites.lastOpenedAt));
+  if (f.scope === "broken") conds.push(inArray(schema.favorites.healthStatus, ["broken", "unreachable"]));
   if (f.scope === "starred") {
     conds.push(
       sql`exists (select 1 from user_marks m where m.user_id = ${userId} and m.entity_type = 'favorite' and m.entity_id = ${schema.favorites.id} and m.mark = 'star')`,

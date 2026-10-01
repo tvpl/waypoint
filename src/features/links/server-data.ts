@@ -87,6 +87,10 @@ export function toLinkItem(f: FavoriteView | (typeof schema.favorites.$inferSele
     createdAt: f.createdAt.getTime(),
     updatedAt: f.updatedAt.getTime(),
     archived: f.archivedAt != null,
+    healthStatus: f.healthStatus,
+    healthCode: f.healthCode,
+    healthCheckedAt: f.healthCheckedAt ? f.healthCheckedAt.getTime() : null,
+    healthFinalUrl: f.healthFinalUrl,
   };
 }
 
@@ -102,6 +106,7 @@ export function libraryCounts(workspaceId: string, userId: string, hidden: Set<s
         sum(case when f.archived_at is null and f.collection_id is null then 1 else 0 end) as unsorted,
         sum(case when f.archived_at is not null then 1 else 0 end) as archived,
         sum(case when f.archived_at is null and f.last_opened_at is not null then 1 else 0 end) as recent,
+        sum(case when f.archived_at is null and f.health_status in ('broken', 'unreachable') then 1 else 0 end) as broken,
         sum(case when f.archived_at is null and exists (select 1 from user_marks m where m.user_id = ? and m.entity_type = 'favorite' and m.entity_id = f.id and m.mark = 'star') then 1 else 0 end) as starred
        from favorites f where f.workspace_id = ? ${notHidden}`,
     )
@@ -113,6 +118,7 @@ export function libraryCounts(workspaceId: string, userId: string, hidden: Set<s
     recent: row.recent ?? 0,
     starred: row.starred ?? 0,
     shared: sharedCollections,
+    broken: row.broken ?? 0,
   };
 }
 

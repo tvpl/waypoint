@@ -19,6 +19,10 @@ export type LibraryApi = {
   remove: (ids: string[]) => void;
   filterTag: (tag: string) => void;
   sortBy: (sort: "title" | "recent") => void;
+  /** Re-checks links right away (editors). */
+  checkLinks: (ids: string[]) => void;
+  /** Replaces the URL of a redirecting link by its final URL (editors). */
+  applyRedirect: (link: LinkItem) => void;
   sort: string;
 };
 

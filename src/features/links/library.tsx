@@ -2,11 +2,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Dialog as D } from "radix-ui";
 import { toast } from "sonner";
-import { Archive, Clock, FolderPlus, Inbox, Link2, Plus, SearchX, Star, Upload, Users } from "lucide-react";
+import { Archive, Clock, FolderPlus, Inbox, Link2, Plus, SearchX, ShieldCheck, Star, Upload, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd } from "@/components/ui/misc";
 import {
+  applyRedirectAction,
   archiveCollectionAction,
   bulkLinksAction,
   deleteCollectionAction,
@@ -32,6 +34,7 @@ import { CollectionGlyph, CollectionTile } from "./collection-style";
 import { getDrag } from "./dnd";
 import { getPref, PREF_SUMMARY, PREF_VIEW, setPref } from "./prefs";
 import { flatNodesClient } from "./tree-utils";
+import { checkLinksNow, healthText, shortUrl, useHealthRun } from "./health";
 import {
   VIEW_MODES,
   VISIBILITY_LABEL,
@@ -72,6 +75,7 @@ const SCOPE_COPY: Record<Scope, { title: string; subtitle: string }> = {
   recent: { title: "Recentes", subtitle: "Links que você abriu por último." },
   starred: { title: "Favoritos", subtitle: "Os links que você marcou com estrela." },
   unsorted: { title: "Sem coleção", subtitle: "Links que ainda não estão em nenhuma coleção." },
+  broken: { title: "Links quebrados", subtitle: "Links que não responderam na última verificação. Corrija a URL, arquive ou exclua." },
   archived: { title: "Arquivados", subtitle: "Links arquivados ficam fora das coleções e da busca. Restaure quando quiser." },
   shared: { title: "Compartilhados", subtitle: "Coleções que qualquer pessoa com o link pode ver." },
 };
@@ -121,6 +125,10 @@ export function LinksLibrary(props: LibraryProps) {
   const [storedView, setStoredView] = React.useState<ViewMode | null>(null);
   const [summary, setSummary] = React.useState<SummaryMode>("default");
   const [externalOver, setExternalOver] = React.useState(false);
+  const [drawer, setDrawer] = React.useState(false);
+  const spKey = sp.toString();
+  // the phone drawer closes whenever the library navigates
+  React.useEffect(() => setDrawer(false), [spKey]);
 
   React.useEffect(() => {
     setStoredView(getPref(PREF_VIEW, VIEW_MODES, "cards"));
@@ -244,6 +252,33 @@ export function LinksLibrary(props: LibraryProps) {
         }),
       ),
     [apply],
+  );
+
+  const runHealth = useHealthRun();
+  const checkLinks = React.useCallback(
+    (ids: string[]) => {
+      if (!canEdit || !ids.length) return;
+      const n = ids.length;
+      const id = toast.loading(n === 1 ? "Verificando link…" : `Verificando ${n} links…`);
+      checkLinksNow(ids.slice(0, 200))
+        .then((results) => {
+          router.refresh();
+          if (n === 1 && results[0]) {
+            const r = results[0];
+            const text = healthText({ healthStatus: r.status, healthCode: r.code, healthFinalUrl: r.finalUrl, healthCheckedAt: null });
+            if (r.status === "ok") toast.success(text, { id });
+            else toast.warning(text, { id });
+          } else {
+            const bad = results.filter((r) => r.status === "broken" || r.status === "unreachable").length;
+            toast[bad ? "warning" : "success"](`${results.length} ${results.length === 1 ? "link verificado" : "links verificados"}`, {
+              id,
+              description: bad ? `${bad} com problema` : "Todos funcionando.",
+            });
+          }
+        })
+        .catch((e: Error) => toast.error(e.message, { id }));
+    },
+    [canEdit, router],
   );
 
   const flat = React.useMemo(() => flatNodesClient(tree), [tree]);
@@ -373,6 +408,19 @@ export function LinksLibrary(props: LibraryProps) {
     filterTag: (t) => !activeTags.includes(t) && toggleTag(t),
     sortBy: (s) => navigate({ sort: s }),
     sort,
+    checkLinks,
+    applyRedirect: (link) => {
+      if (!link.healthFinalUrl) return;
+      const url = link.healthFinalUrl;
+      const leaves = !current && scope === "broken";
+      run(
+        leaves
+          ? { type: "remove", ids: [link.id] }
+          : { type: "patch", ids: [link.id], patch: { url, domain: shortUrl(url).split("/")[0], healthStatus: "ok", healthFinalUrl: null } },
+        () => applyRedirectAction(link.id),
+        `URL atualizada para ${shortUrl(url)}`,
+      );
+    },
   };
 
   // ---------------------------------------------------------------- collection operations
@@ -419,6 +467,7 @@ export function LinksLibrary(props: LibraryProps) {
     moveCollection: (id, parentId, index) => run(null, () => moveCollectionAction({ id, parentId, index })),
     moveLinks,
     tagHref,
+    checkHealth: (node) => runHealth({ collectionId: node?.id ?? null, name: node?.name }),
   };
 
   const currentNode = current;
@@ -433,6 +482,7 @@ export function LinksLibrary(props: LibraryProps) {
       <LinkOpenerProvider onPreview={(id) => navigate({ open: id }, { push: true })}>
         <div className="flex min-h-0 flex-1">
           <CollectionsPanel
+            className="max-md:hidden"
             tree={tree}
             currentId={current?.id ?? null}
             scope={scope}
@@ -443,6 +493,45 @@ export function LinksLibrary(props: LibraryProps) {
             canEdit={canEdit}
             handlers={handlers}
           />
+          <D.Root open={drawer} onOpenChange={setDrawer}>
+            <D.Portal>
+              <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-[wp-in_120ms_ease-out] md:hidden" />
+              <D.Content
+                aria-describedby={undefined}
+                onOpenAutoFocus={(e) => {
+                  // focus the panel itself: avoids popping the first button's tooltip on open
+                  e.preventDefault();
+                  (e.currentTarget as HTMLElement).focus();
+                }}
+                className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col bg-surface-2 shadow-pop outline-none data-[state=open]:animate-[wp-drawer_180ms_cubic-bezier(.2,.8,.2,1)] md:hidden"
+                onClickCapture={(e) => {
+                  // any link inside (scope, collection, tag) navigates: close right away
+                  if ((e.target as HTMLElement).closest("a[href]")) setDrawer(false);
+                }}
+              >
+                <D.Title className="sr-only">Coleções</D.Title>
+                <CollectionsPanel
+                  className="h-full w-full border-r-0 pb-[env(safe-area-inset-bottom)]"
+                  tree={tree}
+                  currentId={current?.id ?? null}
+                  scope={scope}
+                  counts={counts}
+                  tags={tags}
+                  activeTags={activeTags}
+                  pinned={new Set(props.pinned)}
+                  canEdit={canEdit}
+                  handlers={{
+                    ...handlers,
+                    newCollection: (p) => (setDrawer(false), handlers.newCollection(p)),
+                    edit: (n) => (setDrawer(false), handlers.edit(n)),
+                    share: (n) => (setDrawer(false), handlers.share(n)),
+                    remove: (n) => (setDrawer(false), handlers.remove(n)),
+                    checkHealth: (n) => (setDrawer(false), handlers.checkHealth(n)),
+                  }}
+                />
+              </D.Content>
+            </D.Portal>
+          </D.Root>
           <main
             className="scrollbar-thin relative min-w-0 flex-1 overflow-y-auto"
             onDragOver={(e) => {
@@ -468,7 +557,7 @@ export function LinksLibrary(props: LibraryProps) {
                 Solte para adicionar o link{current ? ` em “${current.name}”` : ""}
               </div>
             )}
-            <div className="mx-auto flex max-w-[1480px] flex-col gap-[22px] px-6 py-7 lg:px-10">
+            <div className="mx-auto flex max-w-[1480px] flex-col gap-[18px] px-4 py-5 sm:gap-[22px] sm:px-6 sm:py-7 lg:px-10">
               <LibraryHeader
                 current={currentNode}
                 title={copy.title}
@@ -483,6 +572,8 @@ export function LinksLibrary(props: LibraryProps) {
                 onTogglePin={() => current && handlers.togglePin(current)}
                 onArchive={() => current && handlers.archive(current)}
                 onDelete={() => current && handlers.remove(current)}
+                onCheckHealth={() => handlers.checkHealth(current)}
+                onOpenCollections={() => setDrawer(true)}
                 onAdd={() => openAdd()}
               />
 
@@ -583,6 +674,7 @@ export function LinksLibrary(props: LibraryProps) {
             );
           }}
           onArchive={() => archive([...selected], !archivedScope)}
+          onCheck={canEdit ? () => checkLinks([...selected]) : undefined}
           onDelete={() => remove([...selected])}
           onClear={() => setSelected(new Set())}
         />
@@ -616,7 +708,7 @@ function ResultCount({ n, deep }: { n: number; deep: boolean }) {
 
 function SharedGrid({ nodes }: { nodes: TreeNode[] }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
       {nodes.map((n) => (
         <Link
           key={n.id}
@@ -751,6 +843,11 @@ function Empty({
     recent: { icon: <Clock />, title: "Nada aberto ainda", description: "Os links que você abrir aparecem aqui, do mais recente para o mais antigo." },
     starred: { icon: <Star />, title: "Nenhum favorito ainda", description: "Marque links com a estrela para encontrá-los aqui rapidamente." },
     unsorted: { icon: <Inbox />, title: "Tudo organizado", description: "Todos os links estão em alguma coleção." },
+    broken: {
+      icon: <ShieldCheck />,
+      title: "Nenhum link quebrado",
+      description: "Use “Verificar links” na barra lateral para checar se os links ainda funcionam. Links que não responderem aparecem aqui.",
+    },
     archived: { icon: <Archive />, title: "Nenhum link arquivado", description: "Links arquivados saem das coleções e da busca, mas podem ser restaurados daqui." },
     shared: { icon: <Users />, title: "Nenhuma coleção compartilhada", description: "Abra uma coleção e use Compartilhar para gerar um link de leitura." },
   };

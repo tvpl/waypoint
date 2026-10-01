@@ -30,9 +30,9 @@ function useAction() {
   return { pending, run };
 }
 
-export function Card({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+export function Card({ title, description, children, id }: { title: string; description?: string; children: React.ReactNode; id?: string }) {
   return (
-    <section className="grid gap-6 border-t border-line py-8 md:grid-cols-[240px_1fr]">
+    <section id={id} className="grid scroll-mt-6 gap-6 border-t border-line py-8 md:grid-cols-[240px_1fr]">
       <div className="flex flex-col gap-1">
         <h2 className="text-[15px] font-semibold">{title}</h2>
         {description && <p className="text-[13px] leading-5 text-muted">{description}</p>}

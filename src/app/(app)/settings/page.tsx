@@ -3,6 +3,8 @@ import { Download, Upload } from "lucide-react";
 import { listMembers, requireWorkspace } from "@/server/services/workspaces";
 import { Button } from "@/components/ui/button";
 import { Card, ProfileForm, ThemePicker, WorkspaceForm } from "@/features/settings/settings-forms";
+import { ApiTokens } from "@/features/settings/api-tokens";
+import { listApiTokens } from "@/server/services/api-tokens";
 
 export const metadata = { title: "Configurações" };
 
@@ -24,6 +26,13 @@ export default async function SettingsPage() {
         </Card>
         <Card title="Workspace" description="Owners gerenciam o nome e as pessoas. Editors criam e editam; viewers apenas consultam.">
           <WorkspaceForm name={ctx.workspace.name} members={members} isOwner={ctx.role === "owner"} meId={ctx.user.id} />
+        </Card>
+        <Card
+          id="api-tokens"
+          title="Tokens de API"
+          description="Tokens pessoais para a extensão do navegador e integrações. Cada token vale para um workspace e pode ser revogado a qualquer momento."
+        >
+          <ApiTokens initial={listApiTokens(ctx.user.id)} workspaceName={ctx.workspace.name} role={ctx.role} />
         </Card>
         <Card title="Seus dados" description="Nada fica preso aqui: exporte sempre que quiser.">
           <div className="flex flex-wrap gap-2">

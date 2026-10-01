@@ -16,9 +16,11 @@ import {
   PinOff,
   Plus,
   Share2,
+  ShieldCheck,
   Star,
   Trash2,
   Type,
+  Unlink,
   Upload,
   Users,
 } from "lucide-react";
@@ -54,6 +56,8 @@ export type PanelHandlers = {
   moveCollection: (id: string, parentId: string | null, index?: number) => void;
   moveLinks: (ids: string[], collectionId: string | null) => void;
   tagHref: (tag: string) => string;
+  /** Checks the links of a collection (with subcollections) or of the whole library (null). */
+  checkHealth: (node: TreeNode | null) => void;
 };
 
 function parentMap(nodes: TreeNode[], parent: string | null = null, out = new Map<string, string | null>()) {
@@ -90,7 +94,9 @@ export function CollectionsPanel({
   pinned,
   canEdit,
   handlers,
+  className,
 }: {
+  className?: string;
   tree: TreeNode[];
   currentId: string | null;
   scope: Scope;
@@ -145,12 +151,13 @@ export function CollectionsPanel({
     { scope: "recent", label: "Recentes", icon: <Clock />, href: "/links?scope=recent" },
     { scope: "starred", label: "Favoritos", icon: <Star />, count: counts.starred, href: "/links?scope=starred" },
     { scope: "unsorted", label: "Sem coleção", icon: <Inbox />, count: counts.unsorted, href: "/links?scope=unsorted" },
+    { scope: "broken", label: "Quebrados", icon: <Unlink />, count: counts.broken || undefined, href: "/links?scope=broken" },
     { scope: "shared", label: "Compartilhados", icon: <Users />, count: counts.shared || undefined, href: "/links?scope=shared" },
     { scope: "archived", label: "Arquivados", icon: <Archive />, count: counts.archived || undefined, href: "/links?scope=archived" },
   ];
 
   return (
-    <aside aria-label="Coleções" className="flex w-[272px] shrink-0 flex-col border-r border-line bg-surface-2">
+    <aside aria-label="Coleções" className={cn("flex w-[272px] shrink-0 flex-col border-r border-line bg-surface-2", className)}>
       <div className="flex items-center justify-between px-[18px] pb-3 pt-[18px]">
         <h2 className="text-[15px] font-semibold">Links</h2>
         {canEdit && (
@@ -200,10 +207,25 @@ export function CollectionsPanel({
               >
                 {q.icon}
                 <span className="flex-1">{q.label}</span>
-                {q.count != null && <span className="text-xs font-normal text-muted">{q.count}</span>}
+                {q.count != null && (
+                  <span className={cn("text-xs font-normal", q.scope === "broken" ? "font-medium text-danger" : "text-muted")}>
+                    {q.scope === "broken" && <span className="sr-only">: </span>}
+                    {q.count}
+                  </span>
+                )}
               </Link>
             );
           })}
+          {canEdit && counts.all > 0 && (
+            <button
+              type="button"
+              onClick={() => handlers.checkHealth(null)}
+              className="mt-1 flex h-[30px] items-center gap-2.5 rounded-[7px] px-2 text-left text-[13px] text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
+            >
+              <ShieldCheck aria-hidden />
+              <span className="flex-1">Verificar links</span>
+            </button>
+          )}
         </nav>
 
         <div className="flex flex-col gap-1.5">
@@ -391,6 +413,10 @@ function TreeRow(props: RowProps) {
           <Item onSelect={() => handlers.share(node)}>
             <Share2 />
             Compartilhar
+          </Item>
+          <Item onSelect={() => handlers.checkHealth(node)}>
+            <ShieldCheck />
+            Verificar links
           </Item>
           <Sep />
           <Item onSelect={() => handlers.archive(node)}>

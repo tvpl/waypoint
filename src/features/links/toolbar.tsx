@@ -64,7 +64,7 @@ export function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2.5">
-      <label className="flex h-9 w-[260px] items-center gap-2 rounded-[9px] border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
+      <label className="flex h-9 w-full items-center sm:w-[260px] gap-2 rounded-[9px] border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
         <Search className="size-4 shrink-0" aria-hidden />
         <input
           ref={filterRef}
@@ -142,7 +142,7 @@ export function Toolbar({
         </Popover>
       </div>
 
-      <div className="flex-1" />
+      <div className="flex-1 max-sm:hidden" />
 
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>

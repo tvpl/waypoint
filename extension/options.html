@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Salvar no Waypoint — Configurações</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="head">
+        <span class="logo big" aria-hidden="true">
+          <svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="6" r="2.5" /><path d="M8.5 18H12a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3" /></svg>
+        </span>
+        <div>
+          <h1>Salvar no Waypoint</h1>
+          <p class="sub">Conecte a extensão ao seu Waypoint para salvar páginas e links com um clique.</p>
+        </div>
+      </header>
+
+      <form class="card" id="form" novalidate>
+        <div class="field">
+          <label class="label" for="server">Endereço do Waypoint</label>
+          <input class="input" id="server" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://waypoint.suaempresa.com" required />
+          <p class="hint">O mesmo endereço que você abre no navegador. A extensão pede permissão para acessar apenas este site.</p>
+        </div>
+
+        <div class="field">
+          <label class="label" for="token">Token de API</label>
+          <div class="token-row">
+            <input class="input mono" id="token" type="password" autocomplete="off" spellcheck="false" placeholder="wp_…" required aria-describedby="token-hint" />
+            <button class="btn" id="toggle-token" type="button" aria-pressed="false" aria-controls="token">Mostrar</button>
+          </div>
+          <p class="hint" id="token-hint">
+            No Waypoint, abra <a href="#" id="tokens-link">Configurações → Tokens de API</a>, crie um token e cole aqui. Ele fica guardado só neste navegador.
+          </p>
+        </div>
+
+        <div class="banner" id="status" role="status" hidden>
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path id="status-path" d="M20 6 9 17l-5-5" /></svg>
+          <span id="status-text"></span>
+        </div>
+
+        <div class="actions">
+          <button class="btn ghost" id="clear" type="button">Desconectar</button>
+          <button class="btn primary" id="save" type="submit">
+            <span class="spinner" id="spinner" hidden></span>
+            <span id="save-label">Salvar e testar conexão</span>
+          </button>
+        </div>
+      </form>
+
+      <section class="card tips" aria-labelledby="tips-title">
+        <h2 id="tips-title">Atalhos</h2>
+        <ul>
+          <li><span><kbd data-mod>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span> abre o Salvar no Waypoint na aba atual</li>
+          <li><span><kbd>Alt</kbd><kbd>Shift</kbd><kbd>S</kbd></span> salva direto, na última coleção usada</li>
+          <li><span class="menu-hint">Botão direito</span> em um link ou página → <em>Salvar link no Waypoint</em></li>
+        </ul>
+        <p class="hint">Para mudar os atalhos, use <code id="shortcuts-url">chrome://extensions/shortcuts</code>.</p>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

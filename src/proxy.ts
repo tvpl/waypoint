@@ -1,6 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = [/^\/login/, /^\/signup/, /^\/share\//, /^\/api\/share\//, /^\/api\/assets\//, /^\/api\/embed-check$/];
+const PUBLIC = [
+  /^\/login/,
+  /^\/signup/,
+  /^\/share\//,
+  /^\/api\/share\//,
+  /^\/api\/assets\//,
+  /^\/api\/embed-check$/,
+  // public REST API: authenticates itself with Bearer tokens (see app/api/v1/_lib/http.ts)
+  /^\/api\/v1\//,
+];
 
 /** Optimistic auth gate: real checks happen in each page/route. */
 export function proxy(req: NextRequest) {

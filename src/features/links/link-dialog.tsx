@@ -38,14 +38,14 @@ function RadioCards<T extends string>({
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-2 text-xs font-medium text-ink-2">{label}</legend>
-      <div role="radiogroup" aria-label={label} className="grid grid-cols-3 gap-2">
+      <div role="radiogroup" aria-label={label} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {options.map((o) => {
           const on = o.value === value;
           return (
             <label
               key={o.value}
               className={cn(
-                "flex cursor-pointer flex-col gap-1.5 rounded-[10px] border px-3 py-2.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
+                "flex cursor-pointer flex-col gap-1.5 rounded-[10px] border px-3 py-2.5 transition-colors max-sm:flex-row max-sm:items-baseline max-sm:gap-2 max-sm:py-2 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
                 on ? "border-accent bg-accent-soft" : "border-line-2 bg-surface hover:bg-surface-2",
               )}
             >
@@ -54,7 +54,7 @@ function RadioCards<T extends string>({
                 {o.icon}
                 <span>{o.label}</span>
               </span>
-              <span className="pl-[21px] text-xs text-muted">{o.sub}</span>
+              <span className="pl-[21px] text-xs text-muted max-sm:truncate max-sm:pl-0">{o.sub}</span>
             </label>
           );
         })}

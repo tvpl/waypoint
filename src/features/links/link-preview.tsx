@@ -3,7 +3,8 @@ import * as React from "react";
 import Link from "next/link";
 import { Dialog as D } from "radix-ui";
 import { toast } from "sonner";
-import { Check, Copy, ExternalLink, Lock, Maximize2, PanelRight, Pencil, Shield, Star, Timer, Workflow, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Copy, ExternalLink, Lock, Maximize2, PanelRight, Pencil, RefreshCw, Shield, Star, Timer, Waypoints, Workflow, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/input";
 import { SiteIcon, TagChip } from "@/components/ui/misc";
@@ -12,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { CollectionGlyph } from "./collection-style";
 import { alwaysNewTab, getPref, PREF_PREVIEW_MODE, setAlwaysNewTab, setPref } from "./prefs";
 import { recordOpen } from "./link-opener";
+import { checkedAgo, checkLinksNow, healthText, HealthMark, toHealthPatch } from "./health";
+import { applyRedirectAction } from "@/app/(app)/links/actions";
 import type { LinkDetail, LinkItem } from "./types";
 
 type Embed = { state: "checking" } | { state: "ok" } | { state: "blocked"; reason?: string };
@@ -47,10 +50,14 @@ export function LinkPreview({
         <D.Overlay className={cn("fixed inset-0 z-50 data-[state=open]:animate-[wp-in_120ms_ease-out]", mode === "modal" ? "bg-scrim" : "bg-scrim/30")} />
         <D.Content
           aria-describedby={undefined}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).focus();
+          }}
           className={cn(
             "fixed z-50 flex flex-col overflow-hidden bg-surface text-ink shadow-pop outline-none data-[state=open]:animate-in",
             mode === "modal"
-              ? "left-1/2 top-[3vh] h-[94vh] w-[calc(100vw-32px)] max-w-[1160px] -translate-x-1/2 rounded-[18px]"
+              ? "left-1/2 top-[3vh] h-[94vh] w-[calc(100vw-32px)] max-w-[1160px] -translate-x-1/2 rounded-[18px] max-md:inset-0 max-md:h-full max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:rounded-none"
               : "bottom-0 right-0 top-0 w-[min(720px,100vw)] border-l border-line",
           )}
         >
@@ -85,11 +92,12 @@ function PreviewBody({
   const [slow, setSlow] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [starred, setStarred] = React.useState<boolean | null>(null);
+  const [rev, setRev] = React.useState(0);
   const link = detail?.link ?? initial ?? null;
 
   React.useEffect(() => {
     const ctrl = new AbortController();
-    fetch(`/api/links/${linkId}`, { signal: ctrl.signal })
+    fetch(`/api/links/${linkId}`, { signal: ctrl.signal, cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) {
           setMissing(true);
@@ -99,7 +107,7 @@ function PreviewBody({
       })
       .catch(() => {});
     return () => ctrl.abort();
-  }, [linkId]);
+  }, [linkId, rev]);
 
   const url = link?.url;
   React.useEffect(() => {
@@ -150,13 +158,15 @@ function PreviewBody({
       link={link}
       detail={detail}
       onEdit={detail?.canEdit ? () => onEdit(detail.link) : undefined}
-      className={mode === "modal" ? "w-[280px] shrink-0 border-l border-line" : "border-t border-line"}
+      onHealthPatch={(patch) => setDetail((d) => (d ? { ...d, link: { ...d.link, ...patch } } : d))}
+      onReload={() => setRev((r) => r + 1)}
+      className={mode === "modal" ? "w-[280px] shrink-0 border-l border-line max-md:w-full max-md:border-l-0 max-md:border-t" : "border-t border-line"}
     />
   );
 
   return (
     <>
-      <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-line pl-5 pr-3.5">
+      <header className="flex h-[60px] shrink-0 items-center gap-2 border-b border-line pl-4 pr-2 sm:gap-3 sm:pl-5 sm:pr-3.5">
         <SiteIcon src={iconSrc} label={link.domain || link.title} size={30} />
         <div className="flex min-w-0 flex-col">
           <D.Title className="truncate text-[15px] font-semibold">{link.title}</D.Title>
@@ -197,14 +207,14 @@ function PreviewBody({
           </Button>
         </Tooltip>
         <Tooltip content={mode === "modal" ? "Abrir como painel lateral" : "Abrir como modal"}>
-          <Button size="icon" variant="ghost" aria-label="Alternar modal e painel lateral" onClick={onToggleMode}>
+          <Button size="icon" variant="ghost" aria-label="Alternar modal e painel lateral" onClick={onToggleMode} className="max-md:hidden">
             {mode === "modal" ? <PanelRight /> : <Maximize2 />}
           </Button>
         </Tooltip>
         <Button asChild size="sm" variant="secondary" className="h-[34px]">
-          <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={openTab}>
+          <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={openTab} aria-label="Abrir em nova aba">
             <ExternalLink />
-            Nova aba
+            <span className="max-sm:hidden">Nova aba</span>
           </a>
         </Button>
         <D.Close asChild>
@@ -213,8 +223,8 @@ function PreviewBody({
           </Button>
         </D.Close>
       </header>
-      <div className={cn("flex min-h-0 flex-1", mode === "side" && "flex-col overflow-y-auto")}>
-        <div className={cn("flex min-w-0 flex-1 flex-col gap-2.5 bg-surface-2 p-4", mode === "side" && "min-h-[60vh]")}>
+      <div className={cn("flex min-h-0 flex-1", mode === "side" ? "flex-col overflow-y-auto" : "max-md:flex-col max-md:overflow-y-auto")}>
+        <div className={cn("flex min-w-0 flex-1 flex-col gap-2.5 bg-surface-2 p-4 max-md:p-3", mode === "side" ? "min-h-[60vh]" : "max-md:min-h-[62vh]")}>
           {embed.state === "checking" && (
             <div className="flex flex-1 items-center justify-center rounded-[10px] border border-line bg-surface">
               <span className="inline-flex items-center gap-2 text-[13px] text-muted">
@@ -311,7 +321,106 @@ function Blocked({ link, reason }: { link: LinkItem; reason?: string }) {
   );
 }
 
-function InfoPanel({ link, detail, onEdit, className }: { link: LinkItem; detail: LinkDetail | null; onEdit?: () => void; className?: string }) {
+function HealthSection({
+  link,
+  canEdit,
+  onPatch,
+  onReload,
+}: {
+  link: LinkItem;
+  canEdit: boolean;
+  onPatch: (patch: Partial<LinkItem>) => void;
+  onReload: () => void;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState<"check" | "apply" | null>(null);
+  const check = async () => {
+    setBusy("check");
+    try {
+      const [r] = await checkLinksNow([link.id]);
+      if (r) onPatch(toHealthPatch(r));
+      router.refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const apply = async () => {
+    setBusy("apply");
+    const r = await applyRedirectAction(link.id);
+    setBusy(null);
+    if (!r.ok) return toast.error(r.error);
+    toast.success("URL atualizada");
+    onReload();
+  };
+  const tone =
+    link.healthStatus === "broken" || link.healthStatus === "unreachable"
+      ? "text-danger"
+      : link.healthStatus === "redirect"
+        ? "text-amber-ink"
+        : link.healthStatus === "ok"
+          ? "text-success-ink"
+          : "text-muted";
+  return (
+    <section className="flex flex-col gap-2" aria-live="polite">
+      <SectionLabel>Status do link</SectionLabel>
+      <p className={cn("flex items-start gap-2 text-[13px] leading-5", tone)}>
+        <HealthMark status={link.healthStatus} className="mt-1.5" />
+        <span className="min-w-0" suppressHydrationWarning>
+          {healthText(link, { withTime: false })}
+          {link.healthCheckedAt && (
+            <span className="block text-xs text-muted" suppressHydrationWarning>
+              {checkedAgo(link.healthCheckedAt)}
+            </span>
+          )}
+        </span>
+      </p>
+      {link.healthStatus === "redirect" && link.healthFinalUrl && (
+        <a
+          href={link.healthFinalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="break-all rounded-md bg-subtle px-2 py-1.5 font-mono text-[11px] leading-4 text-ink-2 hover:text-ink"
+        >
+          {link.healthFinalUrl}
+        </a>
+      )}
+      {canEdit && (
+        <div className="flex flex-wrap gap-1.5">
+          {link.healthStatus === "redirect" && link.healthFinalUrl && (
+            <Button size="sm" variant="soft" onClick={apply} disabled={!!busy}>
+              <Waypoints />
+              Atualizar para a nova URL
+            </Button>
+          )}
+          {!link.archived && (
+            <Button size="sm" variant="ghost" onClick={check} disabled={!!busy} className="-ml-1.5">
+              <RefreshCw className={cn(busy === "check" && "animate-spin")} />
+              {busy === "check" ? "Verificando…" : "Verificar agora"}
+            </Button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function InfoPanel({
+  link,
+  detail,
+  onEdit,
+  onHealthPatch,
+  onReload,
+  className,
+}: {
+  link: LinkItem;
+  detail: LinkDetail | null;
+  onEdit?: () => void;
+  onHealthPatch: (patch: Partial<LinkItem>) => void;
+  onReload: () => void;
+  className?: string;
+}) {
   const path = detail?.path ?? [];
   const parent = path.slice(0, -1).map((p) => p.name).join(" / ");
   return (
@@ -348,6 +457,7 @@ function InfoPanel({ link, detail, onEdit, className }: { link: LinkItem; detail
           </Link>
         )}
       </section>
+      {detail && <HealthSection link={detail.link} canEdit={detail.canEdit} onPatch={onHealthPatch} onReload={onReload} />}
       <section className="flex flex-col gap-1.5">
         <SectionLabel>Usado em</SectionLabel>
         {!detail ? (

@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Archive, ArchiveRestore, FolderInput, Hash, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, FolderInput, Hash, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -49,6 +49,7 @@ export function BulkBar({
   onClear,
   onSelectAll,
   allSelected,
+  onCheck,
 }: {
   count: number;
   archivedScope: boolean;
@@ -60,6 +61,7 @@ export function BulkBar({
   onClear: () => void;
   onSelectAll: () => void;
   allSelected: boolean;
+  onCheck?: () => void;
 }) {
   const [tagOpen, setTagOpen] = React.useState(false);
   const [tag, setTag] = React.useState("");
@@ -76,26 +78,28 @@ export function BulkBar({
     <div
       role="toolbar"
       aria-label="Ações em lote"
-      className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-line bg-surface p-1.5 pl-4 text-ink shadow-pop animate-in"
+      className="fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 items-center gap-1 rounded-2xl border border-line bg-surface p-1.5 pl-4 text-ink shadow-pop animate-in max-sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-sm:gap-0 max-sm:pl-3"
     >
-      <span className="mr-2 text-[13px] font-medium" aria-live="polite">
-        {count} {count === 1 ? "selecionado" : "selecionados"}
+      <span className="mr-2 whitespace-nowrap text-[13px] font-medium" aria-live="polite">
+        {count}
+        <span className="max-sm:sr-only"> {count === 1 ? "selecionado" : "selecionados"}</span>
       </span>
       {!allSelected && (
-        <Button size="sm" variant="ghost" onClick={onSelectAll}>
-          Selecionar todos
+        <Button size="sm" variant="ghost" onClick={onSelectAll} className="max-sm:px-2">
+          <span className="max-sm:hidden">Selecionar todos</span>
+          <span className="sm:hidden">Todos</span>
         </Button>
       )}
       <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-      <Button size="sm" variant="ghost" onClick={onMove}>
+      <Button size="sm" variant="ghost" onClick={onMove} aria-label="Mover" className="max-sm:px-2">
         <FolderInput />
-        Mover
+        <span className="max-sm:hidden">Mover</span>
       </Button>
       <Popover open={tagOpen} onOpenChange={setTagOpen}>
         <PopoverTrigger asChild>
-          <Button size="sm" variant="ghost">
+          <Button size="sm" variant="ghost" aria-label="Adicionar tag" className="max-sm:px-2">
             <Hash />
-            Adicionar tag
+            <span className="max-sm:hidden">Adicionar tag</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent side="top" className="w-60 p-2">
@@ -128,13 +132,19 @@ export function BulkBar({
           )}
         </PopoverContent>
       </Popover>
-      <Button size="sm" variant="ghost" onClick={onArchive}>
+      {onCheck && !archivedScope && (
+        <Button size="sm" variant="ghost" onClick={onCheck} aria-label="Verificar links selecionados" className="max-sm:px-2">
+          <ShieldCheck />
+          <span className="max-sm:hidden">Verificar</span>
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" onClick={onArchive} aria-label={archivedScope ? "Restaurar" : "Arquivar"} className="max-sm:px-2">
         {archivedScope ? <ArchiveRestore /> : <Archive />}
-        {archivedScope ? "Restaurar" : "Arquivar"}
+        <span className="max-sm:hidden">{archivedScope ? "Restaurar" : "Arquivar"}</span>
       </Button>
-      <Button size="sm" variant="ghost" onClick={onDelete} className="text-danger hover:bg-danger-soft hover:text-danger">
+      <Button size="sm" variant="ghost" onClick={onDelete} aria-label="Excluir" className="text-danger hover:bg-danger-soft hover:text-danger max-sm:px-2">
         <Trash2 />
-        Excluir
+        <span className="max-sm:hidden">Excluir</span>
       </Button>
       <span className="mx-1 h-5 w-px bg-line" aria-hidden />
       <Button size="icon" variant="ghost" aria-label="Limpar seleção" onClick={onClear}>

@@ -86,6 +86,7 @@ export function ThemePicker() {
   useEffect(() => setPref(getThemePref()), []);
   return (
     <Segmented
+      className="self-start"
       label="Tema"
       value={pref}
       onChange={(v) => {

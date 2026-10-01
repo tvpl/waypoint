@@ -48,7 +48,7 @@ export default async function HomePage() {
     <main className="scrollbar-thin flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-10 px-6 pb-16 pt-12 sm:px-12 sm:pt-16">
         <div className="flex flex-wrap items-end justify-between gap-6">
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col items-start gap-3">
             <WorkspaceSwitcher current={ctx.workspace} workspaces={ctx.workspaces} />
             <Greeting name={ctx.user.name} />
           </div>

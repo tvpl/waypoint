@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx --import ./scripts/stub-server-only.mjs scripts/seed.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",

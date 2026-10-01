@@ -8,6 +8,17 @@ import { touchRecent } from "@/server/services/links";
 import { planContextInfo, resolveDocumentResources } from "@/server/services/resources";
 import { PlanViewPage, type ViewStatus } from "@/features/planner/view-page";
 import { Logo } from "@/components/shell/logo";
+import { commentAccess } from "@/server/services/comments";
+
+/** Comments are for people who belong to the plan, not share-link visitors. */
+function canDiscuss(planId: string, userId: string) {
+  try {
+    commentAccess(planId, { userId });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -84,7 +95,7 @@ export default async function PlanViewRoute({ params, searchParams }: Props) {
       canEdit={canEdit}
       focusNodeId={one(sp.node)}
       homeHref={user ? "/" : "/login"}
-      viewer={user ? { id: user.id, name: user.name } : null}
+      viewer={user && canDiscuss(id, user.id) ? { id: user.id, name: user.name } : null}
       shareToken={token}
       present={one(sp.present) === "1"}
     />

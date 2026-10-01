@@ -37,17 +37,19 @@ export function BottomPill() {
           </button>
         </Tooltip>
       ))}
-      <Sep />
-      <Tooltip content={ed.grid ? "Ocultar grade" : "Mostrar grade"} side="top">
-        <button type="button" aria-label="Grade" aria-pressed={ed.grid} className={cn(pillBtn, ed.grid && "text-accent-ink")} onClick={() => ed.setGrid(!ed.grid)}>
-          <Grid3x3 strokeWidth={1.75} />
-        </button>
-      </Tooltip>
-      <Tooltip content={ed.snap ? "Desativar encaixe na grade" : "Encaixar na grade"} side="top">
-        <button type="button" aria-label="Encaixar na grade" aria-pressed={ed.snap} className={cn(pillBtn, ed.snap && "text-accent-ink")} onClick={() => ed.setSnap(!ed.snap)}>
-          <Magnet strokeWidth={1.75} />
-        </button>
-      </Tooltip>
+      <span className="hidden sm:contents">
+        <Sep />
+        <Tooltip content={ed.grid ? "Ocultar grade" : "Mostrar grade"} side="top">
+          <button type="button" aria-label="Grade" aria-pressed={ed.grid} className={cn(pillBtn, ed.grid && "text-accent-ink")} onClick={() => ed.setGrid(!ed.grid)}>
+            <Grid3x3 strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+        <Tooltip content={ed.snap ? "Desativar encaixe na grade" : "Encaixar na grade"} side="top">
+          <button type="button" aria-label="Encaixar na grade" aria-pressed={ed.snap} className={cn(pillBtn, ed.snap && "text-accent-ink")} onClick={() => ed.setSnap(!ed.snap)}>
+            <Magnet strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+      </span>
       <Sep />
       <ArrangeMenu />
       <Sep />

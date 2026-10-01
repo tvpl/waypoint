@@ -24,7 +24,7 @@ export function SaveIndicator({ status, error }: { status: SaveStatus; error?: s
   return (
     <span role="status" aria-live="polite" className={cn("ml-1 inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-xs", m.cls)}>
       {m.icon}
-      <span className="truncate">{m.text}</span>
+      <span className="truncate max-sm:sr-only">{m.text}</span>
     </span>
   );
 }
@@ -144,11 +144,11 @@ export function EditorTopbar(props: {
       )}
     >
       <Icon className="size-3.5" />
-      {label}
+      <span className="max-sm:sr-only">{label}</span>
     </button>
   );
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface pl-2 pr-3">
+    <header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-line bg-surface pl-1 pr-2 sm:gap-3 sm:pl-2 sm:pr-3">
       <Tooltip content="Voltar para Plans">
         <Button asChild variant="ghost" size="icon" aria-label="Voltar para Plans">
           <Link href="/plans">
@@ -177,10 +177,12 @@ export function EditorTopbar(props: {
           className="min-w-[80px] max-w-[320px] truncate rounded-md bg-transparent px-1 py-0.5 font-semibold outline-none hover:bg-hover focus:bg-surface focus:ring-2 focus:ring-accent/30"
           style={{ width: `${Math.max(8, title.length + 2)}ch` }}
         />
-        <PublishBadge published={props.published} unpublished={props.unpublished} />
+        <span className="hidden sm:contents">
+          <PublishBadge published={props.published} unpublished={props.unpublished} />
+        </span>
         <SaveIndicator status={props.status} error={props.saveError} />
       </div>
-      <div role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-[9px] bg-subtle p-[3px]">
+      <div role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-[9px] bg-subtle p-[3px] max-sm:hidden">
         {seg("edit", "Editar", Pencil)}
         {seg("preview", "Visualizar", Eye)}
       </div>
@@ -195,18 +197,24 @@ export function EditorTopbar(props: {
             <Redo2 />
           </Button>
         </Tooltip>
-        <Tooltip content="Histórico de versões">
-          <Button variant="ghost" size="icon" aria-label="Histórico de versões" onClick={props.onHistory}>
-            <History />
-          </Button>
-        </Tooltip>
+        <span className="hidden md:contents">
+          <Tooltip content="Histórico de versões">
+            <Button variant="ghost" size="icon" aria-label="Histórico de versões" onClick={props.onHistory}>
+              <History />
+            </Button>
+          </Tooltip>
+        </span>
         {props.comments}
-        <ExportMenu onExport={props.onExport} />
-        <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
-        <Avatars people={props.people} />
-        <Button variant="secondary" size="sm" className="h-[34px]" onClick={props.onShare}>
-          <Share2 /> Compartilhar
-        </Button>
+        <span className="hidden md:contents">
+          <ExportMenu onExport={props.onExport} />
+          <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
+          <span className="hidden lg:contents">
+            <Avatars people={props.people} />
+          </span>
+          <Button variant="secondary" size="sm" className="h-[34px]" onClick={props.onShare}>
+            <Share2 /> Compartilhar
+          </Button>
+        </span>
         <Button variant="primary" size="sm" className="h-[34px]" onClick={props.onPublish} disabled={props.publishing}>
           {props.publishing && <Loader2 className="animate-spin" />}
           Publicar

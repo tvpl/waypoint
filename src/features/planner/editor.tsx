@@ -21,7 +21,8 @@ import {
   type Viewport,
   type OnConnectEnd,
 } from "@xyflow/react";
-import { CloudOff, MousePointerClick, RotateCcw, TriangleAlert } from "lucide-react";
+import { CloudOff, MonitorSmartphone, MousePointerClick, Plus, RotateCcw, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
+import Link from "next/link";
 import type { EdgeKind, NodeData, NodeKind, PlanDocument, ResourceRef } from "@/domain/plan";
 import {
   contentSignature,
@@ -164,6 +165,9 @@ function EditorShell(props: PlanEditorProps) {
   const commentsPanel = useCommentsPanel();
   const comments = useComments({ planId, enabled: true, open: commentsPanel.open });
   const [previewFocus, setPreviewFocus] = useState<{ id: string; seq: number } | null>(null);
+  // phones: a notice first; "Editar mesmo assim" shows the canvas with panels as overlays
+  const [phoneEdit, setPhoneEdit] = useState(false);
+  const [phonePanel, setPhonePanel] = useState<"tools" | "props" | null>(null);
 
   // ---------------------------------------------------------------- history + autosave
   const history = useRef(new History<PlanDocument>(initialDoc, { limit: 100, coalesceMs: 1200 }));
@@ -952,7 +956,9 @@ function EditorShell(props: PlanEditorProps) {
             </div>
           ) : (
             <div className="flex min-h-0 flex-1">
-              <Toolbox />
+              <PhoneOverlay open={phonePanel === "tools"} side="left" label="Elementos" onClose={() => setPhonePanel(null)}>
+                <Toolbox />
+              </PhoneOverlay>
               <CanvasContextMenu target={menuTarget}>
                 <div
                   ref={wrapRef}
@@ -1039,12 +1045,47 @@ function EditorShell(props: PlanEditorProps) {
                   )}
                   <SelectionBar />
                   <BottomPill />
+                  <div className="wp-no-print absolute left-3 top-3 z-10 flex gap-2 md:hidden">
+                    <Button size="sm" variant="secondary" className="shadow-pop" onClick={() => setPhonePanel("tools")}>
+                      <Plus /> Elementos
+                    </Button>
+                  </div>
+                  <div className="wp-no-print absolute right-3 top-3 z-10 md:hidden">
+                    <Button size="sm" variant="secondary" className="shadow-pop" onClick={() => setPhonePanel("props")}>
+                      <SlidersHorizontal /> Propriedades
+                    </Button>
+                  </div>
                 </div>
               </CanvasContextMenu>
-              {commentsAside ?? <Inspector />}
+              {commentsAside ?? (
+                <PhoneOverlay open={phonePanel === "props"} side="right" label="Propriedades" onClose={() => setPhonePanel(null)}>
+                  <Inspector />
+                </PhoneOverlay>
+              )}
             </div>
           )}
         </div>
+        {!phoneEdit && (
+          <div role="dialog" aria-modal="true" aria-labelledby="wp-phone-title" className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-bg px-7 text-center text-ink md:hidden">
+            <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-ink">
+              <MonitorSmartphone className="size-6" aria-hidden />
+            </span>
+            <div className="flex max-w-sm flex-col gap-2">
+              <h1 id="wp-phone-title" className="font-display text-[34px] font-normal leading-[1.05]">
+                Edição funciona melhor em telas maiores
+              </h1>
+              <p className="text-[15px] leading-[22px] text-muted">O editor precisa de espaço para as ferramentas e o painel de propriedades. No celular, você pode ver, apresentar e comentar o plan.</p>
+            </div>
+            <div className="flex w-full max-w-xs flex-col gap-2">
+              <Button asChild variant="primary" size="lg" className="justify-center">
+                <Link href={`/plans/${planId}`}>Ver o plan</Link>
+              </Button>
+              <Button variant="ghost" size="lg" className="justify-center" onClick={() => setPhoneEdit(true)}>
+                Editar mesmo assim
+              </Button>
+            </div>
+          </div>
+        )}
         <ShareDialog
           planId={planId}
           open={share.open}
@@ -1061,6 +1102,33 @@ function EditorShell(props: PlanEditorProps) {
         />
       </PlannerContext.Provider>
     </EditorContext.Provider>
+  );
+}
+
+/** Desktop: renders the panel in place. Phones: a toggleable full-height overlay. */
+function PhoneOverlay({ open, side, label, onClose, children }: { open: boolean; side: "left" | "right"; label: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <>
+      {open && <div className="fixed inset-0 z-30 bg-scrim md:hidden" aria-hidden onClick={onClose} />}
+      <div
+        className={cn(
+          "md:contents",
+          open
+            ? cn("fixed inset-y-0 z-30 flex max-w-[88vw] flex-col bg-surface shadow-pop animate-in md:static md:max-w-none md:shadow-none", side === "left" ? "left-0" : "right-0")
+            : "max-md:hidden",
+        )}
+      >
+        {open && (
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-line px-3 md:hidden">
+            <span className="text-sm font-semibold">{label}</span>
+            <Button variant="ghost" size="icon" aria-label={`Fechar ${label.toLowerCase()}`} onClick={onClose} autoFocus>
+              <X />
+            </Button>
+          </div>
+        )}
+        <div className="flex min-h-0 flex-1 md:contents">{children}</div>
+      </div>
+    </>
   );
 }
 

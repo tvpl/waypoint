@@ -49,15 +49,14 @@ describe("comments service — access", () => {
     expect(() => c.listComments(ids.linkPlan, as("eve"))).toThrow(/acesso/);
   });
 
-  it("viewers (workspace, plan member, share token) can read and comment", () => {
+  it("viewers (workspace, plan member) can read and comment; share-link visitors can't", () => {
     const v = c.createComment(ids.plan, as("vera"), { body: "Dúvida geral" });
     expect(v).toMatchObject({ nodeId: null, parentId: null, author: { id: "vera", name: "Vera" } });
     const p = c.createComment(ids.private, as("pat"), { body: "Visto", nodeId: "n1" });
     expect(p.nodeId).toBe("n1");
-    const t = c.createComment(ids.linkPlan, as("eve", ids.token), { body: "Pelo link" });
-    expect(t.author.id).toBe("eve");
-    expect(c.listComments(ids.linkPlan, as("eve", ids.token)).map((x) => x.id)).toEqual([t.id]);
-    // the token doesn't open other plans
+    // a share token gives a read-only page, never access to the discussion
+    expect(() => c.createComment(ids.linkPlan, as("eve", ids.token), { body: "Pelo link" })).toThrow(/acesso/);
+    expect(() => c.listComments(ids.linkPlan, as("eve", ids.token))).toThrow(/acesso/);
     expect(() => c.listComments(ids.plan, as("eve", ids.token))).toThrow(/acesso/);
   });
 
@@ -127,10 +126,9 @@ describe("comments service — threads", () => {
     expect(c.commentCounts(ids.private, as("pat")).byNode.n2).toBe(3);
   });
 
-  it("mention candidates: insiders see workspace members, link visitors only commenters", () => {
+  it("mention candidates: insiders see workspace members, link visitors see nobody", () => {
     const inside = c.mentionCandidates(ids.plan, as("vera")).map((p) => p.name);
     expect(inside).toEqual(expect.arrayContaining(["Alice", "Bob", "Vera"]));
-    const outside = c.mentionCandidates(ids.linkPlan, as("eve", ids.token)).map((p) => p.name);
-    expect(outside).toEqual(["Eve"]);
+    expect(() => c.mentionCandidates(ids.linkPlan, as("eve", ids.token))).toThrow(/acesso/);
   });
 });

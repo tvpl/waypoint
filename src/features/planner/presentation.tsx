@@ -140,27 +140,38 @@ export function PresentationMode({
     };
   }, []);
 
-  // swipe left/right (one finger, mostly horizontal, quick)
-  const swipe = useRef<{ x: number; y: number; t: number; multi: boolean } | null>(null);
-  const onTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length > 1) {
-      if (swipe.current) swipe.current.multi = true;
-      return;
-    }
-    swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), multi: false };
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    const s = swipe.current;
-    if (!s || e.touches.length > 0) return;
-    swipe.current = null;
-    if (s.multi) return;
-    const p = e.changedTouches[0];
-    const dx = p.clientX - s.x;
-    const dy = p.clientY - s.y;
-    if (Date.now() - s.t > 700 || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (dx < 0) next();
-    else prev();
-  };
+  // swipe left/right (one finger, mostly horizontal, quick). Native capture
+  // listeners: React Flow's d3-zoom stops touch events from bubbling.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    let s: { x: number; y: number; t: number; multi: boolean } | null = null;
+    const start = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        if (s) s.multi = true;
+        return;
+      }
+      s = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), multi: false };
+    };
+    const end = (e: TouchEvent) => {
+      if (!s || e.touches.length > 0) return;
+      const cur = s;
+      s = null;
+      if (cur.multi) return;
+      const p = e.changedTouches[0];
+      const dx = p.clientX - cur.x;
+      const dy = p.clientY - cur.y;
+      if (Date.now() - cur.t > 700 || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (dx < 0) next();
+      else prev();
+    };
+    el.addEventListener("touchstart", start, { capture: true, passive: true });
+    el.addEventListener("touchend", end, { capture: true, passive: true });
+    return () => {
+      el.removeEventListener("touchstart", start, { capture: true });
+      el.removeEventListener("touchend", end, { capture: true });
+    };
+  }, [next, prev]);
 
   return (
     <div
@@ -171,8 +182,6 @@ export function PresentationMode({
       tabIndex={-1}
       data-idle={idle || undefined}
       className={cn("wp-presentation fixed inset-0 z-40 flex flex-col bg-surface-2 text-ink outline-none", idle && "cursor-none")}
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
     >
       <div className="relative min-h-0 flex-1">
         <PlanCanvasView document={doc} resources={resources} stage={{ activeIds: active }} meta={{ title }}>

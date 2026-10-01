@@ -7,6 +7,8 @@ Waypoint tem dois módulos que compartilham workspace, tags, busca e compartilha
 - **Visual Planner** — um canvas para desenhar soluções macro (blocos, containers, notas, link cards, seções, imagens e conexões). Cada plan tem um **modo edição** com ferramentas e um **modo visualização** limpo, que parece uma página pronta. Rascunhos são salvos automaticamente; a publicação gera versões imutáveis que podem ser compartilhadas sem que edições em andamento quebrem o que outras pessoas veem.
 - **Link Library** — um substituto completo para os favoritos do navegador: coleções aninhadas, tags, capas, descrições, três modos de visualização (cards, compacto e lista), filtros, preview interno ou nova aba, e importação/exportação no formato de favoritos dos navegadores.
 
+Além do essencial, o Planner tem **layout automático** (vertical ou horizontal, também só para a seleção), **modo apresentação** (passo a passo por seções, em tela cheia, com teclado ou gesto no celular; `?present=1` abre direto) e **comentários** por plan ou por bloco, com respostas, @menções e resolução. A Link Library verifica **links quebrados** e redirecionamentos, e uma **extensão de navegador** salva a página atual direto numa coleção.
+
 Qualquer bloco de um plan pode apontar para um **Resource**: uma URL, outro plan, um favorito, uma coleção, um arquivo ou uma página interna. É isso que transforma o desenho em uma porta de entrada para todo o contexto de um projeto.
 
 ## Stack

@@ -465,7 +465,11 @@ export function CommentsPanel({
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <h2 id={titleId} data-panel-title tabIndex={-1} className="flex-1 text-[15px] font-semibold outline-none">
           Comentários
-          {store.counts.unresolvedThreads > 0 && <span className="ml-1.5 text-[13px] font-normal text-muted">{store.counts.unresolvedThreads} abertos</span>}
+          {store.counts.unresolvedThreads > 0 && (
+            <span className="ml-1.5 text-[13px] font-normal text-muted">
+              {store.counts.unresolvedThreads} {store.counts.unresolvedThreads === 1 ? "aberto" : "abertos"}
+            </span>
+          )}
         </h2>
         {store.loading && <Loader2 className="size-3.5 animate-spin text-muted" aria-label="Atualizando" />}
         <Button variant="ghost" size="icon-sm" aria-label="Fechar comentários" onClick={onClose}>

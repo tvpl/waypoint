@@ -14,7 +14,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { newId } from "@/lib/utils";
 import { COMMENT_MAX_LENGTH, countComments, type CommentView } from "@/domain/comments";
-import { atLeast, type Access } from "./permissions";
+import { atLeast, planAccess, type Access } from "./permissions";
 import { getPlanWithAccess, listPlanMembers, type PlanRow } from "./plans";
 import { listMembers, UserError, workspaceRole } from "./workspaces";
 
@@ -29,7 +29,18 @@ type CommentRow = typeof schema.planComments.$inferSelect;
 /** Access to a plan's comments. Throws a UserError when the actor can't read them. */
 export function commentAccess(planId: string, actor: CommentActor): { plan: PlanRow; access: NonNullable<Access>; userId: string } {
   if (!actor.userId) throw new UserError("Entre para ver e escrever comentários.");
-  const res = getPlanWithAccess(planId, actor.userId, actor.token ?? null);
+  // Comments are internal discussion: only people who belong to the plan
+  // (workspace members per its visibility, invited people, the owner) take
+  // part. Public visitors and share-link holders get a read-only page.
+  const res = getPlanWithAccess(planId, actor.userId, null);
+  if (res) {
+    const insider =
+      res.plan.visibility === "public" || res.plan.visibility === "link"
+        ? planAccess(actor.userId, { ...res.plan, visibility: "workspace" })
+        : res.access;
+    if (!insider) throw new UserError("Você não tem acesso a este plan.");
+    res.access = insider;
+  }
   // archived plans are only reachable by editors (same rule as the view page)
   if (!res || !res.access || (res.plan.archivedAt && !atLeast(res.access, "editor"))) {
     throw new UserError("Você não tem acesso a este plan.");

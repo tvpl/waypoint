@@ -71,7 +71,7 @@ function ancestorsOf(doc: PlanDocument, id: string) {
   return out;
 }
 
-type Hover = { id: string; left: number; top: number };
+type Hover = { id: string; left: number; top: number; sheet?: boolean };
 
 function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef, stage, children, commentCount, openNodeComments, focusRequest }: Props) {
   const rf = useReactFlow();
@@ -227,6 +227,22 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
     [byId, resourceFor, router],
   );
 
+  // touch screens have no hover: the first tap shows the card, its button opens the resource
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: none)");
+    const sync = () => setTouch(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const tapNode = (id: string) => {
+    const n = byId.get(id);
+    if (!n || PARENT_KINDS.has(n.kind) || n.kind === "note" || !hasInfo(n.data)) return;
+    setDetails(null);
+    setHover((h) => (h?.id === id ? null : { id, left: 0, top: 0, sheet: true }));
+  };
+
   const showHover = (e: React.MouseEvent, node: Node) => {
     const n = byId.get(node.id);
     if (!n || PARENT_KINDS.has(n.kind) || n.kind === "note" || !hasInfo(n.data)) return;
@@ -286,11 +302,14 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
           fitView
           fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
           proOptions={{ hideAttribution: true }}
-          onNodeClick={(_, n) => openNode(n.id)}
-          onNodeMouseEnter={showHover}
-          onNodeMouseLeave={hideHover}
+          onNodeClick={(_, n) => (touch ? tapNode(n.id) : openNode(n.id))}
+          onNodeMouseEnter={touch ? undefined : showHover}
+          onNodeMouseLeave={touch ? undefined : hideHover}
           onMoveStart={() => setHover(null)}
-          onPaneClick={() => setDetails(null)}
+          onPaneClick={() => {
+            setDetails(null);
+            if (touch) setHover(null);
+          }}
         />
         {doc.nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -302,11 +321,19 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
           <div
             role="dialog"
             aria-label={hoverNode.data.title}
-            className="absolute z-20 flex w-[300px] flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 shadow-pop animate-in"
-            style={{ left: hover.left, top: hover.top }}
-            onMouseEnter={keepHover}
-            onMouseLeave={hideHover}
+            className={cn(
+              "absolute z-20 flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 shadow-pop animate-in",
+              hover.sheet ? "inset-x-3 bottom-3 max-h-[60%] overflow-y-auto pr-12" : "w-[300px]",
+            )}
+            style={hover.sheet ? undefined : { left: hover.left, top: hover.top }}
+            onMouseEnter={hover.sheet ? undefined : keepHover}
+            onMouseLeave={hover.sheet ? undefined : hideHover}
           >
+            {hover.sheet && (
+              <Button variant="ghost" size="icon-sm" className="absolute right-2.5 top-2.5" aria-label="Fechar" onClick={() => setHover(null)}>
+                <X />
+              </Button>
+            )}
             <NodeInfo node={hoverNode} res={resourceFor(hoverNode)} clamp onOpen={() => openNode(hoverNode.id)} onDetails={() => (setDetails(hoverNode.id), setHover(null))} />
           </div>
         )}

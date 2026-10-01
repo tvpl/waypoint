@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Download, FileJson, ImageDown, Info, MoreHorizontal, Pencil, Presentation, Printer, Share2 } from "lucide-react";
 import type { EdgeKind, PlanDocument } from "@/domain/plan";
@@ -377,6 +378,7 @@ export function PlanViewPage({
 
 /** Phones/tablets: header actions collapse into one menu. */
 function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; canEdit: boolean; onShare: () => void; onExport: (k: ExportKind) => void }) {
+  const router = useRouter();
   return (
     <div className="md:hidden">
       <DropdownMenu>
@@ -388,10 +390,8 @@ function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; ca
         <DropdownMenuContent align="end">
           {canEdit && (
             <>
-              <DropdownMenuItem asChild>
-                <Link href={`/plans/${planId}/edit`}>
-                  <Pencil /> Editar
-                </Link>
+              <DropdownMenuItem onSelect={() => router.push(`/plans/${planId}/edit`)}>
+                <Pencil /> Editar
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={onShare}>
                 <Share2 /> Compartilhar

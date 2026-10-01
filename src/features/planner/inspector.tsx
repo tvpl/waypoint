@@ -870,6 +870,7 @@ function PlanInspector() {
             ["Duplicar", "⌘D"],
             ["Copiar / colar", "⌘C · ⌘V"],
             ["Agrupar / desagrupar", "⌘G · ⇧⌘G"],
+            ["Organizar (vertical / horizontal)", "⇧L · ⌥⇧L"],
             ["Desfazer / refazer", "⌘Z · ⇧⌘Z"],
             ["Editar título", "Enter · duplo clique"],
             ["Buscar no Waypoint", "⌘K"],

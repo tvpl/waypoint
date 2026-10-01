@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { canEditWorkspace, requireWorkspace, UserError } from "@/server/services/workspaces";
-import { archivePlan, createPlan, deletePlan, duplicatePlan, getPlanWithAccess } from "@/server/services/plans";
+import { archivePlan, createPlan, deletePlan, duplicatePlan, getPlanWithAccess, getVersion } from "@/server/services/plans";
 import { atLeast } from "@/server/services/permissions";
 import { normalizeDocument } from "@/domain/plan";
 import type { Role } from "@/server/db/schema";
@@ -50,10 +50,18 @@ export async function createPlanAction(input: { title?: string; templateId?: str
 /** Duplicates a plan (optionally a specific published version, or as a template) into the active workspace. */
 export async function duplicatePlanAction(planId: string, opts: { versionId?: string; asTemplate?: boolean } = {}) {
   return run(async () => {
-    await guard(planId, "viewer");
+    const { plan, access } = await guard(planId, "viewer");
     const ctx = await requireCreator();
+    // viewers only ever see the published snapshot, so that's all they can copy
+    let versionId = opts.versionId;
+    if (!atLeast(access, "editor") && !plan.isTemplate) {
+      if (versionId && versionId !== plan.publishedVersionId) throw new UserError("Você não tem permissão para esta ação.");
+      if (!plan.publishedVersionId) throw new UserError("Este plan ainda não foi publicado.");
+      versionId = plan.publishedVersionId;
+    }
+    if (versionId && getVersion(versionId)?.planId !== planId) throw new UserError("Versão não encontrada.");
     const id = duplicatePlan(planId, ctx.user.id, ctx.workspace.id, {
-      versionId: opts.versionId,
+      versionId,
       asTemplate: opts.asTemplate,
     });
     revalidatePath("/plans");

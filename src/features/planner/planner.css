@@ -8,6 +8,7 @@
 }
 
 .wp-flow {
+  --wp-canvas-bg: var(--canvas);
   --xy-background-color: transparent;
   --xy-node-border-radius: 12px;
   --xy-selection-background-color: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -156,6 +157,7 @@
 
 /* ---------------------------------------------------------------- edges */
 .wp-flow .react-flow__edge .wp-edge-path {
+  stroke: var(--wp-edge);
   transition: stroke 0.12s ease;
 }
 .wp-flow .react-flow__edge:hover .wp-edge-path {
@@ -173,7 +175,7 @@
   font-size: 12px;
   line-height: 16px;
   color: var(--muted);
-  background: var(--canvas);
+  background: var(--wp-canvas-bg, var(--canvas));
   padding: 1px 6px;
   border-radius: 6px;
   white-space: nowrap;
@@ -215,4 +217,32 @@
   .wp-no-print {
     display: none !important;
   }
+}
+
+/* Containers and sections behave like frames: only the header grabs the
+   pointer, so the area itself lets you marquee-select and click through. */
+.wp-flow .react-flow__node-container,
+.wp-flow .react-flow__node-section {
+  pointer-events: none !important;
+}
+.wp-flow .react-flow__node-container .wp-hit,
+.wp-flow .react-flow__node-section .wp-hit,
+.wp-flow .react-flow__node-container .react-flow__handle,
+.wp-flow .react-flow__node-section .react-flow__handle,
+.wp-flow .react-flow__node-container .react-flow__resize-control,
+.wp-flow .react-flow__node-section .react-flow__resize-control {
+  pointer-events: all;
+}
+.wp-flow.wp-view .react-flow__node-container .react-flow__handle,
+.wp-flow.wp-view .react-flow__node-section .react-flow__handle {
+  pointer-events: none;
+}
+
+.wp-flow.wp-view {
+  --wp-canvas-bg: var(--surface-2);
+}
+
+/* Edges are lifted above containers (zIndex 1); keep their labels above the lines. */
+.wp-flow .react-flow__edgelabel-renderer {
+  z-index: 6;
 }

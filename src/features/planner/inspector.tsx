@@ -64,7 +64,7 @@ export function Inspector() {
   else if (nodes.length > 1) body = <MultiInspector />;
   else if (edges.length === 1) body = <EdgeInspector key={edges[0].id} edge={edges[0]} />;
   else if (edges.length > 1) body = <MultiEdgeInspector />;
-  else body = <PlanInspector />;
+  else body = <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
   return (
     <aside aria-label="Propriedades" className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-line bg-surface">
       {body}
@@ -311,7 +311,7 @@ function ActionTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
           <ResourcePicker
             onPick={(ref, resource) => {
               ed.cacheResource(ref, resource);
-              set({ resource: ref, openIn: d.openIn ?? (ref.type === "plan" || ref.type === "collection" ? "details" : "new-tab") });
+              set({ resource: ref, openIn: d.openIn ?? "new-tab" });
             }}
           />
         )}

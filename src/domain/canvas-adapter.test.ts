@@ -22,9 +22,22 @@ const doc: PlanDocument = normalizeDocument({
 
 describe("canvas adapter", () => {
   it("round-trips a document losslessly", () => {
-    const back = fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport);
-    expect(back).toEqual(doc);
-    expect(contentSignature(back)).toBe(contentSignature(doc));
+    const d: PlanDocument = { ...doc, edges: doc.edges.map((e) => ({ ...e, sourceHandle: e.sourceHandle ?? "r", targetHandle: e.targetHandle ?? "l" })) };
+    const back = fromFlow(toFlowNodes(d), toFlowEdges(d), d.viewport);
+    expect(back).toEqual(d);
+    expect(contentSignature(back)).toBe(contentSignature(d));
+    // a second pass is stable
+    expect(contentSignature(fromFlow(toFlowNodes(back), toFlowEdges(back), back.viewport))).toBe(contentSignature(d));
+  });
+
+  it("fills missing handles from node geometry (parent-aware)", () => {
+    const byId = Object.fromEntries(toFlowEdges(doc).map((e) => [e.id, e]));
+    // note (left/top) → gateway: mostly horizontal
+    expect([byId.e2.sourceHandle, byId.e2.targetHandle]).toEqual(["r", "l"]);
+    // container (below) → gateway (above): vertical, going up
+    expect([byId.e3.sourceHandle, byId.e3.targetHandle]).toEqual(["t", "b"]);
+    // explicit handles are kept
+    expect([byId.e1.sourceHandle, byId.e1.targetHandle]).toEqual(["b", "t"]);
   });
 
   it("orders parents before children and keeps relative child positions", () => {

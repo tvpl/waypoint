@@ -98,7 +98,7 @@ function InlineTitle({ id, value, className, multiline, style }: { id: string; v
     ref,
     value: v,
     "aria-label": "Título",
-    className: cn("nodrag nopan nowheel w-full min-w-0 rounded-[4px] bg-transparent outline-none ring-2 ring-accent/40", className),
+    className: cn("nodrag nopan nowheel pointer-events-auto w-full min-w-0 rounded-[4px] bg-transparent outline-none ring-2 ring-accent/40", className),
     style,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setV(e.target.value),
     onBlur: () => finish(true),
@@ -136,6 +136,8 @@ export const BlockNode = memo(function BlockNode(p: P) {
   const res = d.resource ? ctx.resourceFor({ id: p.id, data: d }) : null;
   const subtitle = firstLine(d.description) || (res ? res.title : "");
   const tall = (p.height ?? 0) >= 120;
+  // Narrow blocks (e.g. chips inside a container) drop the icon tile so the title fits.
+  const compact = (p.width ?? 0) < 140 && !d.image;
   const dark = tone?.dark;
   const ink = dark ? readableText(tone.fill) : null;
   const tags = d.tags ?? [];
@@ -153,8 +155,8 @@ export const BlockNode = memo(function BlockNode(p: P) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={d.image} alt="" draggable={false} referrerPolicy="no-referrer" className="h-[42%] min-h-0 w-full shrink object-cover" />
         )}
-        <div className="flex min-h-0 flex-1 items-center gap-2.5 px-3.5 py-2.5">
-          {!tall && d.image ? (
+        <div className={cn("flex min-h-0 flex-1 items-center gap-2.5 py-2.5", compact ? "px-2.5 text-center" : "px-3.5")}>
+          {compact ? null : !tall && d.image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={d.image} alt="" draggable={false} referrerPolicy="no-referrer" className="size-[30px] shrink-0 rounded-lg object-cover" />
           ) : (
@@ -166,7 +168,7 @@ export const BlockNode = memo(function BlockNode(p: P) {
             </span>
           )}
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div className={cn("flex min-w-0 items-center gap-1.5", compact && "justify-center")}>
               {editing ? (
                 <InlineTitle id={p.id} value={d.title} className="text-sm font-semibold" />
               ) : (
@@ -210,7 +212,7 @@ export const ContainerNode = memo(function ContainerNode(p: P) {
         className={cn(cls, "h-full w-full rounded-2xl border", tone ? "wp-area" : "border-line bg-surface-2/80")}
         style={toneVars(tone)}
       >
-        <div className={cn("flex h-11 items-center gap-1.5 pl-4 pr-2 text-[11px] font-semibold uppercase tracking-[.08em]", tone ? "wp-area-label" : "text-ink-2")}>
+        <div className={cn("wp-hit flex h-11 items-center gap-1.5 pl-4 pr-2 text-[11px] font-semibold uppercase tracking-[.08em]", tone ? "wp-area-label" : "text-ink-2")}>
           <PlanIcon name={d.icon} fallback="boxes" size={14} />
           {editing ? (
             <InlineTitle id={p.id} value={d.title} className="text-[11px] font-semibold uppercase tracking-[.08em]" />
@@ -232,7 +234,7 @@ function CollapseButton({ id, collapsed }: { id: string; collapsed: boolean }) {
   return (
     <button
       type="button"
-      className="nodrag nopan inline-flex size-6 shrink-0 items-center justify-center rounded-md opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+      className="wp-hit nodrag nopan inline-flex size-6 shrink-0 items-center justify-center rounded-md opacity-70 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
       aria-label={collapsed ? "Expandir" : "Recolher"}
       aria-expanded={!collapsed}
       onClick={(e) => {
@@ -258,6 +260,7 @@ export const SectionNode = memo(function SectionNode(p: P) {
     <Chrome p={p} kind="section" resizable={!collapsed}>
       <div className={cn(cls, "h-full w-full rounded-2xl border-[1.5px] border-dashed", tone ? "wp-section" : "border-line-2")} style={toneVars(tone)}>
         <div className="flex h-11 items-center gap-2 pl-4 pr-2">
+          <span className="wp-hit absolute inset-x-0 top-0 h-11 rounded-t-2xl" aria-hidden />
           <span className={cn("flex min-w-0 items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.06em]", tone ? "wp-area-label" : "text-muted")}>
             {d.icon && <PlanIcon name={d.icon} size={14} />}
             {editing ? (

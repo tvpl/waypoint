@@ -1,4 +1,6 @@
 "use client";
+import type { NodeKind } from "@/domain/plan";
+import { Container as ContainerIcon, Image as KindImage, Link2 as KindLink, RectangleHorizontal, Spline, SquareDashed, StickyNote, Type } from "lucide-react";
 import {
   Activity,
   Award,
@@ -134,8 +136,6 @@ export function PlanIcon({ name, fallback = "box", className, size = 16, strokeW
 
 // ------------------------------------------------------------------ element kinds
 
-import { Container as ContainerIcon, Image as KindImage, Link2 as KindLink, RectangleHorizontal, Spline, SquareDashed, StickyNote, Type } from "lucide-react";
-import type { NodeKind } from "@/domain/plan";
 
 export const KIND_ICON: Record<NodeKind, LucideIcon> = {
   block: RectangleHorizontal,

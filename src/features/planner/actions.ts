@@ -140,7 +140,7 @@ export async function getShareStateAction(planId: string) {
         publishedVersionId: plan.publishedVersionId,
         publishedVersion: pub?.version ?? null,
         unpublished: hasUnpublishedChanges(plan),
-        shareToken: plan.visibility === "link" ? shareTokenFor("plan", planId) : null,
+        shareToken: plan.visibility === "link" ? (shareTokenFor("plan", planId) ?? ensureShareLink("plan", planId, user.id)) : null,
         meId: user.id,
       },
     };

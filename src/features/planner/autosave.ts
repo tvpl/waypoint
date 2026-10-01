@@ -65,6 +65,8 @@ export function useAutosave(opts: {
   const onSaved = useRef(opts.onSaved);
   onSaved.current = opts.onSaved;
 
+  /** Read through a function so TS doesn't narrow across awaits. */
+  const st = () => statusRef.current as SaveStatus;
   const set = useCallback((s: SaveStatus) => {
     statusRef.current = s;
     setStatus(s);
@@ -75,7 +77,7 @@ export function useAutosave(opts: {
       clearTimeout(timer.current);
       timer.current = null;
     }
-    if (statusRef.current === "conflict") return;
+    if (st() === "conflict") return;
     if (inflight.current) {
       again.current = true;
       return;
@@ -134,7 +136,7 @@ export function useAutosave(opts: {
       inflight.current = false;
       if (again.current) {
         again.current = false;
-        if (statusRef.current !== "conflict" && statusRef.current !== "offline") void save();
+        if (st() !== "conflict" && st() !== "offline") void save();
       }
     }
   }, [planId, set]);
@@ -144,14 +146,14 @@ export function useAutosave(opts: {
     const doc = getDoc.current();
     const sig = contentSignature(doc);
     if (sig === savedSig.current) {
-      if (statusRef.current === "dirty") set("saved");
+      if (st() === "dirty") set("saved");
       return;
     }
     writeBackup(planId, { document: doc, at: Date.now(), baseVersion: version.current });
-    if (statusRef.current === "conflict") return;
-    if (statusRef.current !== "offline" && statusRef.current !== "error") set("dirty");
+    if (st() === "conflict") return;
+    if (st() !== "offline" && st() !== "error") set("dirty");
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void save(), statusRef.current === "offline" ? 2000 : DEBOUNCE_MS);
+    timer.current = setTimeout(() => void save(), st() === "offline" ? 2000 : DEBOUNCE_MS);
   }, [planId, save, set]);
 
   /** Server copy replaced the local one (reload after conflict, version restore…). */
@@ -181,10 +183,10 @@ export function useAutosave(opts: {
     for (let i = 0; i < 80; i++) {
       if (!inflight.current) {
         if (contentSignature(getDoc.current()) === savedSig.current) return true;
-        if (statusRef.current === "conflict" || statusRef.current === "error") return false;
+        if (st() === "conflict" || st() === "error") return false;
         await save();
         if (contentSignature(getDoc.current()) === savedSig.current) return true;
-        if (statusRef.current === "offline" || statusRef.current === "conflict" || statusRef.current === "error") return false;
+        if (st() === "offline" || st() === "conflict" || st() === "error") return false;
       }
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -196,7 +198,7 @@ export function useAutosave(opts: {
     const flushKeepalive = () => {
       const doc = getDoc.current();
       const sig = contentSignature(doc);
-      if (sig === savedSig.current || statusRef.current === "conflict") return false;
+      if (sig === savedSig.current || st() === "conflict") return false;
       writeBackup(planId, { document: doc, at: Date.now(), baseVersion: version.current });
       try {
         void fetch(`/api/plans/${planId}/document`, {
@@ -204,7 +206,7 @@ export function useAutosave(opts: {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ expectedVersion: version.current, document: doc }),
           keepalive: true,
-        });
+        }).catch(() => {});
       } catch {}
       return true;
     };
@@ -213,13 +215,13 @@ export function useAutosave(opts: {
     };
     const onUnload = (e: BeforeUnloadEvent) => {
       const pending = flushKeepalive();
-      if (pending && (statusRef.current === "offline" || statusRef.current === "error")) {
+      if (pending && (st() === "offline" || st() === "error")) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     const onOnline = () => {
-      if (statusRef.current === "offline") void save();
+      if (st() === "offline") void save();
     };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("beforeunload", onUnload);

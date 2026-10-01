@@ -27,9 +27,9 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
         markerEnd={p.markerEnd}
         interactionWidth={18}
         className="wp-edge-path"
-        style={{ stroke: "var(--wp-edge)", strokeWidth: app.strokeWidth, strokeDasharray: app.dash, strokeLinecap: "round", strokeLinejoin: "round" }}
+        style={{ strokeWidth: app.strokeWidth, strokeDasharray: app.dash, strokeLinecap: "round", strokeLinejoin: "round" }}
       />
-      {app.double && <path d={path} fill="none" pointerEvents="none" style={{ stroke: "var(--canvas)", strokeWidth: 1.5 }} />}
+      {app.double && <path d={path} fill="none" pointerEvents="none" style={{ stroke: "var(--wp-canvas-bg, var(--canvas))", strokeWidth: 1.5 }} />}
       {label && (
         <EdgeLabelRenderer>
           <div

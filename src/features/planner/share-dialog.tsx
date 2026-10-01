@@ -111,6 +111,7 @@ export function ShareDialog({
     toast.success("Plan despublicado. Viewers não veem mais a versão publicada.");
     onPublished?.({ version: 0, createdAt: 0 });
     await load();
+    startTransition(() => router.refresh());
   };
 
   const changeVisibility = async (v: Visibility) => {
@@ -124,6 +125,7 @@ export function ShareDialog({
     }
     setState((s) => (s ? { ...s, shareToken: r.token } : s));
     onVisibility?.(v);
+    startTransition(() => router.refresh());
   };
 
   const link = state ? `${origin}/plans/${planId}${state.plan.visibility === "link" && state.shareToken ? `?token=${state.shareToken}` : ""}` : "";

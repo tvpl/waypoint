@@ -130,7 +130,7 @@ async function main() {
     viewport: { x: 0, y: 0, zoom: 1 },
     nodes: [
       n("producers", "section", 0, 0, 260, 240, { title: "Produtores" }),
-      n("orders", "block", 24, 48, 212, 64, { title: "Pedidos", icon: "card" }, "producers"),
+      n("orders", "block", 24, 48, 212, 64, { title: "Pedidos", icon: "credit-card" }, "producers"),
       n("auth", "block", 24, 136, 212, 64, { title: "Autorização", icon: "shield" }, "producers"),
       n("kafka", "block", 360, 80, 220, 80, { title: "Kafka", description: "Event Streaming", icon: "workflow", color: "#17171C", tags: ["kafka", "eda"], resource: { type: "collection", id: eda }, openIn: "new-tab" }),
       n("consumers", "section", 680, 0, 260, 240, { title: "Consumidores" }),

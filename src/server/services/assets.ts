@@ -16,7 +16,7 @@ export const IMAGE_TYPES: Record<string, string> = {
 };
 export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 
-const dir = () => process.env.UPLOADS_DIR ?? path.join(process.cwd(), "data", "uploads");
+const dir = () => process.env.UPLOADS_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "uploads");
 
 /** Checks magic bytes so the declared type can't be spoofed. */
 function sniff(buf: Buffer): string | null {
@@ -35,7 +35,7 @@ export async function saveAsset(workspaceId: string, userId: string, file: File)
   if (!mime) throw new UserError("Formato não suportado. Use PNG, JPG, GIF, WebP ou AVIF.");
   const id = newId();
   await fs.mkdir(dir(), { recursive: true });
-  await fs.writeFile(path.join(dir(), `${id}.${IMAGE_TYPES[mime]}`), buf);
+  await fs.writeFile(path.join(/*turbopackIgnore: true*/ dir(), `${id}.${IMAGE_TYPES[mime]}`), buf);
   getDb()
     .insert(schema.assets)
     .values({ id, workspaceId, fileName: file.name.slice(0, 200) || "imagem", mimeType: mime, size: buf.length, createdBy: userId })
@@ -47,6 +47,6 @@ export async function readAsset(id: string) {
   if (!/^[a-z0-9]{16}$/.test(id)) return null;
   const row = getDb().select().from(schema.assets).where(eq(schema.assets.id, id)).get();
   if (!row) return null;
-  const data = await fs.readFile(path.join(dir(), `${id}.${IMAGE_TYPES[row.mimeType]}`));
+  const data = await fs.readFile(path.join(/*turbopackIgnore: true*/ dir(), `${id}.${IMAGE_TYPES[row.mimeType]}`));
   return { row, data };
 }

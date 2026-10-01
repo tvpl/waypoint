@@ -170,8 +170,48 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}): PlanFlowEdge 
   return out;
 }
 
-export function toFlowEdges(doc: Pick<PlanDocument, "edges">, opts: ToFlowOptions = {}): PlanFlowEdge[] {
-  return doc.edges.map((e) => toFlowEdge(e, opts));
+/**
+ * Picks facing sides for edges stored without handles (imports, seeds) so
+ * they don't all leave from the top handle.
+ */
+export function autoHandles(nodes: PlanNode[], source: string, target: string): { sourceHandle: string; targetHandle: string } | null {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const center = (id: string) => {
+    const n = byId.get(id);
+    if (!n) return null;
+    let x = n.x + n.width / 2;
+    let y = n.y + n.height / 2;
+    let p = n.parentId ? byId.get(n.parentId) : undefined;
+    const seen = new Set<string>();
+    while (p && !seen.has(p.id)) {
+      seen.add(p.id);
+      x += p.x;
+      y += p.y;
+      p = p.parentId ? byId.get(p.parentId) : undefined;
+    }
+    return { x, y };
+  };
+  const a = center(source);
+  const b = center(target);
+  if (!a || !b) return null;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? { sourceHandle: "r", targetHandle: "l" } : { sourceHandle: "l", targetHandle: "r" };
+  return dy >= 0 ? { sourceHandle: "b", targetHandle: "t" } : { sourceHandle: "t", targetHandle: "b" };
+}
+
+export function toFlowEdges(doc: Pick<PlanDocument, "edges"> & Partial<Pick<PlanDocument, "nodes">>, opts: ToFlowOptions = {}): PlanFlowEdge[] {
+  return doc.edges.map((e) => {
+    const out = toFlowEdge(e, opts);
+    if ((!out.sourceHandle || !out.targetHandle) && doc.nodes) {
+      const h = autoHandles(doc.nodes, e.source, e.target);
+      if (h) {
+        out.sourceHandle = out.sourceHandle || h.sourceHandle;
+        out.targetHandle = out.targetHandle || h.targetHandle;
+      }
+    }
+    return out;
+  });
 }
 
 // ------------------------------------------------------------------ flow → domain

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = [/^\/login/, /^\/signup/, /^\/share\//, /^\/api\/share\//, /^\/api\/assets\//];
+const PUBLIC = [/^\/login/, /^\/signup/, /^\/share\//, /^\/api\/share\//, /^\/api\/assets\//, /^\/api\/embed-check$/];
 
 /** Optimistic auth gate: real checks happen in each page/route. */
 export function proxy(req: NextRequest) {

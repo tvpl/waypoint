@@ -175,6 +175,9 @@ export type OpenBehavior = (typeof OPEN_BEHAVIORS)[number];
 export const SUMMARY_BEHAVIORS = ["always", "hover", "hidden"] as const;
 export type SummaryBehavior = (typeof SUMMARY_BEHAVIORS)[number];
 
+export const LINK_HEALTH = ["unknown", "ok", "redirect", "broken", "unreachable"] as const;
+export type LinkHealth = (typeof LINK_HEALTH)[number];
+
 export const favorites = sqliteTable(
   "favorites",
   {
@@ -195,6 +198,11 @@ export const favorites = sqliteTable(
     summaryBehavior: text("summary_behavior", { enum: SUMMARY_BEHAVIORS }).notNull().default("always"),
     sortOrder: integer("sort_order").notNull().default(0),
     openCount: integer("open_count").notNull().default(0),
+    /** Link health check (see services/link-health.ts). */
+    healthStatus: text("health_status", { enum: LINK_HEALTH }).notNull().default("unknown"),
+    healthCode: integer("health_code"),
+    healthCheckedAt: integer("health_checked_at", { mode: "timestamp_ms" }),
+    healthFinalUrl: text("health_final_url"),
     lastOpenedAt: integer("last_opened_at", { mode: "timestamp_ms" }),
     archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -339,4 +347,46 @@ export const recents = sqliteTable(
     openedAt: integer("opened_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.entityType, t.entityId] }), index("recents_user_idx").on(t.userId, t.openedAt)],
+);
+
+/** Personal access tokens (browser extension, integrations). Only the hash is stored. */
+export const apiTokens = sqliteTable(
+  "api_tokens",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** First characters of the token, shown in the UI to tell tokens apart. */
+    prefix: text("prefix").notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("api_tokens_user_idx").on(t.userId)],
+);
+
+/** Comments on a plan, optionally anchored to a node. */
+export const planComments = sqliteTable(
+  "plan_comments",
+  {
+    id: id(),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => plans.id, { onDelete: "cascade" }),
+    nodeId: text("node_id"),
+    parentId: text("parent_id"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("plan_comments_plan_idx").on(t.planId, t.createdAt)],
 );

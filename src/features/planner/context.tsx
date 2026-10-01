@@ -21,6 +21,10 @@ export type PlannerContextValue = {
   connectSourceId: string | null;
   /** View mode: whether a node reacts to clicks. */
   isInteractive: (node: { id: string; data: NodeData; type?: string }) => boolean;
+  /** Comments in unresolved threads on a node (badge). */
+  commentCount?: (id: string) => number;
+  /** Badge click: open the comments panel on that node. */
+  openNodeComments?: (id: string) => void;
 };
 
 const noop = () => {};

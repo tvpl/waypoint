@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlignCenterHorizontal,
@@ -29,7 +29,9 @@ import {
   X,
 } from "lucide-react";
 import { EDGE_KINDS, NODE_STATUSES, type NodeData, type NodeKind, type OpenIn } from "@/domain/plan";
-import { EDGE_APPEARANCE, type PlanFlowEdge, type PlanFlowNode } from "@/domain/canvas-adapter";
+import { EDGE_APPEARANCE, fromFlow, type PlanFlowEdge, type PlanFlowNode } from "@/domain/canvas-adapter";
+import { clearCustomOrder, presentationState, setIncluded, setOrder } from "./presentation-steps";
+import { Switch } from "./switch";
 import { NODE_PALETTE } from "@/lib/color";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -238,7 +240,59 @@ function AppearanceTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
           <SendToBack /> Trás
         </Button>
       </div>
+      <PresentationField node={node} />
     </>
+  );
+}
+
+function PresentationField({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const st = useMemo(() => presentationState(fromFlow(ed.nodes, [], { x: 0, y: 0, zoom: 1 }), node.id), [ed.nodes, node.id]);
+  const order = node.data.presentation?.order;
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft == null) return;
+    const n = Math.round(Number(draft));
+    if (Number.isFinite(n) && n >= 1 && n !== order) ed.mutate((d) => setOrder(d, node.id, n));
+    setDraft(null);
+  };
+  const sw = `pres-${node.id}`;
+  return (
+    <div className="flex flex-col gap-2.5 rounded-lg border border-line px-3 py-2.5 text-[13px]">
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={sw} className="flex cursor-pointer flex-col">
+          <span className="font-medium">Incluir na apresentação</span>
+          <span className="text-[11px] text-muted">{st.included ? `Passo ${st.position} de ${st.total} (após a visão geral)` : "Fora da apresentação"}</span>
+        </label>
+        <Switch id={sw} checked={st.included} onChange={(v) => ed.mutate((d) => setIncluded(d, node.id, v))} />
+      </div>
+      {st.custom && st.included && (
+        <label className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-[13px]")}>
+          <span className="text-[11px] text-muted">Ordem</span>
+          <input
+            type="number"
+            min={1}
+            max={9999}
+            aria-label="Ordem na apresentação"
+            value={draft ?? order ?? ""}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => e.key === "Enter" && commit()}
+            className="w-full bg-transparent font-mono text-[12px] outline-none"
+          />
+        </label>
+      )}
+      <p className="text-[11px] leading-4 text-muted">
+        {st.custom
+          ? "Ordem personalizada: só os elementos numerados aparecem, do menor para o maior. "
+          : "Ordem automática: seções e containers do nível principal, depois os demais elementos em ordem de leitura. "}
+        {st.custom && (
+          <button type="button" className="font-medium text-accent-ink hover:underline" onClick={() => ed.mutate((d) => clearCustomOrder(d))}>
+            Voltar à ordem automática
+          </button>
+        )}
+      </p>
+    </div>
   );
 }
 

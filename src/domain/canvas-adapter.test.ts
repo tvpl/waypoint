@@ -8,9 +8,9 @@ const doc: PlanDocument = normalizeDocument({
   nodes: [
     // child listed before its parent on purpose
     { id: "pix", kind: "block", x: 20, y: 48, width: 92, height: 60, parentId: "pay", data: { title: "PIX", status: "production" } },
-    { id: "pay", kind: "container", x: 276, y: 316, width: 340, height: 196, z: 2, data: { title: "Pagamentos", color: "#FFEADB" } },
+    { id: "pay", kind: "container", x: 276, y: 316, width: 340, height: 196, z: 2, data: { title: "Pagamentos", color: "#FFEADB", presentation: { hidden: true } } },
     { id: "gw", kind: "block", x: 346, y: 176, width: 200, height: 72, data: { title: "API Gateway", icon: "shield", tags: ["gateway"], resource: { type: "url", url: "https://example.com/docs" }, openIn: "modal" } },
-    { id: "note", kind: "note", x: 48, y: 40, width: 220, height: 92, data: { title: "Atenção", description: "Validar SLA" } },
+    { id: "note", kind: "note", x: 48, y: 40, width: 220, height: 92, data: { title: "Atenção", description: "Validar SLA", presentation: { order: 3 } } },
   ],
   edges: [
     { id: "e1", source: "gw", target: "pix", kind: "flow", label: "REST", sourceHandle: "b", targetHandle: "t" },
@@ -26,6 +26,8 @@ describe("canvas adapter", () => {
     const back = fromFlow(toFlowNodes(d), toFlowEdges(d), d.viewport);
     expect(back).toEqual(d);
     expect(contentSignature(back)).toBe(contentSignature(d));
+    expect(back.nodes.find((n) => n.id === "note")?.data.presentation).toEqual({ order: 3 });
+    expect(back.nodes.find((n) => n.id === "pay")?.data.presentation).toEqual({ hidden: true });
     // a second pass is stable
     expect(contentSignature(fromFlow(toFlowNodes(back), toFlowEdges(back), back.viewport))).toBe(contentSignature(d));
   });

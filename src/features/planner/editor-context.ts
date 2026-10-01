@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, ResourceRef } from "@/domain/plan";
 import type { PlanFlowEdge, PlanFlowNode } from "@/domain/canvas-adapter";
 import type { AlignMode } from "./doc-ops";
+import type { LayoutDirection } from "./auto-layout";
 import type { ResolvedResource } from "./resource-types";
 
 export type Tool = "select" | "hand" | "connect";
@@ -38,6 +39,8 @@ export type EditorApi = {
   bringToFront: () => void;
   sendToBack: () => void;
   swapEdge: (id: string) => void;
+  /** "Organizar automaticamente": the selection when there is one, else the whole plan. One undo step. */
+  autoArrange: (direction: LayoutDirection, opts?: { all?: boolean }) => void;
   select: (nodeIds: string[], edgeIds?: string[]) => void;
   selectAll: () => void;
   focusNode: (id: string) => void;
@@ -61,6 +64,8 @@ export type EditorApi = {
   cacheResource: (ref: ResourceRef, resource: ResolvedResource) => void;
 
   openShare: (section?: "share" | "history") => void;
+  /** Opens the comments panel, optionally on a node's thread/composer. */
+  openComments: (nodeId?: string | null) => void;
 };
 
 export const EditorContext = createContext<EditorApi | null>(null);

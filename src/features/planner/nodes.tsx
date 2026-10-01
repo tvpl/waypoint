@@ -1,7 +1,7 @@
 "use client";
 import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Handle, NodeResizer, Position, type NodeProps, type NodeTypes } from "@xyflow/react";
-import { ArrowUpRight, ChevronDown, ChevronRight, ExternalLink, ImagePlus, Link2 } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronRight, ExternalLink, ImagePlus, Link2, MessageSquare } from "lucide-react";
 import type { NodeKind } from "@/domain/plan";
 import type { PlanFlowNode } from "@/domain/canvas-adapter";
 import { SiteIcon } from "@/components/ui/misc";
@@ -43,7 +43,8 @@ function Handles({ connectable }: { connectable: boolean }) {
 
 /** Resizer, handles and selection badge shared by every node kind. */
 function Chrome({ p, kind, children, resizable = true }: { p: P; kind: NodeKind; children: ReactNode; resizable?: boolean }) {
-  const { mode, singleSelectedId } = usePlanner();
+  const { mode, singleSelectedId, commentCount, openNodeComments } = usePlanner();
+  const comments = commentCount?.(p.id) ?? 0;
   const edit = mode === "edit";
   const [mw, mh] = MIN[kind];
   return (
@@ -57,6 +58,22 @@ function Chrome({ p, kind, children, resizable = true }: { p: P; kind: NodeKind;
         </div>
       )}
       {children}
+      {comments > 0 && (
+        <button
+          type="button"
+          className="wp-comment-badge wp-hit wp-no-export nodrag nopan"
+          aria-label={`${comments} ${comments === 1 ? "comentário" : "comentários"} — abrir`}
+          title="Abrir comentários"
+          onClick={(e) => {
+            e.stopPropagation();
+            openNodeComments?.(p.id);
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <MessageSquare aria-hidden />
+          {comments > 99 ? "99+" : comments}
+        </button>
+      )}
       <Handles connectable={edit && p.isConnectable} />
     </>
   );

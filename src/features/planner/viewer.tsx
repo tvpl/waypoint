@@ -24,13 +24,25 @@ import type { ExportKind } from "./topbar";
 
 export type ViewerExport = (kind: ExportKind) => Promise<void>;
 
-type Props = {
+export type CanvasExtras = {
+  /** Comments in unresolved threads per node (badge). */
+  commentCount?: (id: string) => number;
+  openNodeComments?: (id: string) => void;
+  /** Pan to a node and highlight it (seq changes for each request). */
+  focusRequest?: { id: string; seq: number } | null;
+};
+
+type Props = CanvasExtras & {
   document: PlanDocument;
   resources: Record<string, ResolvedResource>;
   focusNodeId?: string | null;
   className?: string;
   meta?: { title: string; description?: string | null; tags?: string[] };
   exportRef?: MutableRefObject<ViewerExport | null>;
+  /** Presentation stage: no zoom controls; dims everything outside `activeIds`. */
+  stage?: { activeIds: ReadonlySet<string> | null };
+  /** Rendered inside the React Flow provider (e.g. presentation controls). */
+  children?: React.ReactNode;
 };
 
 /** Read-only canvas (View Mode, public share, editor preview). */
@@ -61,7 +73,7 @@ function ancestorsOf(doc: PlanDocument, id: string) {
 
 type Hover = { id: string; left: number; top: number };
 
-function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef }: Props) {
+function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef, stage, children, commentCount, openNodeComments, focusRequest }: Props) {
   const rf = useReactFlow();
   const router = useRouter();
   const wrap = useRef<HTMLDivElement>(null);
@@ -83,8 +95,20 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
     }),
     [doc, overrides],
   );
-  const nodes = useMemo(() => toFlowNodes(viewDoc, { readOnly: true }), [viewDoc]);
-  const edges = useMemo(() => toFlowEdges(viewDoc, { readOnly: true }), [viewDoc]);
+  const active = stage?.activeIds ?? null;
+  const nodes = useMemo(() => {
+    const list = toFlowNodes(viewDoc, { readOnly: true });
+    if (!stage) return list;
+    return list.map((n) => ({ ...n, className: cn("wp-stage-node", active && !active.has(n.id) && "wp-dim") }));
+  }, [viewDoc, stage, active]);
+  const edges = useMemo(() => {
+    const list = toFlowEdges(viewDoc, { readOnly: true });
+    if (!stage) return list;
+    return list.map((e) => {
+      const dim = !!active && !(active.has(e.source) && active.has(e.target));
+      return { ...e, className: cn("wp-stage-edge", dim && "wp-dim"), data: { ...e.data!, _dim: dim } };
+    });
+  }, [viewDoc, stage, active]);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
   const resourceFor = useCallback(
@@ -116,9 +140,33 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
       dropTargetId: null,
       connectSourceId: null,
       isInteractive: (n) => !PARENT_KINDS.has(n.type as never) && hasInfo(n.data),
+      commentCount,
+      openNodeComments: openNodeComments
+        ? (id: string) => {
+            setHover(null);
+            setDetails(null);
+            openNodeComments(id);
+          }
+        : undefined,
     }),
-    [resourceFor, childCount, highlight, byId],
+    [resourceFor, childCount, highlight, byId, commentCount, openNodeComments],
   );
+
+  // focus requests (comments panel → canvas)
+  useEffect(() => {
+    if (!focusRequest || !byId.has(focusRequest.id)) return;
+    const id = focusRequest.id;
+    const anc = ancestorsOf(doc, id);
+    if (anc.length) setOverrides((o) => ({ ...o, ...Object.fromEntries(anc.map((a) => [a, false])) }));
+    setHighlight(id);
+    const t = setTimeout(() => void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.25, duration: 500 }), 80);
+    const h = setTimeout(() => setHighlight((cur) => (cur === id ? null : cur)), 4500);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(h);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest?.seq]);
 
   // focus ?node=
   useEffect(() => {
@@ -209,13 +257,22 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
 
   return (
     <PlannerContext.Provider value={ctx}>
-      <div ref={wrap} className={cn("relative h-full w-full overflow-hidden", className)} onKeyDown={(e) => e.key === "Escape" && (setDetails(null), setHover(null))}>
+      <div
+        ref={wrap}
+        className={cn("relative h-full w-full overflow-hidden", className)}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || (!details && !hover)) return;
+          e.preventDefault();
+          setDetails(null);
+          setHover(null);
+        }}
+      >
         <ReactFlow<PlanFlowNode>
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          className="wp-flow wp-view"
+          className={cn("wp-flow wp-view", stage && "wp-stage")}
           nodesDraggable={false}
           nodesConnectable={false}
           connectionMode={ConnectionMode.Loose}
@@ -268,9 +325,12 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
           </aside>
         )}
 
-        <div className="wp-no-print absolute bottom-6 right-6 z-10 flex items-center gap-0.5 rounded-[10px] border border-line bg-surface p-1">
-          <ZoomControls compact />
-        </div>
+        {!stage && (
+          <div className="wp-no-print absolute bottom-6 right-6 z-10 flex items-center gap-0.5 rounded-[10px] border border-line bg-surface p-1">
+            <ZoomControls compact />
+          </div>
+        )}
+        {children}
 
         {preview && <PreviewModal res={preview.res} title={preview.title} onClose={() => setPreview(null)} />}
       </div>

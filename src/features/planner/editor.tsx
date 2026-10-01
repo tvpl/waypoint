@@ -61,6 +61,7 @@ import {
   type Clip,
 } from "./doc-ops";
 import { createNode, PARENT_KINDS } from "./defaults";
+import { autoLayout, type LayoutDirection } from "./auto-layout";
 import { clearBackup, readBackup, useAutosave } from "./autosave";
 import { Toolbox } from "./toolbox";
 import { Inspector } from "./inspector";
@@ -74,6 +75,7 @@ import { fallbackResource, refKey, type ResolvedResource } from "./resource-type
 import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
+import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
 
 export type PlanEditorProps = {
   plan: { id: string; title: string; description: string | null; tags: string[]; visibility: string };
@@ -159,6 +161,9 @@ function EditorShell(props: PlanEditorProps) {
   const [resCache, setResCache] = useState<Record<string, ResolvedResource>>(props.resources);
   const [backup, setBackup] = useState<{ document: PlanDocument; at: number } | null>(null);
   const previewExport = useRef<ViewerExport | null>(null);
+  const commentsPanel = useCommentsPanel();
+  const comments = useComments({ planId, enabled: true, open: commentsPanel.open });
+  const [previewFocus, setPreviewFocus] = useState<{ id: string; seq: number } | null>(null);
 
   // ---------------------------------------------------------------- history + autosave
   const history = useRef(new History<PlanDocument>(initialDoc, { limit: 100, coalesceMs: 1200 }));
@@ -237,6 +242,8 @@ function EditorShell(props: PlanEditorProps) {
     const d = history.current.undo();
     if (d) restoreSnapshot(d);
   }, [restoreSnapshot]);
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
   const redo = useCallback(() => {
     const d = history.current.redo();
     if (d) restoreSnapshot(d);
@@ -434,6 +441,34 @@ function EditorShell(props: PlanEditorProps) {
     if (lifted.length) select(lifted);
   }, [mutate, select]);
 
+  const autoArrange = useCallback(
+    (direction: LayoutDirection, opts: { all?: boolean } = {}) => {
+      const sel = opts.all ? [] : selNodeIds();
+      const scoped = sel.length > 0;
+      let changed = false;
+      mutate((d) => {
+        const next = autoLayout(d, { direction, selection: scoped ? sel : undefined });
+        changed = next !== d;
+        return next;
+      });
+      if (!changed) {
+        toast(scoped ? "Selecione dois ou mais elementos, ou um container com itens." : "Nada para organizar ainda.");
+        return;
+      }
+      // let React Flow take the new positions before animating the viewport
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          void rf.fitView({ nodes: scoped ? sel.map((id) => ({ id })) : undefined, padding: scoped ? 0.35 : 0.15, maxZoom: 1, duration: 600 });
+        }),
+      );
+      toast.success(scoped ? "Seleção organizada" : "Plan organizado", {
+        description: direction === "TB" ? "Fluxo vertical" : "Fluxo horizontal",
+        action: { label: "Desfazer", onClick: () => undoRef.current() },
+      });
+    },
+    [mutate, rf],
+  );
+
   const startEditing = useCallback(
     (id: string) => {
       select([id]);
@@ -530,6 +565,7 @@ function EditorShell(props: PlanEditorProps) {
     bringToFront: () => mutate((d) => bringToFront(d, selNodeIds())),
     sendToBack: () => mutate((d) => sendToBack(d, selNodeIds())),
     swapEdge: (id) => mutate((d) => swapEdge(d, id)),
+    autoArrange,
     select,
     selectAll: () => select(nodesRef.current.filter((n) => !n.hidden).map((n) => n.id)),
     focusNode,
@@ -549,6 +585,7 @@ function EditorShell(props: PlanEditorProps) {
     resourceFor,
     cacheResource,
     openShare,
+    openComments: (id) => commentsPanel.openPanel(id ?? null),
   };
   const apiRef = useRef(api);
   apiRef.current = api;
@@ -556,6 +593,16 @@ function EditorShell(props: PlanEditorProps) {
   // ---------------------------------------------------------------- node renderer context
   // stable callbacks so dragging doesn't re-render every node through context
   const childCount = useCallback((id: string) => nodesRef.current.filter((n) => n.parentId === id).length, []);
+  const byNodeComments = comments.counts.byNode;
+  const commentCount = useCallback((id: string) => byNodeComments[id] ?? 0, [byNodeComments]);
+  const openPanel = commentsPanel.openPanel;
+  const openNodeComments = useCallback(
+    (id: string) => {
+      if (mode === "edit") select([id]);
+      openPanel(id);
+    },
+    [mode, select, openPanel],
+  );
   const singleSelectedId = selectedNodes.length === 1 ? selectedNodes[0].id : null;
   const plannerCtx: PlannerContextValue = useMemo(
     () => ({
@@ -571,9 +618,25 @@ function EditorShell(props: PlanEditorProps) {
       dropTargetId: dropTarget,
       connectSourceId: connectSource,
       isInteractive: () => false,
+      commentCount,
+      openNodeComments,
     }),
-    [resourceFor, editingId, updateNodeData, childCount, singleSelectedId, dropTarget, connectSource],
+    [resourceFor, editingId, updateNodeData, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
   );
+
+  const commentNodes = useMemo(
+    () => (commentsPanel.open ? nodes.map((n) => ({ id: n.id, kind: n.type ?? "block", title: n.data.title || (n.data.resource ? (resourceFor(n)?.title ?? "") : "") })) : []),
+    [commentsPanel.open, nodes, resourceFor],
+  );
+  const commentsAside = commentsPanel.open ? (
+    <CommentsPanel
+      store={comments}
+      target={commentsPanel}
+      onClose={commentsPanel.close}
+      nodes={commentNodes}
+      onSelectNode={(id) => (mode === "edit" ? focusNode(id) : setPreviewFocus((f) => ({ id, seq: (f?.seq ?? 0) + 1 })))}
+    />
+  ) : null;
 
   // ---------------------------------------------------------------- keyboard
   useEffect(() => {
@@ -581,7 +644,7 @@ function EditorShell(props: PlanEditorProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e.target)) return;
       const t = e.target as HTMLElement | null;
-      if (t?.closest?.('[role="dialog"], [role="menu"], [role="listbox"]')) return;
+      if (t?.closest?.('[role="dialog"], [role="menu"], [role="listbox"], [data-planner-panel]')) return;
       const a = apiRef.current;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
@@ -599,6 +662,8 @@ function EditorShell(props: PlanEditorProps) {
       if (mod && k === "g" && e.shiftKey) return run(a.ungroup);
       if (mod && k === "g") return run(a.group);
       if (mod && k === "l") return a.selectedNodes.length === 1 ? run(() => a.setInspectorTab("action")) : undefined;
+      // ⇧L vertical, ⌥⇧L horizontal (e.code: ⌥ changes e.key on macOS)
+      if (!mod && e.shiftKey && e.code === "KeyL") return run(() => a.autoArrange(e.altKey ? "LR" : "TB"));
       if (mod || e.altKey) return;
       if (k === "delete" || k === "backspace") return run(a.remove);
       if (k === "escape") {
@@ -823,6 +888,7 @@ function EditorShell(props: PlanEditorProps) {
             publishing={publishing}
             people={props.people}
             onExport={onExport}
+            comments={<CommentsToggle count={comments.counts.unresolvedThreads} open={commentsPanel.open} onClick={commentsPanel.toggle} />}
           />
 
           {autosave.status === "conflict" && (
@@ -872,13 +938,17 @@ function EditorShell(props: PlanEditorProps) {
           )}
 
           {mode === "preview" && previewData ? (
-            <div className="flex min-h-0 flex-1 flex-col bg-surface-2">
-              <ViewBody
-                plan={{ id: planId, title: meta.title, description: meta.description, tags: meta.tags }}
-                document={previewData.doc}
-                resources={previewData.byNode}
-                exportRef={previewExport}
-              />
+            <div className="flex min-h-0 flex-1 bg-surface-2">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <ViewBody
+                  plan={{ id: planId, title: meta.title, description: meta.description, tags: meta.tags }}
+                  document={previewData.doc}
+                  resources={previewData.byNode}
+                  exportRef={previewExport}
+                  canvas={{ commentCount, openNodeComments, focusRequest: previewFocus }}
+                />
+              </div>
+              {commentsAside}
             </div>
           ) : (
             <div className="flex min-h-0 flex-1">
@@ -971,7 +1041,7 @@ function EditorShell(props: PlanEditorProps) {
                   <BottomPill />
                 </div>
               </CanvasContextMenu>
-              <Inspector />
+              {commentsAside ?? <Inspector />}
             </div>
           )}
         </div>

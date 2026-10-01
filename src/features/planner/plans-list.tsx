@@ -112,13 +112,13 @@ export function PlansList({ filter, plans, canCreate }: { filter: PlanFilter; pl
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line">
-        <nav aria-label="Filtrar plans" className="-mb-px flex gap-5 text-sm">
+        <nav aria-label="Filtrar plans" className="-mx-6 -mb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex max-w-[calc(100%+48px)] gap-5 overflow-x-auto whitespace-nowrap px-6 text-sm sm:mx-0 sm:max-w-full sm:px-0">
           {TABS.map((t) => (
             <Link
               key={t.value}
               href={t.value === "mine" ? "/plans" : `/plans?f=${t.value}`}
               aria-current={filter === t.value ? "page" : undefined}
-              className={cn("border-b-2 pb-2.5 transition-colors", filter === t.value ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink")}
+              className={cn("shrink-0 border-b-2 pb-2.5 transition-colors", filter === t.value ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink")}
             >
               {t.label}
             </Link>

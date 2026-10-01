@@ -1,9 +1,19 @@
 "use client";
 import { ContextMenu as CM } from "radix-ui";
-import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Link2, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup } from "lucide-react";
+import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Link2, MessageSquarePlus, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
 import { EDGE_KINDS, NODE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/menu";
+import { ArrangeItems } from "./canvas-controls";
 import { useEditor } from "./editor-context";
 import { KIND_LABEL, PARENT_KINDS } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
@@ -19,6 +29,17 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
   const edge = target?.type === "edge" ? ed.edges.find((e) => e.id === target.id) : undefined;
   const multi = ed.selectedNodes.length > 1;
   const canUngroup = ed.selectedNodes.some((n) => PARENT_KINDS.has(n.type as NodeKind));
+  const canArrangeSel = multi || canUngroup;
+  const arrange = (title: string, all = false) => (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>
+        <Workflow /> {title}
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent className="min-w-[200px]">
+        <ArrangeItems Item={ContextMenuItem} onPick={(d) => ed.autoArrange(d, { all })} />
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  );
 
   return (
     <ContextMenu>
@@ -53,6 +74,11 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
                 <Link2 /> Adicionar link
               </ContextMenuItem>
             )}
+            {!multi && (
+              <ContextMenuItem onSelect={() => ed.openComments(node.id)}>
+                <MessageSquarePlus /> Comentar
+              </ContextMenuItem>
+            )}
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={ed.bringToFront} shortcut="]">
               <BringToFront /> Trazer para frente
@@ -68,6 +94,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
                 <Ungroup /> Desagrupar
               </ContextMenuItem>
             )}
+            {canArrangeSel && arrange(multi ? "Organizar seleção" : "Organizar interior")}
             <ContextMenuSeparator />
             <ContextMenuItem danger onSelect={ed.remove} shortcut="⌫">
               <Trash2 /> Excluir
@@ -110,6 +137,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
             <ContextMenuItem onSelect={ed.selectAll} shortcut="⌘A">
               <SquareMousePointer /> Selecionar tudo
             </ContextMenuItem>
+            {ed.nodes.length > 1 && arrange("Organizar automaticamente", true)}
           </>
         )}
       </ContextMenuContent>

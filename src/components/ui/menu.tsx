@@ -72,3 +72,17 @@ export function ContextMenuItem({ className, danger, shortcut, children, ...prop
 export function ContextMenuSeparator() {
   return <CM.Separator className="mx-1.5 my-1 h-px bg-line" />;
 }
+
+export const ContextMenuSub = CM.Sub;
+
+export function ContextMenuSubTrigger({ className, ...props }: React.ComponentProps<typeof CM.SubTrigger>) {
+  return <CM.SubTrigger className={cn(item, "data-[state=open]:bg-hover", className)} {...props} />;
+}
+
+export function ContextMenuSubContent({ className, ...props }: React.ComponentProps<typeof CM.SubContent>) {
+  return (
+    <CM.Portal>
+      <CM.SubContent className={cn(content, className)} {...props} />
+    </CM.Portal>
+  );
+}

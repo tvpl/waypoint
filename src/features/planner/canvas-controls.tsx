@@ -1,8 +1,9 @@
 "use client";
-import { ArrowLeftRight, Grid3x3, Group, Hand, Magnet, MousePointer2, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, Grid3x3, Group, Hand, Magnet, MousePointer2, Network, Trash2, Workflow, X } from "lucide-react";
 import { EDGE_KINDS } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { useEditor } from "./editor-context";
 import { ConnectorIcon } from "./icons";
@@ -48,8 +49,49 @@ export function BottomPill() {
         </button>
       </Tooltip>
       <Sep />
+      <ArrangeMenu />
+      <Sep />
       <ZoomControls />
     </div>
+  );
+}
+
+/** "Organizar automaticamente" — vertical / horizontal flow (selection or whole plan). */
+export function ArrangeMenu() {
+  const ed = useEditor();
+  const n = ed.selectedNodes.length;
+  return (
+    <DropdownMenu>
+      <Tooltip content="Organizar automaticamente" side="top">
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label="Organizar automaticamente" className={pillBtn}>
+            <Workflow strokeWidth={1.75} />
+          </button>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent side="top" align="center" sideOffset={10} className="min-w-[248px]" onCloseAutoFocus={(e) => e.preventDefault()}>
+        <DropdownMenuLabel>{n > 0 ? `Organizar seleção (${n})` : "Organizar o plan"}</DropdownMenuLabel>
+        <ArrangeItems Item={DropdownMenuItem} onPick={(d) => ed.autoArrange(d)} />
+        <p className="px-2.5 pb-1.5 pt-1 text-[11px] leading-4 text-muted">
+          {n > 0 ? "Só os elementos selecionados (e o interior de containers selecionados) são reorganizados." : "Segue as conexões; notas e itens soltos vão para o fim. Dá para desfazer."}
+        </p>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+type ItemComp = React.ComponentType<{ onSelect?: (e: Event) => void; shortcut?: string; children?: React.ReactNode }>;
+
+export function ArrangeItems({ Item, onPick }: { Item: ItemComp; onPick: (d: "TB" | "LR") => void }) {
+  return (
+    <>
+      <Item onSelect={() => onPick("TB")} shortcut="⇧L">
+        <Network /> Vertical
+      </Item>
+      <Item onSelect={() => onPick("LR")} shortcut="⌥⇧L">
+        <Network className="-rotate-90" /> Horizontal
+      </Item>
+    </>
   );
 }
 

@@ -33,7 +33,7 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
       {label && (
         <EdgeLabelRenderer>
           <div
-            className={cn("wp-edge-label nodrag nopan", p.selected && "is-selected")}
+            className={cn("wp-edge-label nodrag nopan", p.selected && "is-selected", p.data?._dim === true && "is-dim")}
             style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }}
             title={p.data?.description || label}
           >

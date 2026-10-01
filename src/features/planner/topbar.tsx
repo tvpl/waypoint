@@ -122,6 +122,8 @@ export function EditorTopbar(props: {
   publishing: boolean;
   people: { name: string; email: string }[];
   onExport: (k: ExportKind) => void;
+  /** Comments panel toggle. */
+  comments?: React.ReactNode;
 }) {
   const [title, setTitle] = useState(props.title);
   useEffect(() => setTitle(props.title), [props.title]);
@@ -198,6 +200,7 @@ export function EditorTopbar(props: {
             <History />
           </Button>
         </Tooltip>
+        {props.comments}
         <ExportMenu onExport={props.onExport} />
         <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
         <Avatars people={props.people} />

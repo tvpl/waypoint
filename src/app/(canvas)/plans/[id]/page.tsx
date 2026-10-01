@@ -84,6 +84,9 @@ export default async function PlanViewRoute({ params, searchParams }: Props) {
       canEdit={canEdit}
       focusNodeId={one(sp.node)}
       homeHref={user ? "/" : "/login"}
+      viewer={user ? { id: user.id, name: user.name } : null}
+      shareToken={token}
+      present={one(sp.present) === "1"}
     />
   );
 }

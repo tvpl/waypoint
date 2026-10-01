@@ -38,7 +38,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
             <p className="text-[15px] text-muted">Mapas, arquiteturas e roadmaps de {ctx.workspace.name} — cada bloco ligado ao que importa.</p>
           </div>
           {canCreate && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <ImportPlanButton />
               <NewPlanButton />
             </div>

@@ -47,6 +47,17 @@ export const nodeDataSchema = z.object({
   resource: resourceRefSchema.nullable().optional(),
   openIn: z.enum(OPEN_IN).optional(),
   collapsed: z.boolean().optional(),
+  /**
+   * Presentation mode. Without any `order` in the plan, steps are the
+   * top-level areas then the other top-level nodes (reading order) minus
+   * `hidden` ones; once any node has an `order`, only ordered nodes are shown.
+   */
+  presentation: z
+    .object({
+      order: z.number().int().min(1).max(9999).optional(),
+      hidden: z.boolean().optional(),
+    })
+    .optional(),
 });
 export type NodeData = z.infer<typeof nodeDataSchema>;
 

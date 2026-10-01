@@ -43,3 +43,16 @@ describe("documentResourceRefs", () => {
     ]);
   });
 });
+
+describe("presentation node data", () => {
+  const vp = { x: 0, y: 0, zoom: 1 };
+  it("is optional (older documents still parse) and validated when present", () => {
+    expect(normalizeDocument({ nodes: [node("a")], edges: [], viewport: vp }).nodes[0].data.presentation).toBeUndefined();
+    const withP = { ...node("b"), data: { title: "b", presentation: { order: 2, hidden: false } } };
+    expect(normalizeDocument({ nodes: [withP], edges: [], viewport: vp }).nodes[0].data.presentation).toEqual({ order: 2, hidden: false });
+    const bad = { ...node("c"), data: { title: "c", presentation: { order: 0 } } };
+    expect(() => normalizeDocument({ nodes: [bad], edges: [], viewport: vp })).toThrow();
+    const frac = { ...node("d"), data: { title: "d", presentation: { order: 1.5 } } };
+    expect(() => normalizeDocument({ nodes: [frac], edges: [], viewport: vp })).toThrow();
+  });
+});

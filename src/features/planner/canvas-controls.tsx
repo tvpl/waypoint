@@ -1,0 +1,168 @@
+"use client";
+import { useReactFlow, useStore } from "@xyflow/react";
+import { ArrowLeftRight, Grid3x3, Group, Hand, Magnet, Maximize, Minus, MousePointer2, Plus, Trash2, X } from "lucide-react";
+import { EDGE_KINDS } from "@/domain/plan";
+import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
+import { Tooltip } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { useEditor } from "./editor-context";
+import { ConnectorIcon } from "./icons";
+import { EdgeSample } from "./edges";
+import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "./inspector";
+
+const pillBtn = "inline-flex size-[34px] items-center justify-center rounded-lg text-ink-2 transition-colors hover:bg-hover hover:text-ink [&_svg]:size-[18px]";
+const pillOn = "bg-accent-soft text-accent-ink hover:bg-accent-soft hover:text-accent-ink";
+
+function Sep() {
+  return <span className="mx-1 h-5 w-px bg-line" aria-hidden />;
+}
+
+export function ZoomControls({ compact }: { compact?: boolean }) {
+  const rf = useReactFlow();
+  const zoom = useStore((s) => s.transform[2]);
+  const size = compact ? "size-[30px]" : "size-[34px]";
+  return (
+    <>
+      <Tooltip content="Diminuir zoom" side="top">
+        <button type="button" aria-label="Diminuir zoom" className={cn(pillBtn, size)} onClick={() => rf.zoomOut({ duration: 150 })}>
+          <Minus />
+        </button>
+      </Tooltip>
+      <Tooltip content="Zoom 100%" side="top">
+        <button type="button" aria-label={`Zoom atual ${Math.round(zoom * 100)}%. Redefinir para 100%`} className="w-11 rounded-md py-1 text-center font-mono text-xs text-ink-2 hover:bg-hover" onClick={() => rf.zoomTo(1, { duration: 150 })}>
+          {Math.round(zoom * 100)}%
+        </button>
+      </Tooltip>
+      <Tooltip content="Aumentar zoom" side="top">
+        <button type="button" aria-label="Aumentar zoom" className={cn(pillBtn, size)} onClick={() => rf.zoomIn({ duration: 150 })}>
+          <Plus />
+        </button>
+      </Tooltip>
+      <Tooltip content="Ajustar à tela" side="top">
+        <button type="button" aria-label="Ajustar à tela" className={cn(pillBtn, size)} onClick={() => rf.fitView({ padding: 0.15, duration: 250 })}>
+          <Maximize />
+        </button>
+      </Tooltip>
+    </>
+  );
+}
+
+export function BottomPill() {
+  const ed = useEditor();
+  const tools = [
+    { id: "select", label: "Selecionar (V)", icon: MousePointer2 },
+    { id: "hand", label: "Mover canvas (H)", icon: Hand },
+    { id: "connect", label: "Conectar (C)", icon: ConnectorIcon },
+  ] as const;
+  return (
+    <div
+      role="toolbar"
+      aria-label="Ferramentas do canvas"
+      className="wp-no-print absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-[0_8px_24px_-12px_rgba(23,23,28,.25)]"
+    >
+      {tools.map((t) => (
+        <Tooltip key={t.id} content={t.label} side="top">
+          <button type="button" aria-label={t.label} aria-pressed={ed.tool === t.id} className={cn(pillBtn, ed.tool === t.id && pillOn)} onClick={() => ed.setTool(t.id)}>
+            <t.icon strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+      ))}
+      <Sep />
+      <Tooltip content={ed.grid ? "Ocultar grade" : "Mostrar grade"} side="top">
+        <button type="button" aria-label="Grade" aria-pressed={ed.grid} className={cn(pillBtn, ed.grid && "text-accent-ink")} onClick={() => ed.setGrid(!ed.grid)}>
+          <Grid3x3 strokeWidth={1.75} />
+        </button>
+      </Tooltip>
+      <Tooltip content={ed.snap ? "Desativar encaixe na grade" : "Encaixar na grade"} side="top">
+        <button type="button" aria-label="Encaixar na grade" aria-pressed={ed.snap} className={cn(pillBtn, ed.snap && "text-accent-ink")} onClick={() => ed.setSnap(!ed.snap)}>
+          <Magnet strokeWidth={1.75} />
+        </button>
+      </Tooltip>
+      <Sep />
+      <ZoomControls />
+    </div>
+  );
+}
+
+const barCls =
+  "wp-no-print absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 text-[13px] shadow-[0_8px_24px_-12px_rgba(23,23,28,.25)] animate-in";
+const barBtn = "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-1.5 text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4";
+
+/** Contextual floating toolbar: connect mode, multi-selection layout, or edge kind. */
+export function SelectionBar() {
+  const ed = useEditor();
+  if (ed.tool === "connect") {
+    return (
+      <div className={barCls} role="toolbar" aria-label="Conexão">
+        <span className="px-2 text-ink-2">Clique na origem e depois no destino</span>
+        <Sep />
+        <KindPicker value={ed.connectKind} onChange={ed.setConnectKind} />
+        <Sep />
+        <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Sair do modo conexão">
+          <X /> <span className="pr-1">Concluir</span>
+        </button>
+      </div>
+    );
+  }
+  if (ed.selectedNodes.length >= 2) {
+    return (
+      <div className={barCls} role="toolbar" aria-label="Organizar seleção">
+        {ALIGN_ACTIONS.map((a) => (
+          <Tooltip key={a.mode} content={a.label}>
+            <button type="button" aria-label={a.label} className={barBtn} onClick={() => ed.align(a.mode)}>
+              <a.icon />
+            </button>
+          </Tooltip>
+        ))}
+        <Sep />
+        {DISTRIBUTE_ACTIONS.map((a) => (
+          <Tooltip key={a.axis} content={ed.selectedNodes.length < 3 ? "Selecione 3 ou mais" : a.label}>
+            <button type="button" aria-label={a.label} disabled={ed.selectedNodes.length < 3} className={cn(barBtn, "disabled:opacity-40")} onClick={() => ed.distribute(a.axis)}>
+              <a.icon />
+            </button>
+          </Tooltip>
+        ))}
+        <Sep />
+        <Tooltip content="Agrupar (⌘G)">
+          <button type="button" className={barBtn} onClick={ed.group} aria-label="Agrupar">
+            <Group /> <span className="pr-1">Agrupar</span>
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
+  if (ed.selectedNodes.length === 0 && ed.selectedEdges.length === 1) {
+    const e = ed.selectedEdges[0];
+    return (
+      <div className={barCls} role="toolbar" aria-label="Conexão selecionada">
+        <KindPicker value={e.data?.kind ?? "flow"} onChange={(kind) => ed.updateEdge(e.id, { kind })} />
+        <Sep />
+        <Tooltip content="Inverter direção">
+          <button type="button" className={barBtn} aria-label="Inverter direção" onClick={() => ed.swapEdge(e.id)}>
+            <ArrowLeftRight />
+          </button>
+        </Tooltip>
+        <Tooltip content="Excluir conexão">
+          <button type="button" className={cn(barBtn, "hover:text-danger")} aria-label="Excluir conexão" onClick={ed.remove}>
+            <Trash2 />
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
+  return null;
+}
+
+function KindPicker({ value, onChange }: { value: (typeof EDGE_KINDS)[number]; onChange: (k: (typeof EDGE_KINDS)[number]) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Tipo de conexão" className="flex items-center gap-0.5">
+      {EDGE_KINDS.map((k) => (
+        <Tooltip key={k} content={EDGE_APPEARANCE[k].label}>
+          <button type="button" role="radio" aria-checked={value === k} aria-label={EDGE_APPEARANCE[k].label} onClick={() => onChange(k)} className={cn(barBtn, "px-2", value === k && pillOn)}>
+            <EdgeSample kind={k} width={26} />
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}

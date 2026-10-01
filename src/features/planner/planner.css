@@ -1,0 +1,218 @@
+/* Planner canvas — React Flow overrides mapped onto the Waypoint tokens. */
+
+:root {
+  --wp-edge: #8b8c94;
+}
+.dark {
+  --wp-edge: #7d7f89;
+}
+
+.wp-flow {
+  --xy-background-color: transparent;
+  --xy-node-border-radius: 12px;
+  --xy-selection-background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  --xy-selection-border: 1px solid var(--accent);
+  --xy-edge-stroke: var(--wp-edge);
+  --xy-connectionline-stroke: var(--accent);
+  --xy-connectionline-stroke-width: 1.75;
+  font-family: var(--font-sans);
+  color: var(--ink);
+}
+
+.wp-flow .react-flow__node {
+  font-family: inherit;
+  color: inherit;
+  border-radius: 12px;
+}
+.wp-flow .react-flow__node:focus-visible {
+  outline: none;
+}
+.wp-flow .react-flow__node:focus-visible > .wp-node {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* selection ring drawn by the node itself (follows its radius) */
+.wp-node {
+  position: relative;
+  transition: box-shadow 0.15s ease, outline-color 0.15s ease;
+}
+.wp-node.is-selected {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.wp-node.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
+.wp-node.is-connect-source {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.wp-node.is-highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  animation: wp-pulse 1.6s ease-out 3;
+}
+@keyframes wp-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 18px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+/* view mode hover affordance */
+.wp-view .wp-node.is-interactive {
+  cursor: pointer;
+}
+.wp-view .wp-node.is-interactive:hover {
+  border-color: var(--accent) !important;
+  box-shadow: 0 12px 32px -12px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* ---------------------------------------------------------------- tones */
+.wp-tile {
+  background: var(--tint);
+  color: var(--tint-ink);
+}
+.dark .wp-tile {
+  background: color-mix(in srgb, var(--tint) 16%, var(--surface));
+  color: var(--tint);
+}
+.wp-area {
+  background: color-mix(in srgb, var(--tint) 45%, #ffffff);
+  border-color: color-mix(in srgb, var(--tint-ink) 22%, transparent);
+}
+.wp-area-label {
+  color: var(--tint-ink);
+}
+.dark .wp-area {
+  background: color-mix(in srgb, var(--tint) 9%, var(--canvas));
+  border-color: color-mix(in srgb, var(--tint) 26%, transparent);
+}
+.dark .wp-area-label {
+  color: var(--tint);
+}
+.wp-section {
+  border-color: color-mix(in srgb, var(--tint-ink) 50%, transparent);
+  background: color-mix(in srgb, var(--tint) 22%, transparent);
+}
+.dark .wp-section {
+  border-color: color-mix(in srgb, var(--tint) 40%, transparent);
+  background: color-mix(in srgb, var(--tint) 5%, transparent);
+}
+.wp-text {
+  color: var(--tint-ink, var(--ink));
+}
+.dark .wp-text {
+  color: var(--tint, var(--ink));
+}
+/* children of a tinted container pick up a tinted border in light mode */
+.wp-in-area {
+  border-color: color-mix(in srgb, var(--parent-ink, var(--line-2)) 22%, var(--line-2));
+}
+
+/* ---------------------------------------------------------------- handles */
+.wp-flow .react-flow__handle.wp-handle {
+  width: 10px;
+  height: 10px;
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid var(--surface);
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.wp-flow .react-flow__node:hover .react-flow__handle.wp-handle,
+.wp-flow .react-flow__node.selected .react-flow__handle.wp-handle,
+.wp-flow.wp-tool-connect .react-flow__handle.wp-handle,
+.wp-flow .react-flow__handle.wp-handle.connectingto,
+.wp-flow .react-flow__handle.wp-handle.connectingfrom {
+  opacity: 1;
+}
+.wp-flow .react-flow__handle.wp-handle:hover {
+  background: var(--accent-ink);
+}
+.wp-view .react-flow__handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ---------------------------------------------------------------- resizer */
+.wp-flow .react-flow__resize-control.handle.wp-resize-handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+}
+.wp-flow .react-flow__resize-control.line.wp-resize-line {
+  border-color: transparent;
+}
+
+/* ---------------------------------------------------------------- edges */
+.wp-flow .react-flow__edge .wp-edge-path {
+  transition: stroke 0.12s ease;
+}
+.wp-flow .react-flow__edge:hover .wp-edge-path {
+  stroke: color-mix(in srgb, var(--accent) 55%, var(--wp-edge));
+}
+.wp-view .react-flow__edge:hover .wp-edge-path {
+  stroke: var(--wp-edge);
+}
+.wp-flow .react-flow__edge.selected .wp-edge-path {
+  stroke: var(--accent);
+}
+.wp-edge-label {
+  position: absolute;
+  pointer-events: all;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  background: var(--canvas);
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.react-flow__edge.selected .wp-edge-label,
+.wp-edge-label.is-selected {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+
+/* ---------------------------------------------------------------- tools */
+.wp-tool-hand .react-flow__pane,
+.wp-tool-hand .react-flow__node {
+  cursor: grab;
+}
+.wp-tool-hand .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+.wp-tool-connect .react-flow__node,
+.wp-tool-connect .react-flow__pane {
+  cursor: crosshair;
+}
+.wp-flow .react-flow__nodesselection-rect {
+  border-radius: 6px;
+}
+.wp-flow .react-flow__pane.selection {
+  cursor: default;
+}
+
+/* dropzone hint while dragging from the toolbox */
+.wp-dropping {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+@media print {
+  .wp-no-print {
+    display: none !important;
+  }
+}

@@ -209,10 +209,10 @@ export function fromFlowEdge(e: AnyFlowEdge): PlanEdge {
     id: e.id,
     source: e.source,
     target: e.target,
-    sourceHandle: e.sourceHandle ?? null,
-    targetHandle: e.targetHandle ?? null,
     kind: isEdgeKind(d.kind) ? d.kind : "flow",
   };
+  if (e.sourceHandle) out.sourceHandle = e.sourceHandle;
+  if (e.targetHandle) out.targetHandle = e.targetHandle;
   if (d.label) out.label = d.label;
   if (d.description) out.description = d.description;
   return out;
@@ -231,5 +231,17 @@ export function fromFlow(nodes: AnyFlowNode[], edges: AnyFlowEdge[], viewport: V
 
 /** Stable string of the document *content* (viewport excluded) — used to detect real changes. */
 export function contentSignature(doc: Pick<PlanDocument, "nodes" | "edges">): string {
-  return JSON.stringify([doc.nodes, doc.edges]);
+  return stableStringify([doc.nodes, doc.edges]);
+}
+
+/** JSON with sorted object keys and undefined values dropped (key order independent). */
+export function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v) => {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(v).sort()) if (v[k] !== undefined) out[k] = v[k];
+      return out;
+    }
+    return v;
+  });
 }

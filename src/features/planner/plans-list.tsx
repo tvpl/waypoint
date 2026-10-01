@@ -209,6 +209,28 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
           </p>
         </div>
       </Link>
+      {p.isTemplate && canCreate && (
+        <div className="border-t border-line px-4 py-2.5">
+          <Button
+            variant="soft"
+            size="sm"
+            disabled={pending}
+            className="w-full justify-center"
+            onClick={() =>
+              start(async () => {
+                try {
+                  const id = await createPlanAction({ templateId: p.id });
+                  router.push(`/plans/${id}/edit`);
+                } catch {
+                  toast.error("Não foi possível usar o template.");
+                }
+              })
+            }
+          >
+            <LayoutTemplate /> Usar template
+          </Button>
+        </div>
+      )}
       <div className={cn("absolute right-2 top-2 transition-opacity", pending ? "opacity-100" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100")}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

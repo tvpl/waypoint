@@ -189,6 +189,7 @@ export async function createCollectionAction(input: CollectionInput & { parentId
     assertCollection(ctx, parentId);
     const newId = createCollection({ workspaceId: ctx.workspace.id, userId: ctx.user.id, parentId, ...data });
     if (data.defaultView || data.visibility) updateCollection(newId, { defaultView: data.defaultView, visibility: data.visibility });
+    if (data.visibility === "link" || data.visibility === "public") ensureShareLink("collection", newId, ctx.user.id);
     done();
     return { ok: true, data: { id: newId } };
   } catch (e) {
@@ -202,7 +203,8 @@ export async function updateCollectionAction(collectionId: string, input: Partia
     assertCollection(ctx, id.parse(collectionId));
     const patch = collectionInput.partial().parse(input);
     updateCollection(collectionId, patch);
-    if (patch.visibility && patch.visibility !== "link" && patch.visibility !== "public") revokeShareLink("collection", collectionId);
+    if (patch.visibility === "link" || patch.visibility === "public") ensureShareLink("collection", collectionId, ctx.user.id);
+    else if (patch.visibility) revokeShareLink("collection", collectionId);
     done();
     return { ok: true };
   } catch (e) {

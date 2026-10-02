@@ -31,6 +31,7 @@ import { HealthDot, shortUrl } from "./health";
 import type { LinkItem, SortMode, ViewMode } from "./types";
 import { normalizeText } from "@/domain/link-query";
 import { useFlip } from "@/lib/use-flip";
+import { tagTint } from "./collection-style";
 
 // ------------------------------------------------------------------ shared bits
 
@@ -357,7 +358,11 @@ function Tags({ link, max }: { link: LinkItem; max: number }) {
           type="button"
           onClick={() => lib.filterTag(t)}
           title={`Filtrar por #${t}`}
-          className="relative z-10 shrink-0 rounded-full bg-subtle px-2 py-0.5 text-xs text-ink-2 hover:bg-hover hover:text-ink"
+          style={tagTint(lib.tagColor(t))}
+          className={cn(
+            "relative z-10 shrink-0 rounded-full px-2 py-0.5 text-xs",
+            lib.tagColor(t) ? "wp-tint font-medium hover:brightness-95" : "bg-subtle text-ink-2 hover:bg-hover hover:text-ink",
+          )}
         >
           #{t}
         </button>

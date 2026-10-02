@@ -3,6 +3,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { formatKeys, useIsMac } from "@/lib/platform";
 import { monogramColors } from "@/lib/color";
+import Link from "next/link";
 
 /** Keyboard key(s). String content is shown for the user's platform ("⌘K" → "Ctrl+K" off Mac). */
 export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -14,10 +15,25 @@ export function Kbd({ children, className }: { children: React.ReactNode; classN
   );
 }
 
-export function TagChip({ name, active, onRemove, className, href }: { name: string; active?: boolean; onRemove?: () => void; className?: string; href?: string }) {
+export function TagChip({
+  name,
+  active,
+  onRemove,
+  className,
+  href,
+  style,
+}: {
+  name: string;
+  active?: boolean;
+  onRemove?: () => void;
+  className?: string;
+  href?: string;
+  /** Tag color (see tagTint); applied with the theme-aware `wp-tint` class. */
+  style?: React.CSSProperties;
+}) {
   const cls = cn(
     "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs",
-    active ? "border border-accent-line bg-accent-soft font-medium text-accent-ink" : "bg-subtle text-ink-2",
+    active ? "border border-accent-line bg-accent-soft font-medium text-accent-ink" : style ? "wp-tint font-medium" : "bg-subtle text-ink-2",
     className,
   );
   const body = (
@@ -31,11 +47,13 @@ export function TagChip({ name, active, onRemove, className, href }: { name: str
     </>
   );
   return href ? (
-    <a href={href} className={cls}>
+    <Link href={href} className={cls} style={style}>
       {body}
-    </a>
+    </Link>
   ) : (
-    <span className={cls}>{body}</span>
+    <span className={cls} style={style}>
+      {body}
+    </span>
   );
 }
 

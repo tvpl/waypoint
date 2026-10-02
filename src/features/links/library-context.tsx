@@ -17,6 +17,8 @@ export type LibraryApi = {
   pin: (link: LinkItem) => void;
   /** Free-text search terms to highlight in titles and summaries. */
   highlight: string[];
+  /** Color name of a tag (null = neutral). */
+  tagColor: (tag: string) => string | null;
   edit: (link: LinkItem) => void;
   move: (ids: string[]) => void;
   archive: (ids: string[], archived: boolean) => void;

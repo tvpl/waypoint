@@ -444,7 +444,7 @@ async function save() {
       body: {
         url: state.page.url,
         ...(title ? { title } : {}),
-        ...(note ? { description: note } : {}),
+        ...(note ? { notes: note } : {}),
         collectionId: state.collectionId,
         tags: state.tags,
       },

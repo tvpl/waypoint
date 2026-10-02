@@ -13,6 +13,8 @@ import { Greeting } from "@/features/home/greeting";
 import { AddLinkButton, NewPlanButton, SearchBar } from "@/features/home/home-actions";
 import { LinkRow } from "@/features/home/link-row";
 import { cn, timeAgo } from "@/lib/utils";
+import { after } from "next/server";
+import { recentlyBroken, sweepStaleLinks } from "@/server/services/link-health";
 
 export const metadata = { title: "Início" };
 
@@ -50,6 +52,8 @@ export default async function HomePage() {
     pinned: l.pinned,
   }));
   const signals = libraryCounts(ctx.workspace.id, ctx.user.id, hidden, 0);
+  const newlyBroken = recentlyBroken(ctx.workspace.id, hidden);
+  after(() => sweepStaleLinks(ctx.workspace.id).catch(() => null));
   const counts = new Map<string, number>();
   const walk = (ns: typeof tree) => ns.forEach((n) => (counts.set(n.id, n.totalCount), walk(n.children)));
   walk(tree);
@@ -97,11 +101,17 @@ export default async function HomePage() {
           </section>
         )}
 
-        {(signals.broken > 0 || signals.unsorted > 0) && (
+        {(signals.broken > 0 || signals.unsorted > 0 || signals.inbox > 0) && (
           <section aria-label="Pede atenção" className="flex flex-wrap gap-2.5">
             {signals.broken > 0 && (
               <Signal href="/links?scope=broken" icon={<Unlink />} tone="danger">
                 {signals.broken} {signals.broken === 1 ? "link quebrado" : "links quebrados"}
+                {newlyBroken > 0 && newlyBroken < signals.broken ? ` · ${newlyBroken} esta semana` : newlyBroken === signals.broken ? " esta semana" : ""}
+              </Signal>
+            )}
+            {signals.inbox > 0 && (
+              <Signal href="/links?scope=inbox" icon={<Inbox />} tone="accent">
+                {signals.inbox} {signals.inbox === 1 ? "link na caixa de entrada" : "links na caixa de entrada"}
               </Signal>
             )}
             {signals.unsorted > 0 && (
@@ -180,13 +190,17 @@ export default async function HomePage() {
   );
 }
 
-function Signal({ href, icon, tone, children }: { href: string; icon: React.ReactNode; tone?: "danger"; children: React.ReactNode }) {
+function Signal({ href, icon, tone, children }: { href: string; icon: React.ReactNode; tone?: "danger" | "accent"; children: React.ReactNode }) {
   return (
     <Link
       href={href}
       className={cn(
         "group inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-body transition-colors [&>svg]:size-4",
-        tone === "danger" ? "border-danger/25 bg-danger-soft text-danger hover:border-danger/50" : "border-line bg-surface text-ink-2 hover:border-line-2 hover:text-ink",
+        tone === "danger"
+          ? "border-danger/25 bg-danger-soft text-danger hover:border-danger/50"
+          : tone === "accent"
+            ? "border-accent-line bg-accent-soft text-accent-ink hover:border-accent"
+            : "border-line bg-surface text-ink-2 hover:border-line-2 hover:text-ink",
       )}
     >
       {icon}

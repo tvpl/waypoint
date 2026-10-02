@@ -5,6 +5,8 @@ Salve a página atual (ou qualquer link) na sua Link Library do Waypoint sem sai
 - **Popup** (ícone da barra ou <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>): título editável, coleção com busca (lembra a última usada), tags com sugestões, nota opcional. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> salva.
 - **Menu de contexto:** botão direito em um link → *Salvar link no Waypoint*; em qualquer página → *Salvar página no Waypoint*.
 - **Salvar direto:** <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> salva a aba atual na última coleção usada; o resultado aparece no selo do ícone (✓ ou !).
+- **Nova aba:** cada nova aba mostra seu acesso rápido do Waypoint (links fixados e os que você mais abre — teclas <kbd>1</kbd>…<kbd>9</kbd>), uma busca na biblioteca que entende `tag:`, `site:`, `in:` e `is:` (<kbd>/</kbd> foca, <kbd>Enter</kbd> abre o primeiro resultado), os links abertos recentemente, seus plans e avisos de caixa de entrada e links quebrados. O navegador avisa na primeira vez que a extensão substitui a nova aba; é possível manter ou desativar.
+- **Caixa de entrada:** links salvos **sem coleção** vão para a *Caixa de entrada* do Waypoint, para você organizar depois com a triagem por teclado. A nota vira o campo **Notas** do link.
 
 Sem etapa de build: HTML, CSS e JavaScript puros (Manifest V3).
 
@@ -46,6 +48,7 @@ extension/
   manifest.json        Manifest V3 (Chrome service worker + Firefox background scripts)
   popup.html/css/js    fluxo de salvar
   options.html/css/js  endereço + token, teste de conexão
+  newtab.html/css/js   nova aba: acesso rápido, busca e recentes (GET /api/v1/home)
   background.js        menu de contexto, atalho "salvar direto", selo do ícone
   lib/api.js           configurações e cliente da API /api/v1
   styles.css           tokens de design do Waypoint (claro/escuro via prefers-color-scheme)

@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from "d
 import { getDb, schema } from "../db";
 import type { OpenBehavior, SummaryBehavior, Visibility } from "../db/schema";
 import { domainOf, newId } from "@/lib/utils";
+import { canonicalUrl, stripTracking } from "@/lib/url";
 import { indexEntity, removeEntity, toFtsQuery } from "./search";
 import { normalizeText, parseLinkQuery, type LinkQuery } from "@/domain/link-query";
 import { ensureTags, setFavoriteTags, tagsForFavorites } from "./tags";
@@ -262,7 +263,8 @@ export function normalizeUrl(raw: string): string {
   const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`;
   const u = new URL(withScheme);
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new UserError("Apenas links http(s) são suportados.");
-  return u.toString();
+  // utm_*, fbclid… identify a campaign, not the page.
+  return stripTracking(u.toString());
 }
 
 export function createFavorite(workspaceId: string, userId: string, input: FavoriteInput) {
@@ -400,6 +402,11 @@ export function recordOpen(id: string, userId: string) {
   touchRecent(userId, "favorite", id);
 }
 
+/** Rebuilds the search entries of these links (e.g. after a tag rename). */
+export function reindexFavorites(ids: string[]) {
+  for (const id of ids) indexFavorite(id);
+}
+
 function indexFavorite(id: string) {
   const f = getFavorite(id);
   if (!f) return;
@@ -495,7 +502,7 @@ export type FavoriteFilter = {
   collectionId?: string | null;
   /** include links of nested collections */
   deep?: boolean;
-  scope?: "all" | "recent" | "starred" | "unsorted" | "archived" | "broken";
+  scope?: "all" | "recent" | "starred" | "unsorted" | "archived" | "broken" | "inbox";
   tags?: string[];
   q?: string;
   sort?: FavoriteSort;
@@ -515,6 +522,7 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
     );
   }
   if (f.scope === "unsorted") conds.push(isNull(schema.favorites.collectionId));
+  if (f.scope === "inbox") conds.push(isNotNull(schema.favorites.inboxAt));
   if (f.scope === "recent") conds.push(isNotNull(schema.recents.openedAt));
   if (f.scope === "broken") conds.push(inArray(schema.favorites.healthStatus, ["broken", "unreachable"]));
   if (f.scope === "starred") {
@@ -531,6 +539,8 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
   }
   if (f.q?.trim()) conds.push(...queryConditions(workspaceId, userId, parseLinkQuery(f.q)));
   const sort = f.sort ?? (f.scope === "recent" ? "visited" : f.collectionId ? "manual" : "recent");
+  // The inbox is a queue: oldest capture first.
+  const inboxOrder = f.scope === "inbox" && !f.sort;
   const byCreated = desc(schema.favorites.createdAt);
   const order: SQL[] =
     sort === "manual"
@@ -543,7 +553,9 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
             ? [sql`${schema.recents.openedAt} desc nulls last`, byCreated]
             : sort === "foryou"
               ? [sql`${frecencySql()} desc`, byCreated]
-              : [byCreated];
+              : inboxOrder
+                ? [asc(schema.favorites.inboxAt)]
+                : [byCreated];
 
   const rows = db
     .select({
@@ -609,6 +621,19 @@ export function toggleMark(userId: string, entityType: "plan" | "collection" | "
   if (exists) db.delete(schema.userMarks).where(where).run();
   else db.insert(schema.userMarks).values({ userId, entityType, entityId, mark }).run();
   return !exists;
+}
+
+/** Sets (or clears) a personal mark on many items at once. */
+export function setMarks(userId: string, entityType: "plan" | "collection" | "favorite", ids: string[], mark: "pin" | "star", on: boolean) {
+  const db = getDb();
+  if (!ids.length) return;
+  if (!on) {
+    db.delete(schema.userMarks)
+      .where(and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, entityType), inArray(schema.userMarks.entityId, ids), eq(schema.userMarks.mark, mark)))
+      .run();
+    return;
+  }
+  for (const entityId of ids) db.insert(schema.userMarks).values({ userId, entityType, entityId, mark }).onConflictDoNothing().run();
 }
 
 export function listMarks(userId: string, mark: "pin" | "star") {
@@ -690,12 +715,31 @@ export function recentFavorites(userId: string, workspaceId: string, limit = 6) 
 export type ImportFolder = { name: string; children: ImportFolder[]; links: { title: string; url: string; addedAt?: number }[] };
 
 /** Creates collections/favorites from a parsed bookmark tree. Returns counts. */
-export function importTree(workspaceId: string, userId: string, root: ImportFolder, parentId: string | null, tags: string[] = []) {
+export function importTree(
+  workspaceId: string,
+  userId: string,
+  root: ImportFolder,
+  parentId: string | null,
+  tags: string[] = [],
+  opts: { skipDuplicates?: boolean } = {},
+) {
   let collections = 0;
   let links = 0;
+  let skipped = 0;
   const db = getDb();
   const tagIds = ensureTags(db, workspaceId, tags);
   const insertedIds: string[] = [];
+  // Pages already in the workspace (or earlier in this file), by canonical URL.
+  const seen = new Set(
+    opts.skipDuplicates
+      ? db
+          .select({ url: schema.favorites.url })
+          .from(schema.favorites)
+          .where(eq(schema.favorites.workspaceId, workspaceId))
+          .all()
+          .map((r) => canonicalUrl(r.url))
+      : [],
+  );
   const walk = (folder: ImportFolder, parent: string | null) => {
     for (const [i, l] of folder.links.entries()) {
       let url: string;
@@ -703,6 +747,14 @@ export function importTree(workspaceId: string, userId: string, root: ImportFold
         url = normalizeUrl(l.url);
       } catch {
         continue;
+      }
+      if (opts.skipDuplicates) {
+        const key = canonicalUrl(url);
+        if (seen.has(key)) {
+          skipped++;
+          continue;
+        }
+        seen.add(key);
       }
       const id = newId();
       db.insert(schema.favorites)
@@ -734,7 +786,7 @@ export function importTree(workspaceId: string, userId: string, root: ImportFold
   };
   db.transaction(() => walk(root, parentId));
   for (const id of insertedIds) indexFavorite(id);
-  return { collections, links };
+  return { collections, links, skipped };
 }
 
 // ================================================================== quick access (speed dial)

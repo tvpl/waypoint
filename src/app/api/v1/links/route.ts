@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { OPEN_BEHAVIORS } from "@/server/db/schema";
-import { createFavorite, normalizeUrl } from "@/server/services/links";
+import { createFavorite, listFavorites, normalizeUrl } from "@/server/services/links";
 import { fetchLinkMetadata } from "@/server/services/metadata";
 import { apiLink, appOrigin, flatCollections } from "../_lib/data";
 import { apiError, json, preflight, withApi } from "../_lib/http";
@@ -15,12 +15,14 @@ const body = z.object({
   collectionId: z.string().min(1).max(64).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(48)).max(40, "No máximo 40 tags.").optional(),
   openBehavior: z.enum(OPEN_BEHAVIORS).optional(),
+  notes: z.string().trim().max(5000).nullable().optional(),
 });
 
 const httpOnly = (v: string | undefined) => (v && /^https?:\/\//i.test(v) && v.length <= 2048 ? v : null);
 
 /**
- * POST /api/v1/links { url, title?, description?, collectionId?, tags?, openBehavior? } → 201 { link }
+ * POST /api/v1/links { url, title?, description?, notes?, collectionId?, tags?, openBehavior? } → 201 { link }
+ * Without a collection the link lands in the inbox ("Caixa de entrada") for triage.
  * Missing title / description / favicon / cover are filled from the page (SSRF-safe fetch).
  * Editors and owners only.
  */
@@ -44,9 +46,27 @@ export async function POST(req: Request) {
       collectionId: data.collectionId ?? null,
       tags: data.tags,
       openBehavior: data.openBehavior,
+      notes: data.notes || null,
+      // Quick captures without a collection wait in the inbox for triage.
+      inbox: !data.collectionId,
     });
     revalidatePath("/links");
     revalidatePath("/");
     return json(req, { link: apiLink(id, ctx, appOrigin(req), collections) }, { status: 201 });
+  });
+}
+
+/**
+ * GET /api/v1/links?q=&limit= → links matching the library search language
+ * (words, tag:, site:, in:, is:…), most relevant to the user first.
+ */
+export async function GET(req: Request) {
+  return withApi(req, {}, (ctx) => {
+    const sp = new URL(req.url).searchParams;
+    const q = (sp.get("q") ?? "").slice(0, 300);
+    const limit = Math.min(Math.max(Number(sp.get("limit")) || 20, 1), 100);
+    const collections = flatCollections(ctx.workspaceId, ctx.user.id);
+    const rows = listFavorites(ctx.workspaceId, ctx.user.id, { q, sort: q ? "foryou" : "visited", limit });
+    return json(req, { links: rows.map((f) => apiLink(f.id, ctx, appOrigin(req), collections)).filter(Boolean) });
   });
 }

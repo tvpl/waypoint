@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, ChevronRight, Download, FolderPlus, ImagePlus, MoreHorizontal, PanelLeft, Pencil, Pin, PinOff, Plus, Share2, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { Archive, ChevronRight, Copy, Download, FolderPlus, ImagePlus, MoreHorizontal, PanelLeft, Pencil, Pin, PinOff, Plus, Share2, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
@@ -116,6 +116,7 @@ export function LibraryHeader({
   onAdd,
   onCheckHealth,
   onEnrich,
+  onDuplicates,
   childrenOf,
   onOpenCollections,
 }: {
@@ -135,6 +136,7 @@ export function LibraryHeader({
   onAdd: () => void;
   onCheckHealth: () => void;
   onEnrich: () => void;
+  onDuplicates: () => void;
   /** Collections directly under a collection (null = top level), for the breadcrumb menus. */
   childrenOf: (id: string | null) => TreeNode[];
   /** Phones: opens the collections drawer. */
@@ -251,6 +253,10 @@ export function LibraryHeader({
                   <DropdownMenuItem onSelect={onEnrich}>
                     <ImagePlus />
                     Buscar ícones e capas que faltam
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onDuplicates}>
+                    <Copy />
+                    Encontrar duplicados
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

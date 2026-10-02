@@ -1,0 +1,343 @@
+/* New tab: the user's quick access, search and recent work from Waypoint. */
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 70%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.nt {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 9vh 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.nt-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nt-greet {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.nt-greet::after {
+  content: ".";
+  color: var(--accent);
+}
+.nt-date {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.nt-date::first-letter {
+  text-transform: uppercase;
+}
+.nt-app {
+  color: var(--accent-ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+.nt-app:hover {
+  text-decoration: underline;
+}
+.nt-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(23 23 28 / 0.05);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.nt-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+.nt-search svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.nt-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.nt-search input::-webkit-search-cancel-button {
+  display: none;
+}
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.nt-results {
+  list-style: none;
+  margin: -16px 0 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+.nt-results a,
+.nt-list a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  outline: none;
+}
+.nt-results a:hover,
+.nt-results a.active,
+.nt-list a:hover,
+.nt-list a:focus-visible {
+  background: var(--accent-soft);
+}
+.nt-results .t,
+.nt-list .t {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+.nt-results .d,
+.nt-list .d {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.nt-results .txt,
+.nt-list .txt {
+  min-width: 0;
+}
+.nt-section h2 {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.nt-dial {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 14px 8px;
+}
+.nt-dial a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-radius: 14px;
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+}
+.nt-dial a:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.nt-dial .tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 90% at 12% 0%, rgb(255 255 255 / 0.7), transparent 55%),
+    var(--tint, var(--subtle));
+  box-shadow: 0 1px 2px rgb(23 23 28 / 0.08);
+  transition:
+    transform 0.25s cubic-bezier(0.34, 1.36, 0.64, 1),
+    box-shadow 0.2s;
+}
+@media (prefers-color-scheme: dark) {
+  .nt-dial .tile {
+    background:
+      radial-gradient(120% 90% at 12% 0%, rgb(255 255 255 / 0.06), transparent 55%),
+      color-mix(in oklab, var(--tint-ink, #888) 26%, var(--surface));
+  }
+}
+.nt-dial a:hover .tile {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px -12px rgb(23 23 28 / 0.35);
+}
+.nt-dial .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.92);
+}
+.nt-dial img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.nt-dial .letter {
+  font-family: var(--font-display);
+  font-size: 30px;
+  color: var(--tint-ink, var(--ink));
+}
+.nt-dial .pin {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+}
+.nt-dial .num {
+  position: absolute;
+  bottom: -6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.nt-dial a:hover .num,
+.nt-dial a:focus-visible .num {
+  opacity: 1;
+}
+.nt-dial .name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nt-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 28px;
+}
+.nt-list {
+  list-style: none;
+  margin: 0 -10px;
+  padding: 0;
+}
+.fav {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.fav img {
+  width: 16px;
+  height: 16px;
+}
+.nt-signals {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.nt-signals a {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  text-decoration: none;
+}
+.nt-signals a.danger {
+  border-color: color-mix(in oklab, var(--danger) 30%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.nt-signals a.accent {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.nt-setup {
+  padding: 24px;
+  border: 1px dashed var(--line-2);
+  border-radius: 14px;
+  text-align: center;
+  color: var(--muted);
+}
+.nt-setup-title {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+}
+.nt-setup button {
+  margin-top: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.nt-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

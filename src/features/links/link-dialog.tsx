@@ -115,6 +115,7 @@ function LinkForm({
   const [summaryBehavior, setSummaryBehavior] = React.useState<SummaryBehavior>(editing?.summaryBehavior ?? "always");
   const [description, setDescription] = React.useState(editing?.description ?? "");
   const [keywords, setKeywords] = React.useState(editing?.keywords ?? "");
+  const [notes, setNotes] = React.useState(editing?.notes ?? "");
   const [coverImage, setCoverImage] = React.useState(editing?.coverImage ?? "");
   const [icon, setIcon] = React.useState(editing?.icon ?? "");
   const [favicon, setFavicon] = React.useState(editing?.favicon ?? "");
@@ -180,6 +181,7 @@ function LinkForm({
       summaryBehavior,
       description: description.trim() || null,
       keywords: keywords.trim() || null,
+      notes: notes.trim() || null,
       coverImage: coverImage.trim() || null,
       icon: icon.trim() || null,
       favicon: favicon.trim() || null,
@@ -322,6 +324,13 @@ function LinkForm({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="link-tags">Tags</Label>
           <TagInput id="link-tags" value={tagList} onChange={setTagList} suggestions={tags} />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="link-notes">
+            Notas <span className="font-normal text-muted">— por que salvou, o que lembrar (entram na busca)</span>
+          </Label>
+          <Textarea id="link-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: ler a parte de Server Components antes da reunião" className="min-h-[60px] resize-y" />
         </div>
 
         <RadioCards

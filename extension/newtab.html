@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nova aba · Waypoint</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="newtab.css" />
+  </head>
+  <body>
+    <main class="nt">
+      <header class="nt-head">
+        <div>
+          <h1 class="nt-greet" id="greet">Olá</h1>
+          <p class="nt-date" id="date"></p>
+        </div>
+        <a class="nt-app" id="app-link" href="#" hidden>Abrir o Waypoint ↗</a>
+      </header>
+
+      <form class="nt-search" id="search" role="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Buscar na sua biblioteca… (tag:, site:, in:) — Enter abre o primeiro" aria-label="Buscar na biblioteca" />
+        <kbd>/</kbd>
+      </form>
+      <ul class="nt-results" id="results" hidden></ul>
+
+      <section class="nt-section" id="dial-section" hidden>
+        <h2>Acesso rápido</h2>
+        <ul class="nt-dial" id="dial"></ul>
+      </section>
+
+      <div class="nt-cols">
+        <section class="nt-section" id="recent-section" hidden>
+          <h2>Abertos recentemente</h2>
+          <ul class="nt-list" id="recent"></ul>
+        </section>
+        <section class="nt-section" id="plans-section" hidden>
+          <h2>Plans</h2>
+          <ul class="nt-list" id="plans"></ul>
+        </section>
+      </div>
+
+      <p class="nt-signals" id="signals"></p>
+
+      <div class="nt-setup" id="setup" hidden>
+        <p class="nt-setup-title">Conecte o Waypoint</p>
+        <p>Configure o endereço e um token de API para ver seu acesso rápido aqui.</p>
+        <button type="button" id="open-options">Configurar</button>
+      </div>
+      <p class="nt-error" id="error" hidden></p>
+    </main>
+    <script type="module" src="newtab.js"></script>
+  </body>
+</html>

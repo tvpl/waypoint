@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { after } from "next/server";
+import { sweepStaleLinks } from "@/server/services/link-health";
 import { redirect } from "next/navigation";
 import { canEditWorkspace, requireWorkspace } from "@/server/services/workspaces";
 import { collectionPath, listMarks } from "@/server/services/links";
@@ -23,6 +25,8 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
   const { tree, hidden } = visibleTree(wsId, userId);
   const { one, node, scope, q, activeTags, filtering, sort, viewParam, filter, invalidCollection } = resolveLibraryParams(sp, tree);
   if (invalidCollection) redirect("/links");
+  // Re-check the stalest links in the background so "Quebrados" stays current.
+  after(() => sweepStaleLinks(wsId).catch(() => null));
 
   const saved: SavedSearchItem[] = listSavedSearches(userId, wsId).map((s) => ({
     id: s.id,
@@ -50,7 +54,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
 
   const tags = listTags(wsId, userId)
     .filter((t) => t.links > 0)
-    .map((t) => ({ name: t.name, count: t.links }))
+    .map((t) => ({ name: t.name, count: t.links, color: t.color }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   const pinned = listMarks(userId, "pin")

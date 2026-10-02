@@ -17,6 +17,8 @@ import { tagsForFavorites } from "@/server/services/tags";
 import { backlinks } from "@/server/services/plans";
 import { canEditWorkspace, type WorkspaceContext } from "@/server/services/workspaces";
 import { SCOPES, SORT_MODES, VIEW_MODES, type Backlink, type LibraryCounts, type LinkDetail, type LinkItem, type Scope, type SortMode, type TreeNode, type ViewMode } from "./types";
+import { canonicalUrl } from "@/lib/url";
+import { domainOf } from "@/lib/utils";
 
 /** Private collections are only visible to their creator (mirrors collectionAccess for members). */
 function canSee(node: { visibility: string; createdBy: string | null }, userId: string) {
@@ -87,6 +89,8 @@ export function toLinkItem(f: FavoriteView | LinkSource): LinkItem {
     domain: f.domain,
     description: f.description,
     keywords: f.keywords,
+    notes: f.notes,
+    inbox: f.inboxAt != null,
     favicon: f.favicon,
     coverImage: f.coverImage,
     icon: f.icon,
@@ -121,6 +125,7 @@ export function libraryCounts(workspaceId: string, userId: string, hidden: Set<s
       `select
         sum(case when f.archived_at is null then 1 else 0 end) as "all",
         sum(case when f.archived_at is null and f.collection_id is null then 1 else 0 end) as unsorted,
+        sum(case when f.archived_at is null and f.inbox_at is not null then 1 else 0 end) as inbox,
         sum(case when f.archived_at is not null then 1 else 0 end) as archived,
         sum(case when f.archived_at is null and exists (select 1 from recents r where r.user_id = ? and r.entity_type = 'favorite' and r.entity_id = f.id) then 1 else 0 end) as recent,
         sum(case when f.archived_at is null and f.health_status in ('broken', 'unreachable') then 1 else 0 end) as broken,
@@ -131,6 +136,7 @@ export function libraryCounts(workspaceId: string, userId: string, hidden: Set<s
   return {
     all: row.all ?? 0,
     unsorted: row.unsorted ?? 0,
+    inbox: row.inbox ?? 0,
     archived: row.archived ?? 0,
     recent: row.recent ?? 0,
     starred: row.starred ?? 0,
@@ -189,25 +195,33 @@ export function loadLinkDetail(id: string, ctx: WorkspaceContext): LinkDetail | 
   return { link, path, backlinks: refs, canEdit: canEditWorkspace(ctx.role) };
 }
 
-/** Existing link visible to `userId` with the same normalized URL (duplicate hint). */
+/**
+ * Existing link visible to `userId` for the same page (duplicate hint): compared by
+ * canonical URL, so "www.", http/https, trailing slashes and utm_* don't hide a duplicate.
+ */
 export function findByUrl(workspaceId: string, userId: string, url: string) {
-  const variants = new Set([url, url.endsWith("/") ? url.slice(0, -1) : `${url}/`]);
+  const key = canonicalUrl(url);
   return getDb()
-    .select({ id: schema.favorites.id, title: schema.favorites.title, collectionId: schema.favorites.collectionId, archivedAt: schema.favorites.archivedAt })
+    .select({
+      id: schema.favorites.id,
+      url: schema.favorites.url,
+      title: schema.favorites.title,
+      collectionId: schema.favorites.collectionId,
+      archivedAt: schema.favorites.archivedAt,
+    })
     .from(schema.favorites)
-    .where(
-      and(eq(schema.favorites.workspaceId, workspaceId), inArray(schema.favorites.url, [...variants]), favoriteVisibleTo(workspaceId, userId)),
-    )
-    .get();
+    .where(and(eq(schema.favorites.workspaceId, workspaceId), eq(schema.favorites.domain, domainOf(url)), favoriteVisibleTo(workspaceId, userId)))
+    .all()
+    .find((f) => canonicalUrl(f.url) === key);
 }
 
-/** Ids of favorites in the workspace (permission check for bulk operations). */
-export function favoritesInWorkspace(workspaceId: string, ids: string[]) {
+/** Ids of favorites in the workspace that the user can see (permission check for bulk operations). */
+export function favoritesInWorkspace(workspaceId: string, userId: string, ids: string[]) {
   if (!ids.length) return [];
   return getDb()
     .select({ id: schema.favorites.id })
     .from(schema.favorites)
-    .where(and(eq(schema.favorites.workspaceId, workspaceId), inArray(schema.favorites.id, ids)))
+    .where(and(eq(schema.favorites.workspaceId, workspaceId), inArray(schema.favorites.id, ids), favoriteVisibleTo(workspaceId, userId)))
     .all()
     .map((r) => r.id);
 }
@@ -264,7 +278,8 @@ export function resolveLibraryParams(sp: LibraryParams, tree: TreeNode[]) {
     scope: node ? undefined : scope === "shared" ? "all" : scope,
     tags: activeTags,
     q,
-    sort,
+    // The inbox reads oldest-first unless a sort is chosen.
+    sort: scope === "inbox" && !node && !rawSort ? undefined : sort,
   };
   return { one, cId, node, scope, q, activeTags, filtering, sort, viewParam, filter, invalidCollection: !!cId && !node };
 }

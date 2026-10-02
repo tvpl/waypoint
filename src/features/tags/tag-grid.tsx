@@ -4,12 +4,14 @@ import { useMemo, useState, useTransition } from "react";
 import { Hash, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { EmptyState } from "@/components/ui/misc";
-import { deleteTagAction, renameTagAction } from "@/app/(app)/tags/actions";
+import { deleteTagAction, renameTagAction, setTagColorAction } from "@/app/(app)/tags/actions";
+import { COLLECTION_COLORS, colorOf, tagTint } from "@/features/links/collection-style";
+import { cn } from "@/lib/utils";
 import { ask } from "@/components/ui/ask";
 
-type Tag = { id: string; name: string; links: number; plans: number };
+type Tag = { id: string; name: string; links: number; plans: number; color: string | null };
 
 export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
   const [q, setQ] = useState("");
@@ -35,11 +37,11 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
       </label>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map((t) => (
-          <div key={t.id} className="group relative flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-shadow hover:shadow-pop">
+          <div key={t.id} className="group relative flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise">
             <Link href={`/tags/${encodeURIComponent(t.name)}`} className="absolute inset-0 rounded-card" aria-label={`Abrir tag ${t.name}`} />
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-lead font-semibold">
-                <span className="text-muted">#</span>
+              <span className={cn("truncate rounded-full text-lead font-semibold", t.color && "wp-tint -ml-1 px-2.5 py-0.5")} style={tagTint(t.color)}>
+                <span className={cn(!t.color && "text-muted")}>#</span>
                 {t.name}
               </span>
               {canEdit && (
@@ -50,6 +52,36 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Cor</DropdownMenuLabel>
+                    <div className="flex flex-wrap gap-1.5 px-2.5 pb-2" role="radiogroup" aria-label={`Cor da tag ${t.name}`}>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={!t.color}
+                        aria-label="Sem cor"
+                        onClick={() => start(async () => void (await setTagColorAction(t.id, null)))}
+                        className={cn("size-6 rounded-full border border-line-2 bg-subtle", !t.color && "ring-2 ring-accent ring-offset-2 ring-offset-surface")}
+                      />
+                      {Object.entries(COLLECTION_COLORS).map(([key, c]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={t.color === key}
+                          aria-label={c.label}
+                          title={c.label}
+                          onClick={() =>
+                            start(async () => {
+                              const r = await setTagColorAction(t.id, key);
+                              if (!r.ok) toast.error(r.error);
+                            })
+                          }
+                          className={cn("size-6 rounded-full", t.color === key && "ring-2 ring-accent ring-offset-2 ring-offset-surface")}
+                          style={{ background: c.tint, boxShadow: `inset 0 0 0 1.5px ${colorOf(key).ink}55` }}
+                        />
+                      ))}
+                    </div>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onSelect={async () => {
                         const name = await ask.prompt({ title: `Renomear #${t.name}`, label: "Novo nome", initial: t.name, confirmLabel: "Renomear" });
@@ -93,7 +125,7 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
               </span>
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
-              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, ((t.links + t.plans) / max) * 100)}%` }} />
+              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, ((t.links + t.plans) / max) * 100)}%`, ...(t.color ? { background: colorOf(t.color).ink } : {}) }} />
             </div>
           </div>
         ))}

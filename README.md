@@ -99,7 +99,10 @@ A verificação (`src/server/services/link-health.ts`) usa `HEAD` com fallback p
 | `GET` | `/api/v1/collections` | coleções visíveis em ordem de árvore, com `path` (“Development / Frontend”) |
 | `GET` | `/api/v1/tags` | nomes das tags, mais usadas primeiro |
 | `GET` | `/api/v1/links/lookup?url=` | `{ link }` já salvo para a URL, ou `{ link: null }` |
-| `POST` | `/api/v1/links` | cria um link (`url`, `title?`, `description?`, `collectionId?`, `tags?`, `openBehavior?`); título, descrição, favicon e capa ausentes são buscados na página. Resposta `201 { link }` com `appUrl` (`/links?open=<id>`) |
+| `GET` | `/api/v1/links?q=&limit=` | links que combinam com a busca (mesma linguagem da biblioteca: `tag:`, `site:`, `in:`, `is:`…), os mais relevantes para você primeiro |
+| `POST` | `/api/v1/links` | cria um link (`url`, `title?`, `description?`, `notes?`, `collectionId?`, `tags?`, `openBehavior?`); título, descrição, favicon e capa ausentes são buscados na página. Sem `collectionId`, o link vai para a **Caixa de entrada**. Resposta `201 { link }` com `appUrl` (`/links?open=<id>`) |
+| `POST` | `/api/v1/links/:id/open` | registra que você abriu o link (alimenta “Para você” e o acesso rápido) |
+| `GET` | `/api/v1/home` | acesso rápido, links recentes, plans recentes e contadores (caixa de entrada, quebrados) — usado pela nova aba da extensão |
 
 ```bash
 curl -H "Authorization: Bearer $WAYPOINT_TOKEN" https://waypoint.example.com/api/v1/me

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Dialog as D } from "radix-ui";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Check, Copy, ExternalLink, Lock, Maximize2, PanelRight, Pencil, RefreshCw, Shield, Star, Timer, Waypoints, Workflow, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Lock, Maximize2, PanelRight, Pencil, RefreshCw, Shield, Star, Timer, Waypoints, Workflow, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/input";
 import { SiteIcon, TagChip } from "@/components/ui/misc";
@@ -16,11 +16,15 @@ import { recordOpen } from "./link-opener";
 import { checkedAgo, checkLinksNow, healthText, HealthMark, toHealthPatch } from "./health";
 import { applyRedirectAction } from "@/app/(app)/links/actions";
 import type { LinkDetail, LinkItem } from "./types";
+import { isTypingTarget } from "@/lib/dom";
 
 type Embed = { state: "checking" } | { state: "ok" } | { state: "blocked"; reason?: string };
 const LOAD_TIMEOUT_MS = 12_000;
 
 const dateFmt = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric" });
+
+/** Previous / next link of the list behind the preview (← → or the header arrows). */
+export type PreviewNav = { prev: string | null; next: string | null; index: number; total: number; go: (id: string) => void };
 
 export function LinkPreview({
   linkId,
@@ -28,12 +32,14 @@ export function LinkPreview({
   onClose,
   onEdit,
   onToggleStar,
+  nav,
 }: {
   linkId: string | null;
   initial?: LinkItem;
   onClose: () => void;
   onEdit: (link: LinkItem) => void;
   onToggleStar: (link: LinkItem) => Promise<boolean | null>;
+  nav?: PreviewNav;
 }) {
   const [mode, setMode] = React.useState<"modal" | "side">("modal");
   React.useEffect(() => setMode(getPref(PREF_PREVIEW_MODE, ["modal", "side"] as const, "modal")), []);
@@ -65,7 +71,17 @@ export function LinkPreview({
           )}
         >
           {shown && (
-            <PreviewBody key={shown.id} linkId={shown.id} initial={shown.initial} mode={mode} onToggleMode={toggleMode} onClose={onClose} onEdit={onEdit} onToggleStar={onToggleStar} />
+            <PreviewBody
+              key={shown.id}
+              linkId={shown.id}
+              initial={shown.initial}
+              mode={mode}
+              onToggleMode={toggleMode}
+              onClose={onClose}
+              onEdit={onEdit}
+              onToggleStar={onToggleStar}
+              nav={linkId ? nav : undefined}
+            />
           )}
         </D.Content>
       </D.Portal>
@@ -81,6 +97,7 @@ function PreviewBody({
   onClose,
   onEdit,
   onToggleStar,
+  nav,
 }: {
   linkId: string;
   initial?: LinkItem;
@@ -89,6 +106,7 @@ function PreviewBody({
   onClose: () => void;
   onEdit: (link: LinkItem) => void;
   onToggleStar: (link: LinkItem) => Promise<boolean | null>;
+  nav?: PreviewNav;
 }) {
   const [detail, setDetail] = React.useState<LinkDetail | null>(null);
   const [missing, setMissing] = React.useState(false);
@@ -99,6 +117,19 @@ function PreviewBody({
   const [starred, setStarred] = React.useState<boolean | null>(null);
   const [rev, setRev] = React.useState(0);
   const link = detail?.link ?? initial ?? null;
+
+  React.useEffect(() => {
+    if (!nav) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      const to = e.key === "ArrowLeft" ? nav.prev : e.key === "ArrowRight" ? nav.next : null;
+      if (!to) return;
+      e.preventDefault();
+      nav.go(to);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [nav]);
 
   React.useEffect(() => {
     const ctrl = new AbortController();
@@ -178,7 +209,24 @@ function PreviewBody({
           <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
         </div>
         <div className="flex-1" />
-        <Tooltip content={isStarred ? "Remover dos favoritos" : "Favoritar"}>
+        {nav && nav.total > 1 && (
+          <div className="flex items-center gap-0.5 max-sm:hidden">
+            <Tooltip content="Link anterior · ←">
+              <Button size="icon" variant="ghost" aria-label="Link anterior" disabled={!nav.prev} onClick={() => nav.prev && nav.go(nav.prev)}>
+                <ChevronLeft />
+              </Button>
+            </Tooltip>
+            <span className="min-w-[52px] text-center font-mono text-caption text-muted" aria-live="polite">
+              {nav.index + 1} / {nav.total}
+            </span>
+            <Tooltip content="Próximo link · →">
+              <Button size="icon" variant="ghost" aria-label="Próximo link" disabled={!nav.next} onClick={() => nav.next && nav.go(nav.next)}>
+                <ChevronRight />
+              </Button>
+            </Tooltip>
+          </div>
+        )}
+        <Tooltip content={isStarred ? "Remover estrela" : "Marcar com estrela"}>
           <Button
             size="icon"
             variant="ghost"
@@ -430,6 +478,12 @@ function InfoPanel({
   const parent = path.slice(0, -1).map((p) => p.name).join(" / ");
   return (
     <aside className={cn("scrollbar-thin flex flex-col gap-5 overflow-y-auto p-5", className)} aria-label="Detalhes do link">
+      {link.notes && (
+        <section className="flex flex-col gap-2">
+          <SectionLabel>Notas</SectionLabel>
+          <p className="whitespace-pre-wrap rounded-control border border-amber-line/60 bg-amber-bg/50 px-3 py-2.5 text-body leading-5 text-amber-ink">{link.notes}</p>
+        </section>
+      )}
       {link.description && (
         <section className="flex flex-col gap-2">
           <SectionLabel>Resumo</SectionLabel>

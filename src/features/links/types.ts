@@ -4,11 +4,11 @@ export type { LinkHealth, OpenBehavior, SummaryBehavior, Visibility };
 
 export type ViewMode = "cards" | "compact" | "list";
 export type SummaryMode = "default" | SummaryBehavior;
-export type Scope = "all" | "recent" | "starred" | "unsorted" | "broken" | "archived" | "shared";
+export type Scope = "all" | "inbox" | "recent" | "starred" | "unsorted" | "broken" | "archived" | "shared";
 export type SortMode = "manual" | "recent" | "title" | "opened" | "visited" | "foryou";
 
 export const VIEW_MODES: ViewMode[] = ["cards", "compact", "list"];
-export const SCOPES: Scope[] = ["all", "recent", "starred", "unsorted", "broken", "archived", "shared"];
+export const SCOPES: Scope[] = ["all", "inbox", "recent", "starred", "unsorted", "broken", "archived", "shared"];
 export const SORT_MODES: SortMode[] = ["manual", "foryou", "recent", "visited", "opened", "title"];
 
 /** Client-safe collection tree node (dates stripped). */
@@ -34,6 +34,10 @@ export type LinkItem = {
   domain: string;
   description: string | null;
   keywords: string | null;
+  /** Personal notes (separate from the page description). */
+  notes: string | null;
+  /** Waiting in the inbox for triage. */
+  inbox: boolean;
   favicon: string | null;
   coverImage: string | null;
   icon: string | null;
@@ -67,9 +71,9 @@ export type CurrentCollection = TreeNode & {
   path: { id: string; name: string }[];
 };
 
-export type TagCount = { name: string; count: number };
+export type TagCount = { name: string; count: number; color?: string | null };
 
-export type LibraryCounts = { all: number; starred: number; unsorted: number; archived: number; recent: number; shared: number; broken: number };
+export type LibraryCounts = { all: number; inbox: number; starred: number; unsorted: number; archived: number; recent: number; shared: number; broken: number };
 
 export type Backlink = { planId: string; planTitle: string; nodeId: string; nodeTitle: string | null };
 

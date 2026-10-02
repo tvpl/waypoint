@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { newId, normalizeTag } from "@/lib/utils";
-import { favoriteVisibleTo } from "./links";
+import { favoriteVisibleTo, reindexFavorites } from "./links";
 
 type Tx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 type Conn = ReturnType<typeof getDb> | Tx;
@@ -98,6 +98,22 @@ export function renameTag(workspaceId: string, tagId: string, name: string) {
   getDb()
     .update(schema.tags)
     .set({ name: normalizeTag(name) })
+    .where(and(eq(schema.tags.id, tagId), eq(schema.tags.workspaceId, workspaceId)))
+    .run();
+  // The search index stores tag names: refresh the links that carry this tag.
+  const ids = getDb()
+    .select({ id: schema.favoriteTags.favoriteId })
+    .from(schema.favoriteTags)
+    .where(eq(schema.favoriteTags.tagId, tagId))
+    .all()
+    .map((r) => r.id);
+  reindexFavorites(ids);
+}
+
+export function setTagColor(workspaceId: string, tagId: string, color: string | null) {
+  getDb()
+    .update(schema.tags)
+    .set({ color })
     .where(and(eq(schema.tags.id, tagId), eq(schema.tags.workspaceId, workspaceId)))
     .run();
 }

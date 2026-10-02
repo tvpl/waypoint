@@ -15,6 +15,7 @@ import {
   deleteCollectionAction,
   deleteSavedSearchAction,
   loadMoreLinksAction,
+  markTriagedAction,
   moveCollectionAction,
   moveLinksAction,
   toggleStarAction,
@@ -60,6 +61,8 @@ import {
   type ViewMode,
 } from "./types";
 import { overlayOpen } from "@/lib/dom";
+import { DuplicatesDialog } from "./duplicates-dialog";
+import { TriageDialog } from "./triage-dialog";
 
 export type LibraryProps = {
   tree: TreeNode[];
@@ -91,6 +94,7 @@ export type LibraryProps = {
 
 const SCOPE_COPY: Record<Scope, { title: string; subtitle: string }> = {
   all: { title: "Todos os links", subtitle: "Tudo o que você salvou neste workspace." },
+  inbox: { title: "Caixa de entrada", subtitle: "O que você salvou pela extensão ou pela API e ainda não organizou. Use Triar para decidir rápido." },
   recent: { title: "Recentes", subtitle: "Links que você abriu, do mais recente ao mais antigo." },
   starred: { title: "Favoritos", subtitle: "Os links que você marcou com estrela." },
   unsorted: { title: "Sem coleção", subtitle: "Links que ainda não estão em nenhuma coleção." },
@@ -102,6 +106,7 @@ const SCOPE_COPY: Record<Scope, { title: string; subtitle: string }> = {
 type Op =
   | { type: "patch"; ids: string[]; patch: Partial<LinkItem> }
   | { type: "addTag"; ids: string[]; tag: string }
+  | { type: "removeTag"; ids: string[]; tag: string }
   | { type: "remove"; ids: string[] }
   | { type: "order"; ids: string[] };
 
@@ -109,6 +114,7 @@ function reduce(state: LinkItem[], op: Op): LinkItem[] {
   if (op.type === "remove") return state.filter((l) => !op.ids.includes(l.id));
   if (op.type === "patch") return state.map((l) => (op.ids.includes(l.id) ? { ...l, ...op.patch } : l));
   if (op.type === "addTag") return state.map((l) => (op.ids.includes(l.id) && !l.tags.includes(op.tag) ? { ...l, tags: [...l.tags, op.tag] } : l));
+  if (op.type === "removeTag") return state.map((l) => (op.ids.includes(l.id) ? { ...l, tags: l.tags.filter((t) => t !== op.tag) } : l));
   const byId = new Map(state.map((l) => [l.id, l]));
   return op.ids.map((id) => byId.get(id)!).filter(Boolean);
 }
@@ -161,6 +167,7 @@ export function LinksLibrary(props: LibraryProps) {
     return items.filter((l) => matchesLinkQuery(l, parsedLive));
   }, [items, liveQ, q, parsedLive]);
   const highlight = React.useMemo(() => highlightTerms(parsedLive), [parsedLive]);
+  const tagColors = React.useMemo(() => new Map(tags.filter((t) => t.color).map((t) => [t.name, t.color!])), [tags]);
 
   const [linkDialog, setLinkDialog] = React.useState<LinkDialogState>(null);
   const [colDialog, setColDialog] = React.useState<CollectionDialogState>(null);
@@ -175,6 +182,8 @@ export function LinksLibrary(props: LibraryProps) {
   const [summary, setSummary] = React.useState<SummaryMode>("default");
   const [externalOver, setExternalOver] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
+  const [dupesOpen, setDupesOpen] = React.useState(false);
+  const [triageOpen, setTriageOpen] = React.useState(false);
   const spKey = sp.toString();
   // the phone drawer closes whenever the library navigates
   React.useEffect(() => setDrawer(false), [spKey]);
@@ -352,7 +361,8 @@ export function LinksLibrary(props: LibraryProps) {
   const moveLinks = React.useCallback(
     (ids: string[], collectionId: string | null) => {
       if (!ids.length) return;
-      const leaves = (current && collectionId !== current.id) || (!current && scope === "unsorted" && collectionId !== null);
+      const leaves =
+        (current && collectionId !== current.id) || (!current && (scope === "unsorted" || scope === "inbox") && collectionId !== null);
       const n = ids.length;
       run(
         leaves ? { type: "remove", ids } : { type: "patch", ids, patch: { collectionId, collectionName: collectionId ? nameOf(collectionId) : null } },
@@ -382,26 +392,36 @@ export function LinksLibrary(props: LibraryProps) {
     [run],
   );
 
+  // Delete without a confirmation step: the links are archived right away and only
+  // deleted when the "Desfazer" toast goes away (closing the tab leaves them archived).
   const remove = React.useCallback(
     (ids: string[]) => {
       const n = ids.length;
-      setConfirm({
-        title: n === 1 ? "Excluir link?" : `Excluir ${n} links?`,
-        description: (
-          <>
-            {n === 1 ? "O link será excluído" : "Os links serão excluídos"} permanentemente. Blocos de plans que apontam para {n === 1 ? "ele" : "eles"} deixam de
-            encontrá-{n === 1 ? "lo" : "los"} na biblioteca. Se quiser apenas tirar da frente, prefira <strong>Arquivar</strong>.
-          </>
-        ),
-        confirmLabel: "Excluir",
-        danger: true,
-        run: async () => {
-          await run({ type: "remove", ids }, () => bulkLinksAction({ op: "delete", ids }), n === 1 ? "Link excluído" : `${n} links excluídos`);
-          setSelected(new Set());
+      let undone = false;
+      let finalized = false;
+      const wasArchived = archivedScope;
+      run({ type: "remove", ids }, () => (wasArchived ? Promise.resolve({ ok: true }) : bulkLinksAction({ op: "archive", ids, archived: true })));
+      setSelected(new Set());
+      const finalize = () => {
+        if (undone || finalized) return;
+        finalized = true;
+        bulkLinksAction({ op: "delete", ids }).then((r) => !r.ok && toast.error(r.error));
+      };
+      toast(n === 1 ? "Link excluído" : `${n} links excluídos`, {
+        duration: 7000,
+        description: "Blocos de plans que apontavam para eles deixam de encontrá-los.",
+        action: {
+          label: "Desfazer",
+          onClick: () => {
+            undone = true;
+            (wasArchived ? Promise.resolve({ ok: true as const }) : bulkLinksAction({ op: "archive", ids, archived: false })).then(() => router.refresh());
+          },
         },
+        onAutoClose: finalize,
+        onDismiss: finalize,
       });
     },
-    [run],
+    [run, archivedScope, setSelected, router],
   );
 
   const star = React.useCallback(
@@ -474,6 +494,7 @@ export function LinksLibrary(props: LibraryProps) {
     toggleSelect,
     pin,
     highlight,
+    tagColor: (t) => tagColors.get(t) ?? null,
     summaryFor: (l) => (summary === "default" ? l.summaryBehavior : summary),
     reorderable,
     dropOnLink,
@@ -498,7 +519,7 @@ export function LinksLibrary(props: LibraryProps) {
         `URL atualizada para ${shortUrl(url)}`,
       );
     },
-  }), [canEdit, archivedScope, selection, toggleSelect, pin, highlight, summary, reorderable, dropOnLink, star, archive, remove, activeTags, toggleTag, navigate, sort, checkLinks, current, scope, run]);
+  }), [canEdit, archivedScope, selection, toggleSelect, pin, highlight, tagColors, summary, reorderable, dropOnLink, star, archive, remove, activeTags, toggleTag, navigate, sort, checkLinks, current, scope, run]);
 
   keyCtx.current = { visible, api };
 
@@ -590,6 +611,17 @@ export function LinksLibrary(props: LibraryProps) {
     ? { title: savedSearch.name, subtitle: `Busca salva · ${savedSearch.query}` }
     : SCOPE_COPY[scope];
   const pinnedSet = React.useMemo(() => new Set(props.pinned), [props.pinned]);
+  const previewNav = React.useMemo(() => {
+    const at = openId ? visible.findIndex((l) => l.id === openId) : -1;
+    if (at < 0) return undefined;
+    return {
+      prev: visible[at - 1]?.id ?? null,
+      next: visible[at + 1]?.id ?? null,
+      index: at,
+      total: visible.length,
+      go: (id: string) => navigate({ open: id }),
+    };
+  }, [openId, visible, navigate]);
   const childrenOf = React.useCallback((id: string | null) => (id ? (flat.find((n) => n.id === id)?.children ?? []) : tree), [flat, tree]);
   const collectionNames = React.useMemo(() => flat.map((n) => n.name), [flat]);
   const domains = React.useMemo(() => {
@@ -704,6 +736,7 @@ export function LinksLibrary(props: LibraryProps) {
                 onCheckHealth={() => handlers.checkHealth(current)}
                 onEnrich={() => enrich({ collectionId: current?.id ?? null, name: current?.name })}
                 childrenOf={childrenOf}
+                onDuplicates={() => setDupesOpen(true)}
                 onOpenCollections={() => setDrawer(true)}
                 onAdd={() => openAdd()}
               />
@@ -742,6 +775,26 @@ export function LinksLibrary(props: LibraryProps) {
                     }
                   }}
                 />
+              )}
+
+              {!current && scope === "inbox" && canEdit && visible.length > 0 && (
+                <div className="-mt-1 flex flex-wrap items-center gap-3 rounded-card border border-accent-line bg-accent-soft/50 px-4 py-3">
+                  <span className="inline-flex size-9 items-center justify-center rounded-control bg-accent text-white">
+                    <Inbox className="size-[18px]" aria-hidden />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-body font-semibold text-accent-ink">
+                      {visible.length} {visible.length === 1 ? "link esperando" : "links esperando"}
+                    </span>
+                    <span className="text-caption text-muted">Um de cada vez: 1–9 move para a coleção sugerida, ↵ deixa como está, a arquiva.</span>
+                  </span>
+                  <Button variant="primary" onClick={() => setTriageOpen(true)}>
+                    Triar agora
+                  </Button>
+                  <Button variant="ghost" onClick={() => run({ type: "remove", ids: visible.map((l) => l.id) }, () => markTriagedAction(visible.map((l) => l.id)), "Caixa de entrada limpa")}>
+                    Marcar tudo como visto
+                  </Button>
+                </div>
               )}
 
               {savedSearch && savedSearch.query !== q.trim() && q.trim() && (
@@ -829,6 +882,19 @@ export function LinksLibrary(props: LibraryProps) {
             }}
             onArchive={() => archive([...selected], !archivedScope)}
             onCheck={() => checkLinks([...selected])}
+            selectedTags={[...new Set(visible.filter((l) => selected.has(l.id)).flatMap((l) => l.tags))].sort()}
+            onRemoveTag={(tag) => {
+              const ids = [...selected];
+              run({ type: "removeTag", ids, tag }, () => bulkLinksAction({ op: "removeTag", ids, tag }), `#${tag} removida`);
+            }}
+            onStar={(on) => {
+              const ids = [...selected];
+              run({ type: "patch", ids, patch: { starred: on } }, () => bulkLinksAction({ op: "star", ids, on }), on ? "Estrelas adicionadas" : "Estrelas removidas");
+            }}
+            onOpenBehavior={(value) => {
+              const ids = [...selected];
+              run({ type: "patch", ids, patch: { openBehavior: value } }, () => bulkLinksAction({ op: "openBehavior", ids, value }), "Comportamento ao abrir atualizado");
+            }}
             onDelete={() => remove([...selected])}
             onClear={() => setSelected(new Set())}
           />
@@ -840,6 +906,7 @@ export function LinksLibrary(props: LibraryProps) {
           onClose={() => navigate({ open: null })}
           onEdit={(l) => setLinkDialog({ mode: "edit", link: l })}
           onToggleStar={star}
+          nav={previewNav}
         />
         {canEdit && <LinkDialog state={linkDialog} onClose={() => setLinkDialog(null)} tree={tree} tags={tags} />}
         {canEdit && (
@@ -847,6 +914,21 @@ export function LinksLibrary(props: LibraryProps) {
         )}
         {canEdit && <ShareDialog node={shareNode} initialToken={shareNode && current?.id === shareNode.id ? current.shareToken : null} onClose={() => setShareNode(null)} />}
         <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
+        {canEdit && <DuplicatesDialog open={dupesOpen} onClose={() => setDupesOpen(false)} />}
+        {canEdit && (
+          <TriageDialog
+            open={triageOpen}
+            onClose={() => setTriageOpen(false)}
+            links={visible}
+            tree={tree}
+            handlers={{
+              file: (l, collectionId) => moveLinks([l.id], collectionId),
+              archive: (l) => archive([l.id], true),
+              done: (l) => void run({ type: "remove", ids: [l.id] }, () => markTriagedAction([l.id])),
+              star,
+            }}
+          />
+        )}
       </LinkOpenerProvider>
     </LibraryContext.Provider>
   );
@@ -1013,6 +1095,7 @@ function Empty({
   }
   const map: Record<Scope, { icon: React.ReactNode; title: string; description: string }> = {
     all: { icon: <Link2 />, title: "Nenhum link", description: "" },
+    inbox: { icon: <Inbox />, title: "Caixa de entrada vazia", description: "Links salvos pela extensão (sem coleção) chegam aqui para você organizar com calma." },
     recent: { icon: <Clock />, title: "Nada aberto ainda", description: "Os links que você abrir aparecem aqui, do mais recente para o mais antigo." },
     starred: { icon: <Star />, title: "Nenhum favorito ainda", description: "Marque links com a estrela para encontrá-los aqui rapidamente." },
     unsorted: { icon: <Inbox />, title: "Tudo organizado", description: "Todos os links estão em alguma coleção." },

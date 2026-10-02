@@ -5,6 +5,7 @@ import {
   Archive,
   ChevronRight,
   Clock,
+  FolderMinus,
   FolderPlus,
   Inbox,
   LayoutGrid,
@@ -41,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
-import { CollectionGlyph } from "./collection-style";
+import { CollectionGlyph, tagTint } from "./collection-style";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { getJson, PREF_EXPANDED, setJson } from "./prefs";
 import { savedSearchHref, type LibraryCounts, type SavedSearchItem, type Scope, type TagCount, type TreeNode } from "./types";
@@ -155,9 +156,10 @@ export function CollectionsPanel({
 
   const quick: { scope: Scope; label: string; icon: React.ReactNode; count?: number; href: string }[] = [
     { scope: "all", label: "Todos", icon: <LayoutGrid />, count: counts.all, href: "/links" },
+    { scope: "inbox", label: "Caixa de entrada", icon: <Inbox />, count: counts.inbox || undefined, href: "/links?scope=inbox" },
     { scope: "recent", label: "Recentes", icon: <Clock />, href: "/links?scope=recent" },
     { scope: "starred", label: "Com estrela", icon: <Star />, count: counts.starred, href: "/links?scope=starred" },
-    { scope: "unsorted", label: "Sem coleção", icon: <Inbox />, count: counts.unsorted, href: "/links?scope=unsorted" },
+    { scope: "unsorted", label: "Sem coleção", icon: <FolderMinus />, count: counts.unsorted, href: "/links?scope=unsorted" },
     { scope: "broken", label: "Quebrados", icon: <Unlink />, count: counts.broken || undefined, href: "/links?scope=broken" },
     { scope: "shared", label: "Compartilhados", icon: <Users />, count: counts.shared || undefined, href: "/links?scope=shared" },
     { scope: "archived", label: "Arquivados", icon: <Archive />, count: counts.archived || undefined, href: "/links?scope=archived" },
@@ -215,7 +217,12 @@ export function CollectionsPanel({
                 {q.icon}
                 <span className="flex-1">{q.label}</span>
                 {q.count != null && (
-                  <span className={cn("text-xs font-normal", q.scope === "broken" ? "font-medium text-danger" : "text-muted")}>
+                  <span
+                    className={cn(
+                      "text-xs font-normal",
+                      q.scope === "broken" ? "font-medium text-danger" : q.scope === "inbox" ? "rounded-full bg-accent px-1.5 font-semibold text-white" : "text-muted",
+                    )}
+                  >
                     {q.scope === "broken" && <span className="sr-only">: </span>}
                     {q.count}
                   </span>
@@ -353,9 +360,14 @@ export function CollectionsPanel({
                     href={handlers.tagHref(t.name)}
                     aria-pressed={on}
                     title={`${t.count} ${t.count === 1 ? "link" : "links"}`}
+                    style={on ? undefined : tagTint(t.color)}
                     className={cn(
                       "rounded-full px-2 py-0.5 text-xs",
-                      on ? "border border-accent-line bg-accent-soft font-medium text-accent-ink" : "bg-subtle text-ink-2 hover:bg-hover hover:text-ink",
+                      on
+                        ? "border border-accent-line bg-accent-soft font-medium text-accent-ink"
+                        : t.color
+                          ? "wp-tint font-medium hover:brightness-95"
+                          : "bg-subtle text-ink-2 hover:bg-hover hover:text-ink",
                     )}
                   >
                     #{t.name}

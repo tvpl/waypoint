@@ -12,7 +12,7 @@ import type { TreeNode } from "./types";
 import { useEnrichRun } from "./enrich";
 
 type Preview = { folders: number; links: number; topFolders: string[] };
-type Result = { collections: number; links: number; collectionId: string | null };
+type Result = { collections: number; links: number; skipped: number; collectionId: string | null };
 
 const BROWSERS: { name: string; steps: string }[] = [
   { name: "Chrome", steps: "Menu ⋮ → Favoritos e listas → Gerenciador de favoritos (Ctrl+Shift+O) → ⋮ no canto → Exportar favoritos." },
@@ -33,6 +33,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
   const [error, setError] = React.useState<string | null>(null);
   const [parentId, setParentId] = React.useState<string | null>(null);
   const [wrap, setWrap] = React.useState(true);
+  const [skipDuplicates, setSkipDuplicates] = React.useState(true);
   const [wrapName, setWrapName] = React.useState(() => `Favoritos importados — ${new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short" }).format(new Date())}`);
   const [tag, setTag] = React.useState("");
   const [result, setResult] = React.useState<Result | null>(null);
@@ -69,6 +70,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
       body.set("wrapName", wrapName);
     }
     if (tag.trim()) body.set("tag", tag);
+    body.set("skipDuplicates", skipDuplicates ? "1" : "0");
     const res = await fetch("/api/links/import", { method: "POST", body }).catch(() => null);
     const json = (await res?.json().catch(() => null)) as (Result & { error?: string }) | null;
     setImporting(false);
@@ -117,6 +119,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
                   {result.links} {result.links === 1 ? "link importado" : "links importados"} em {result.collections}{" "}
                   {result.collections === 1 ? "nova coleção" : "novas coleções"}
                   {wrap ? ` (mais a coleção “${wrapName}”)` : ""}.
+                  {result.skipped > 0 && ` ${result.skipped} ${result.skipped === 1 ? "página já existia e foi pulada" : "páginas já existiam e foram puladas"}.`}
                 </p>
                 <div className="flex gap-2">
                   <Button asChild variant="primary">
@@ -188,13 +191,18 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
                         Agrupar tudo em uma nova coleção
                       </label>
                       {wrap && <Input aria-label="Nome da nova coleção" value={wrapName} onChange={(e) => setWrapName(e.target.value)} className="h-[38px] max-w-md" />}
+                      <label className="flex items-center gap-2 text-body text-ink-2">
+                        <input type="checkbox" checked={skipDuplicates} onChange={(e) => setSkipDuplicates(e.target.checked)} className="m-0 accent-[var(--accent)]" />
+                        Pular páginas que já estão na biblioteca
+                        <span className="text-xs text-muted">(mesmo com www., http/https ou utm_ diferentes)</span>
+                      </label>
                     </div>
                     <div className="flex items-center gap-3">
                       <Button variant="primary" onClick={runImport} disabled={importing || preview.links === 0}>
                         {importing ? <Loader2 className="animate-spin" /> : <Upload />}
                         Importar {preview.links} {preview.links === 1 ? "link" : "links"}
                       </Button>
-                      <span className="text-xs text-muted">Links duplicados não são mesclados — revise depois em “Todos”.</span>
+                      <span className="text-xs text-muted">Ícones, capas e descrições são buscados logo depois, em segundo plano.</span>
                     </div>
                   </div>
                 )}

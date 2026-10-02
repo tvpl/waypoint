@@ -1,12 +1,13 @@
 "use client";
 import * as React from "react";
-import { Archive, ArchiveRestore, FolderInput, Hash, ShieldCheck, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, FolderInput, Hash, ShieldCheck, Trash2, X, MoreHorizontal, Star, StarOff, ExternalLink, PanelRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { normalizeTag } from "@/lib/utils";
 import { CollectionList } from "./collection-picker";
-import type { TagCount, TreeNode } from "./types";
+import type { OpenBehavior, TagCount, TreeNode } from "./types";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/menu";
 
 export function MoveDialog({
   ids,
@@ -50,6 +51,10 @@ export function BulkBar({
   onSelectAll,
   allSelected,
   onCheck,
+  selectedTags,
+  onRemoveTag,
+  onStar,
+  onOpenBehavior,
 }: {
   count: number;
   archivedScope: boolean;
@@ -62,6 +67,11 @@ export function BulkBar({
   onSelectAll: () => void;
   allSelected: boolean;
   onCheck?: () => void;
+  /** Tags present in the selection (for "Remover tag"). */
+  selectedTags: string[];
+  onRemoveTag: (tag: string) => void;
+  onStar: (on: boolean) => void;
+  onOpenBehavior: (value: OpenBehavior) => void;
 }) {
   const [tagOpen, setTagOpen] = React.useState(false);
   const [tag, setTag] = React.useState("");
@@ -142,6 +152,46 @@ export function BulkBar({
         {archivedScope ? <ArchiveRestore /> : <Archive />}
         <span className="max-sm:hidden">{archivedScope ? "Restaurar" : "Arquivar"}</span>
       </Button>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="ghost" aria-label="Mais ações em lote" className="max-sm:px-2">
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="end" className="min-w-[220px]">
+          <DropdownMenuItem onSelect={() => onStar(true)}>
+            <Star /> Marcar com estrela
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onStar(false)}>
+            <StarOff /> Tirar estrela
+          </DropdownMenuItem>
+          {selectedTags.length > 0 && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Hash /> Remover tag
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-[280px] overflow-y-auto">
+                {selectedTags.map((t) => (
+                  <DropdownMenuItem key={t} onSelect={() => onRemoveTag(t)}>
+                    #{t}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Ao abrir</DropdownMenuLabel>
+          <DropdownMenuItem onSelect={() => onOpenBehavior("new_tab")}>
+            <ExternalLink /> Nova aba
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpenBehavior("preview")}>
+            <PanelRight /> Preview interno
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpenBehavior("ask")}>
+            <Sparkles /> Perguntar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Button size="sm" variant="ghost" onClick={onDelete} aria-label="Excluir" className="text-danger hover:bg-danger-soft hover:text-danger max-sm:px-2">
         <Trash2 />
         <span className="max-sm:hidden">Excluir</span>

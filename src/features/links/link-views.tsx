@@ -25,7 +25,7 @@ import { useLibrary } from "./library-context";
 import { Cover } from "./cover";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { HealthDot, shortUrl } from "./health";
-import type { LinkItem, ViewMode } from "./types";
+import type { LinkItem, SortMode, ViewMode } from "./types";
 
 // ------------------------------------------------------------------ shared bits
 
@@ -33,7 +33,7 @@ function useLinkHandlers(link: LinkItem) {
   const lib = useLibrary();
   const opener = useLinkOpener();
   const onClick = (e: React.MouseEvent) => {
-    if (lib.selectionMode || e.shiftKey) {
+    if (lib.canEdit && (lib.selectionMode || e.shiftKey)) {
       e.preventDefault();
       lib.toggleSelect(link.id, { range: e.shiftKey });
       return;
@@ -83,6 +83,8 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
 function Checkbox({ link, className }: { link: LinkItem; className?: string }) {
   const lib = useLibrary();
   const on = lib.selected.has(link.id);
+  // Selection only exists to run bulk edits, which viewers can't do.
+  if (!lib.canEdit) return null;
   return (
     <input
       type="checkbox"
@@ -326,7 +328,7 @@ function CompactRow({ link }: { link: LinkItem }) {
     >
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[6px]" : "-bottom-[6px]")} />}
       <span className="relative inline-flex">
-        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", "group-hover:opacity-30")} />
+        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
         <span className="absolute inset-0 flex items-center justify-center">
           <Checkbox link={link} />
         </span>
@@ -383,6 +385,9 @@ function CompactRow({ link }: { link: LinkItem }) {
 
 // ------------------------------------------------------------------ list
 
+/** Sorts based on this user's opens show "last opened" in the date column instead of "added". */
+const byOpen = (s: SortMode) => s === "visited" || s === "opened" || s === "foryou";
+
 const listCols = "grid grid-cols-[minmax(0,1fr)_108px] gap-3 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_130px] md:gap-4";
 
 function ListRow({ link }: { link: LinkItem }) {
@@ -403,7 +408,7 @@ function ListRow({ link }: { link: LinkItem }) {
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[2px]" : "-bottom-[2px]")} />}
       <span role="cell" className="flex min-w-0 items-center gap-3">
         <span className="relative inline-flex">
-          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", "group-hover:opacity-30")} />
+          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
           <span className="absolute inset-0 flex items-center justify-center">
             <Checkbox link={link} />
           </span>
@@ -441,7 +446,9 @@ function ListRow({ link }: { link: LinkItem }) {
         <Tags link={link} max={3} />
       </span>
       <span role="cell" className="flex items-center justify-between gap-2 text-muted">
-        <span suppressHydrationWarning className="whitespace-nowrap">{timeAgo(link.updatedAt)}</span>
+        <span suppressHydrationWarning className="whitespace-nowrap">
+          {byOpen(lib.sort) ? (link.myLastOpenedAt ? timeAgo(link.myLastOpenedAt) : "nunca") : timeAgo(link.createdAt)}
+        </span>
         <span className="relative z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100">
           <LinkMenu
             link={link}
@@ -459,7 +466,7 @@ function ListRow({ link }: { link: LinkItem }) {
 
 function ListView({ links }: { links: LinkItem[] }) {
   const lib = useLibrary();
-  const head = (label: string, sort?: "title" | "recent") =>
+  const head = (label: string, sort?: "title" | "recent" | "visited") =>
     sort ? (
       <button
         type="button"
@@ -479,7 +486,7 @@ function ListView({ links }: { links: LinkItem[] }) {
         <span role="columnheader">{head("Nome", "title")}</span>
         <span role="columnheader" className="max-md:hidden">Coleção</span>
         <span role="columnheader" className="max-md:hidden">Tags</span>
-        <span role="columnheader">{head("Atualizado", "recent")}</span>
+        <span role="columnheader">{byOpen(lib.sort) ? head("Aberto", "visited") : head("Adicionado", "recent")}</span>
       </div>
       {links.map((l) => (
         <ListRow key={l.id} link={l} />

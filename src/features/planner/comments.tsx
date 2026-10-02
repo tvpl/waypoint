@@ -15,7 +15,7 @@ import { COMMENT_MAX_LENGTH } from "@/domain/comments";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
-import { cn, formatDateTime, timeAgo } from "@/lib/utils";
+import { cn, formatDateTime, scrollBehavior, timeAgo } from "@/lib/utils";
 import {
   createCommentAction,
   deleteCommentAction,
@@ -407,7 +407,7 @@ export function CommentsPanel({
     const t = setTimeout(() => {
       if (target.nodeId) {
         const group = listRef.current?.querySelector<HTMLElement>(`[data-node-group="${CSS.escape(target.nodeId)}"]`);
-        group?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        group?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
         composerRef.current?.focus();
       } else panelRef.current?.querySelector<HTMLElement>("[data-panel-title]")?.focus();
     }, 60);
@@ -444,7 +444,7 @@ export function CommentsPanel({
       requestAnimationFrame(() => {
         const key = composeNode ?? "";
         const group = listRef.current?.querySelector<HTMLElement>(`[data-node-group="${CSS.escape(key)}"]`);
-        group?.lastElementChild?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        group?.lastElementChild?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
       });
     }
   };

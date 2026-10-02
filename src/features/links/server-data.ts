@@ -68,7 +68,15 @@ export function flatNodes(nodes: TreeNode[]): TreeNode[] {
   return nodes.flatMap((n) => [n, ...flatNodes(n.children)]);
 }
 
-export function toLinkItem(f: FavoriteView | (typeof schema.favorites.$inferSelect & { tags: string[]; starred: boolean; collectionName: string | null })): LinkItem {
+type LinkSource = typeof schema.favorites.$inferSelect & {
+  tags: string[];
+  starred: boolean;
+  collectionName: string | null;
+  myOpenCount?: number;
+  myLastOpenedAt?: Date | null;
+};
+
+export function toLinkItem(f: FavoriteView | LinkSource): LinkItem {
   return {
     id: f.id,
     title: f.title,
@@ -87,6 +95,8 @@ export function toLinkItem(f: FavoriteView | (typeof schema.favorites.$inferSele
     starred: f.starred,
     openCount: f.openCount,
     lastOpenedAt: f.lastOpenedAt ? f.lastOpenedAt.getTime() : null,
+    myOpenCount: f.myOpenCount ?? 0,
+    myLastOpenedAt: f.myLastOpenedAt ? f.myLastOpenedAt.getTime() : null,
     createdAt: f.createdAt.getTime(),
     updatedAt: f.updatedAt.getTime(),
     archived: f.archivedAt != null,
@@ -108,12 +118,12 @@ export function libraryCounts(workspaceId: string, userId: string, hidden: Set<s
         sum(case when f.archived_at is null then 1 else 0 end) as "all",
         sum(case when f.archived_at is null and f.collection_id is null then 1 else 0 end) as unsorted,
         sum(case when f.archived_at is not null then 1 else 0 end) as archived,
-        sum(case when f.archived_at is null and f.last_opened_at is not null then 1 else 0 end) as recent,
+        sum(case when f.archived_at is null and exists (select 1 from recents r where r.user_id = ? and r.entity_type = 'favorite' and r.entity_id = f.id) then 1 else 0 end) as recent,
         sum(case when f.archived_at is null and f.health_status in ('broken', 'unreachable') then 1 else 0 end) as broken,
         sum(case when f.archived_at is null and exists (select 1 from user_marks m where m.user_id = ? and m.entity_type = 'favorite' and m.entity_id = f.id and m.mark = 'star') then 1 else 0 end) as starred
        from favorites f where f.workspace_id = ? ${notHidden}`,
     )
-    .get(userId, workspaceId, ...hiddenIds) as Record<string, number | null>;
+    .get(userId, userId, workspaceId, ...hiddenIds) as Record<string, number | null>;
   return {
     all: row.all ?? 0,
     unsorted: row.unsorted ?? 0,

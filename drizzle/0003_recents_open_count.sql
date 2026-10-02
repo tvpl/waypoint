@@ -1,0 +1,1 @@
+ALTER TABLE `recents` ADD `open_count` integer DEFAULT 1 NOT NULL;

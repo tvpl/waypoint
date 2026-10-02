@@ -403,7 +403,28 @@ function indexFavorite(id: string) {
   });
 }
 
-export type FavoriteView = FavoriteRow & { tags: string[]; starred: boolean; collectionName: string | null };
+export type FavoriteView = FavoriteRow & {
+  tags: string[];
+  starred: boolean;
+  collectionName: string | null;
+  /** This user's own opens (the favorite's openCount/lastOpenedAt are workspace-wide). */
+  myOpenCount: number;
+  myLastOpenedAt: Date | null;
+};
+
+export type FavoriteSort = "manual" | "recent" | "title" | "opened" | "visited" | "foryou";
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Frecency of a link for one user: opens weighted by how recently the last one happened,
+ * count / (1 + weeks²) — a week-old link counts half, a month-old one about a twentieth.
+ * Links never opened score 0.
+ */
+function frecencySql(now = Date.now()): SQL {
+  const weeks = sql`((${now} - ${schema.recents.openedAt}) * 1.0 / ${WEEK_MS})`;
+  return sql`coalesce(${schema.recents.openCount} * 1.0 / (1 + ${weeks} * ${weeks}), 0)`;
+}
 
 export type FavoriteFilter = {
   collectionId?: string | null;
@@ -412,7 +433,7 @@ export type FavoriteFilter = {
   scope?: "all" | "recent" | "starred" | "unsorted" | "archived" | "broken";
   tags?: string[];
   q?: string;
-  sort?: "manual" | "recent" | "title" | "opened";
+  sort?: FavoriteSort;
   limit?: number;
 };
 
@@ -428,7 +449,7 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
     );
   }
   if (f.scope === "unsorted") conds.push(isNull(schema.favorites.collectionId));
-  if (f.scope === "recent") conds.push(isNotNull(schema.favorites.lastOpenedAt));
+  if (f.scope === "recent") conds.push(isNotNull(schema.recents.openedAt));
   if (f.scope === "broken") conds.push(inArray(schema.favorites.healthStatus, ["broken", "unreachable"]));
   if (f.scope === "starred") {
     conds.push(
@@ -448,20 +469,34 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
       sql`(lower(${schema.favorites.title}) like ${like} or lower(coalesce(${schema.favorites.description}, '')) like ${like} or lower(${schema.favorites.url}) like ${like} or lower(coalesce(${schema.favorites.keywords}, '')) like ${like} or exists (select 1 from favorite_tags ft join tags tg on tg.id = ft.tag_id where ft.favorite_id = ${schema.favorites.id} and tg.name like ${like}))`,
     );
   }
-  const sort = f.sort ?? (f.scope === "recent" ? "opened" : f.collectionId ? "manual" : "recent");
-  const order =
+  const sort = f.sort ?? (f.scope === "recent" ? "visited" : f.collectionId ? "manual" : "recent");
+  const byCreated = desc(schema.favorites.createdAt);
+  const order: SQL[] =
     sort === "manual"
-      ? [asc(schema.favorites.sortOrder), desc(schema.favorites.createdAt)]
+      ? [asc(schema.favorites.sortOrder), byCreated]
       : sort === "title"
         ? [asc(sql`lower(${schema.favorites.title})`)]
         : sort === "opened"
-          ? [desc(schema.favorites.lastOpenedAt)]
-          : [desc(schema.favorites.createdAt)];
+          ? [sql`coalesce(${schema.recents.openCount}, 0) desc`, sql`${schema.recents.openedAt} desc nulls last`, byCreated]
+          : sort === "visited"
+            ? [sql`${schema.recents.openedAt} desc nulls last`, byCreated]
+            : sort === "foryou"
+              ? [sql`${frecencySql()} desc`, byCreated]
+              : [byCreated];
 
   const rows = db
-    .select({ fav: schema.favorites, collectionName: schema.collections.name })
+    .select({
+      fav: schema.favorites,
+      collectionName: schema.collections.name,
+      myOpenCount: schema.recents.openCount,
+      myLastOpenedAt: schema.recents.openedAt,
+    })
     .from(schema.favorites)
     .leftJoin(schema.collections, eq(schema.collections.id, schema.favorites.collectionId))
+    .leftJoin(
+      schema.recents,
+      and(eq(schema.recents.userId, userId), eq(schema.recents.entityType, "favorite"), eq(schema.recents.entityId, schema.favorites.id)),
+    )
     .where(and(...conds))
     .orderBy(...order)
     .limit(f.limit ?? 500)
@@ -485,7 +520,14 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
           .map((r) => r.id)
       : [],
   );
-  return rows.map((r) => ({ ...r.fav, tags: tagMap.get(r.fav.id) ?? [], starred: stars.has(r.fav.id), collectionName: r.collectionName }));
+  return rows.map((r) => ({
+    ...r.fav,
+    tags: tagMap.get(r.fav.id) ?? [],
+    starred: stars.has(r.fav.id),
+    collectionName: r.collectionName,
+    myOpenCount: r.myOpenCount ?? 0,
+    myLastOpenedAt: r.myLastOpenedAt ?? null,
+  }));
 }
 
 export function countFavorites(workspaceId: string) {
@@ -530,7 +572,7 @@ export function touchRecent(userId: string, entityType: "plan" | "collection" | 
     .values({ userId, entityType, entityId, openedAt })
     .onConflictDoUpdate({
       target: [schema.recents.userId, schema.recents.entityType, schema.recents.entityId],
-      set: { openedAt },
+      set: { openedAt, openCount: sql`${schema.recents.openCount} + 1` },
     })
     .run();
 }

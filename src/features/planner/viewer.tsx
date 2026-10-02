@@ -11,7 +11,7 @@ import { toFlowEdges, toFlowNodes, type PlanFlowNode } from "@/domain/canvas-ada
 import { Badge, TagChip } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, motionMs } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
@@ -159,7 +159,7 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
     const anc = ancestorsOf(doc, id);
     if (anc.length) setOverrides((o) => ({ ...o, ...Object.fromEntries(anc.map((a) => [a, false])) }));
     setHighlight(id);
-    const t = setTimeout(() => void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.25, duration: 500 }), 80);
+    const t = setTimeout(() => void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.25, duration: motionMs(500) }), 80);
     const h = setTimeout(() => setHighlight((cur) => (cur === id ? null : cur)), 4500);
     return () => {
       clearTimeout(t);
@@ -172,7 +172,7 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   useEffect(() => {
     if (!focusExists) return;
     const t = setTimeout(() => {
-      void rf.fitView({ nodes: [{ id: focusNodeId! }], padding: 0.8, maxZoom: 1.25, duration: 500 });
+      void rf.fitView({ nodes: [{ id: focusNodeId! }], padding: 0.8, maxZoom: 1.25, duration: motionMs(500) });
     }, 120);
     const h = setTimeout(() => setHighlight(null), 6000);
     return () => {

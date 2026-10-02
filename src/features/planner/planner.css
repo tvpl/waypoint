@@ -156,18 +156,29 @@
 }
 
 /* ---------------------------------------------------------------- edges */
+.wp-flow .react-flow__edge {
+  --wp-edge-ink: var(--wp-edge);
+}
+.wp-flow .react-flow__edge:hover {
+  --wp-edge-ink: color-mix(in srgb, var(--accent) 55%, var(--wp-edge));
+}
+.wp-view .react-flow__edge:hover {
+  --wp-edge-ink: var(--wp-edge);
+}
+.wp-flow .react-flow__edge.selected {
+  --wp-edge-ink: var(--accent);
+}
 .wp-flow .react-flow__edge .wp-edge-path {
-  stroke: var(--wp-edge);
+  stroke: var(--wp-edge-ink);
   transition: stroke 0.12s ease;
 }
-.wp-flow .react-flow__edge:hover .wp-edge-path {
-  stroke: color-mix(in srgb, var(--accent) 55%, var(--wp-edge));
-}
-.wp-view .react-flow__edge:hover .wp-edge-path {
-  stroke: var(--wp-edge);
-}
-.wp-flow .react-flow__edge.selected .wp-edge-path {
-  stroke: var(--accent);
+.wp-flow .react-flow__edge .wp-edge-arrow {
+  fill: var(--wp-edge-ink);
+  stroke: var(--wp-edge-ink);
+  stroke-width: 1.5;
+  transition:
+    fill 0.12s ease,
+    stroke 0.12s ease;
 }
 .wp-edge-label {
   position: absolute;

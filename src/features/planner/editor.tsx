@@ -35,7 +35,7 @@ import {
   type PlanFlowNode,
 } from "@/domain/canvas-adapter";
 import { Button } from "@/components/ui/button";
-import { cn, newId, timeAgo } from "@/lib/utils";
+import { cn, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { EditorContext, type EditorApi, type InspectorTab, type PlanMeta, type Tool } from "./editor-context";
 import { nodeTypes } from "./nodes";
@@ -462,7 +462,7 @@ function EditorShell(props: PlanEditorProps) {
       // let React Flow take the new positions before animating the viewport
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
-          void rf.fitView({ nodes: scoped ? sel.map((id) => ({ id })) : undefined, padding: scoped ? 0.35 : 0.15, maxZoom: 1, duration: 600 });
+          void rf.fitView({ nodes: scoped ? sel.map((id) => ({ id })) : undefined, padding: scoped ? 0.35 : 0.15, maxZoom: 1, duration: motionMs(600) });
         }),
       );
       toast.success(scoped ? "Seleção organizada" : "Plan organizado", {
@@ -526,7 +526,7 @@ function EditorShell(props: PlanEditorProps) {
   const focusNode = useCallback(
     (id: string) => {
       select([id]);
-      void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.2, duration: 300 });
+      void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.2, duration: motionMs(300) });
     },
     [rf, select],
   );

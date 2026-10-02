@@ -159,11 +159,63 @@
   background-size: 20px 20px;
 }
 
+/*
+ * Generated link covers and monograms. `--tint` is a soft fill and `--tint-ink` its
+ * accent (see monogramColors); in dark mode both are remixed toward the surface so
+ * covers don't glow on a dark page.
+ */
+@utility wp-tint {
+  background: var(--tint);
+  color: var(--tint-ink);
+  :where(.dark) & {
+    background: color-mix(in oklab, var(--tint-ink) 34%, var(--surface));
+    color: color-mix(in oklab, var(--tint) 88%, white);
+  }
+}
+
+@utility wp-cover {
+  --cover-base: var(--tint);
+  --cover-glow: color-mix(in oklab, var(--tint-ink) 30%, transparent);
+  --cover-light: rgb(255 255 255 / 0.7);
+  background:
+    radial-gradient(120% 90% at 12% 0%, var(--cover-light), transparent 55%),
+    radial-gradient(90% 120% at 100% 100%, var(--cover-glow), transparent 60%),
+    var(--cover-base);
+  color: var(--tint-ink);
+  :where(.dark) & {
+    --cover-base: color-mix(in oklab, var(--tint-ink) 26%, var(--surface));
+    --cover-glow: color-mix(in oklab, var(--tint-ink) 45%, transparent);
+    --cover-light: rgb(255 255 255 / 0.06);
+    color: color-mix(in oklab, var(--tint) 88%, white);
+  }
+}
+
+@utility wp-cover-tile {
+  background: rgb(255 255 255 / 0.9);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.8) inset,
+    0 10px 24px -8px color-mix(in oklab, var(--tint-ink) 45%, transparent),
+    0 2px 6px rgb(23 23 28 / 0.08);
+  :where(.dark) & {
+    background: color-mix(in oklab, var(--surface) 70%, var(--tint-ink));
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.08) inset,
+      0 10px 24px -8px rgb(0 0 0 / 0.5);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Spinners are small and signal progress: keep them turning, just slower. */
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
   }
 }

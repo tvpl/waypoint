@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getViewportForBounds, useReactFlow, useStore, type Rect } from "@xyflow/react";
 import { ChevronLeft, ChevronRight, Maximize, Minimize, X } from "lucide-react";
 import type { PlanDocument } from "@/domain/plan";
-import { cn } from "@/lib/utils";
+import { cn, motionMs } from "@/lib/utils";
 import { childrenMap } from "./doc-ops";
 import { PlanCanvasView } from "./viewer";
 import { activeIdsFor, presentationSteps, type PresentationStep } from "./presentation-steps";
@@ -280,7 +280,7 @@ function StageCamera({ step }: { step: PresentationStep }) {
     }
     // leave room for the bottom bar
     const vp = getViewportForBounds(bounds, width, height - 72, 0.1, maxZoom, padding);
-    void rf.setViewport({ ...vp, y: vp.y }, { duration: first.current ? 0 : ANIM_MS });
+    void rf.setViewport({ ...vp, y: vp.y }, { duration: first.current ? 0 : motionMs(ANIM_MS) });
     first.current = false;
   }, [step.nodeId, ready, width, height, rf]);
 

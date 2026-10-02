@@ -37,6 +37,7 @@ import { flatNodesClient } from "./tree-utils";
 import { checkLinksNow, healthText, shortUrl, useHealthRun } from "./health";
 import {
   VIEW_MODES,
+  SORT_MODES,
   VISIBILITY_LABEL,
   type CurrentCollection,
   type LibraryCounts,
@@ -72,7 +73,7 @@ export type LibraryProps = {
 
 const SCOPE_COPY: Record<Scope, { title: string; subtitle: string }> = {
   all: { title: "Todos os links", subtitle: "Tudo o que você salvou neste workspace." },
-  recent: { title: "Recentes", subtitle: "Links que você abriu por último." },
+  recent: { title: "Recentes", subtitle: "Links que você abriu, do mais recente ao mais antigo." },
   starred: { title: "Favoritos", subtitle: "Os links que você marcou com estrela." },
   unsorted: { title: "Sem coleção", subtitle: "Links que ainda não estão em nenhuma coleção." },
   broken: { title: "Links quebrados", subtitle: "Links que não responderam na última verificação. Corrija a URL, arquive ou exclua." },
@@ -474,7 +475,7 @@ export function LinksLibrary(props: LibraryProps) {
   const copy = SCOPE_COPY[scope];
 
   // ---------------------------------------------------------------- render
-  const sortOptions: SortMode[] = current || scope === "unsorted" ? ["manual", "recent", "title", "opened"] : ["recent", "title", "opened"];
+  const sortOptions: SortMode[] = SORT_MODES.filter((s) => s !== "manual" || !!current || scope === "unsorted");
   const empty = scope === "shared" && !current ? sharedCollections.length === 0 : items.length === 0;
 
   return (
@@ -658,26 +659,28 @@ export function LinksLibrary(props: LibraryProps) {
           </main>
         </div>
 
-        <BulkBar
-          count={selected.size}
-          archivedScope={archivedScope}
-          tags={tags}
-          allSelected={selected.size === items.length}
-          onSelectAll={() => setSelected(new Set(items.map((l) => l.id)))}
-          onMove={() => setMoveIds([...selected])}
-          onTag={(tag) => {
-            const ids = [...selected];
-            run(
-              { type: "addTag", ids, tag },
-              () => bulkLinksAction({ op: "addTag", ids, tag }),
-              `#${tag} adicionada a ${ids.length} ${ids.length === 1 ? "link" : "links"}`,
-            );
-          }}
-          onArchive={() => archive([...selected], !archivedScope)}
-          onCheck={canEdit ? () => checkLinks([...selected]) : undefined}
-          onDelete={() => remove([...selected])}
-          onClear={() => setSelected(new Set())}
-        />
+        {canEdit && (
+          <BulkBar
+            count={selected.size}
+            archivedScope={archivedScope}
+            tags={tags}
+            allSelected={selected.size === items.length}
+            onSelectAll={() => setSelected(new Set(items.map((l) => l.id)))}
+            onMove={() => setMoveIds([...selected])}
+            onTag={(tag) => {
+              const ids = [...selected];
+              run(
+                { type: "addTag", ids, tag },
+                () => bulkLinksAction({ op: "addTag", ids, tag }),
+                `#${tag} adicionada a ${ids.length} ${ids.length === 1 ? "link" : "links"}`,
+              );
+            }}
+            onArchive={() => archive([...selected], !archivedScope)}
+            onCheck={() => checkLinks([...selected])}
+            onDelete={() => remove([...selected])}
+            onClear={() => setSelected(new Set())}
+          />
+        )}
         {canEdit && <MoveDialog ids={moveIds} tree={tree} onClose={() => setMoveIds(null)} onMove={moveLinks} />}
         <LinkPreview
           linkId={openId}

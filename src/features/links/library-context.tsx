@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import type { LinkItem, SummaryBehavior } from "./types";
+import type { LinkItem, SortMode, SummaryBehavior } from "./types";
 
 export type LibraryApi = {
   canEdit: boolean;
@@ -18,12 +18,12 @@ export type LibraryApi = {
   archive: (ids: string[], archived: boolean) => void;
   remove: (ids: string[]) => void;
   filterTag: (tag: string) => void;
-  sortBy: (sort: "title" | "recent") => void;
+  sortBy: (sort: SortMode) => void;
   /** Re-checks links right away (editors). */
   checkLinks: (ids: string[]) => void;
   /** Replaces the URL of a redirecting link by its final URL (editors). */
   applyRedirect: (link: LinkItem) => void;
-  sort: string;
+  sort: SortMode;
 };
 
 export const LibraryContext = React.createContext<LibraryApi | null>(null);

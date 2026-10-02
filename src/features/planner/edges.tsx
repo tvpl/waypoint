@@ -1,9 +1,17 @@
 "use client";
 import { memo } from "react";
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps, type EdgeTypes } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, type EdgeProps, type EdgeTypes } from "@xyflow/react";
 import { EDGE_KINDS, type EdgeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE, type PlanFlowEdge } from "@/domain/canvas-adapter";
 import { cn } from "@/lib/utils";
+
+/** Direction (degrees) an edge travels when it enters a handle on each side of the target. */
+const ENTRY_ANGLE: Record<Position, number> = {
+  [Position.Left]: 0,
+  [Position.Top]: 90,
+  [Position.Right]: 180,
+  [Position.Bottom]: -90,
+};
 
 export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
   const kind: EdgeKind = p.data?.kind ?? "flow";
@@ -24,12 +32,21 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
       <BaseEdge
         id={p.id}
         path={path}
-        markerEnd={p.markerEnd}
         interactionWidth={18}
         className="wp-edge-path"
         style={{ strokeWidth: app.strokeWidth, strokeDasharray: app.dash, strokeLinecap: "round", strokeLinejoin: "round" }}
       />
       {app.double && <path d={path} fill="none" pointerEvents="none" style={{ stroke: "var(--wp-canvas-bg, var(--canvas))", strokeWidth: 1.5 }} />}
+      {/* Drawn here instead of an SVG <marker> (shared, one fixed color) so it follows hover, selection and theme. */}
+      {app.arrow && (
+        <path
+          d="M -9 -5 L 0 0 L -9 5 Z"
+          className="wp-edge-arrow"
+          pointerEvents="none"
+          strokeLinejoin="round"
+          transform={`translate(${p.targetX} ${p.targetY}) rotate(${ENTRY_ANGLE[p.targetPosition]})`}
+        />
+      )}
       {label && (
         <EdgeLabelRenderer>
           <div

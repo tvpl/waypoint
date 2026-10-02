@@ -5,11 +5,11 @@ export type { LinkHealth, OpenBehavior, SummaryBehavior, Visibility };
 export type ViewMode = "cards" | "compact" | "list";
 export type SummaryMode = "default" | SummaryBehavior;
 export type Scope = "all" | "recent" | "starred" | "unsorted" | "broken" | "archived" | "shared";
-export type SortMode = "manual" | "recent" | "title" | "opened";
+export type SortMode = "manual" | "recent" | "title" | "opened" | "visited" | "foryou";
 
 export const VIEW_MODES: ViewMode[] = ["cards", "compact", "list"];
 export const SCOPES: Scope[] = ["all", "recent", "starred", "unsorted", "broken", "archived", "shared"];
-export const SORT_MODES: SortMode[] = ["manual", "recent", "title", "opened"];
+export const SORT_MODES: SortMode[] = ["manual", "foryou", "recent", "visited", "opened", "title"];
 
 /** Client-safe collection tree node (dates stripped). */
 export type TreeNode = {
@@ -43,8 +43,12 @@ export type LinkItem = {
   collectionName: string | null;
   tags: string[];
   starred: boolean;
+  /** Workspace-wide opens. */
   openCount: number;
   lastOpenedAt: number | null;
+  /** This user's own opens. */
+  myOpenCount: number;
+  myLastOpenedAt: number | null;
   createdAt: number;
   updatedAt: number;
   archived: boolean;

@@ -8,7 +8,14 @@ import { Kbd, Segmented } from "@/components/ui/misc";
 import { cn } from "@/lib/utils";
 import type { SortMode, SummaryMode, TagCount, ViewMode } from "./types";
 
-export const SORT_LABEL: Record<SortMode, string> = { manual: "Manual", recent: "Recentes", title: "Título", opened: "Mais abertos" };
+export const SORT_LABEL: Record<SortMode, string> = {
+  manual: "Manual",
+  foryou: "Para você",
+  recent: "Adicionados",
+  visited: "Abertos recentemente",
+  opened: "Mais abertos",
+  title: "Título",
+};
 
 export function Toolbar({
   q,

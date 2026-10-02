@@ -39,7 +39,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
   const filtering = !!q.trim() || activeTags.length > 0;
   const rawSort = one("sort");
   const manualAllowed = !!node || scope === "unsorted";
-  const defaultSort: SortMode = scope === "recent" ? "opened" : manualAllowed ? "manual" : "recent";
+  const defaultSort: SortMode = scope === "recent" ? "visited" : manualAllowed ? "manual" : "recent";
   const sort: SortMode =
     rawSort && (SORT_MODES as string[]).includes(rawSort) && (rawSort !== "manual" || manualAllowed) ? (rawSort as SortMode) : defaultSort;
   const rawView = one("view");

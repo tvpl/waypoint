@@ -345,6 +345,8 @@ export const recents = sqliteTable(
     entityType: text("entity_type", { enum: ["plan", "collection", "favorite"] }).notNull(),
     entityId: text("entity_id").notNull(),
     openedAt: integer("opened_at", { mode: "timestamp_ms" }).notNull(),
+    /** How many times this user opened it (feeds "Mais abertos" and frecency). */
+    openCount: integer("open_count").notNull().default(1),
   },
   (t) => [primaryKey({ columns: [t.userId, t.entityType, t.entityId] }), index("recents_user_idx").on(t.userId, t.openedAt)],
 );

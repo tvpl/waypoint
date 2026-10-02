@@ -118,6 +118,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
     const q = query.trim();
     if (!q) {
       setData(null);
+      setLoading(false);
       return;
     }
     const ctrl = new AbortController();
@@ -127,7 +128,8 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
         .then((r) => (r.ok ? r.json() : null))
         .then((d: SearchResponse | null) => setData(d))
         .catch(() => {})
-        .finally(() => setLoading(false));
+        // A superseded request must not clear the spinner of the one that replaced it.
+        .finally(() => !ctrl.signal.aborted && setLoading(false));
     }, 120);
     return () => {
       clearTimeout(t);

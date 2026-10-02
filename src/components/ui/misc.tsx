@@ -63,8 +63,8 @@ export function SiteIcon({ src, label, size = 28, className }: { src?: string | 
   return (
     <span
       aria-hidden
-      className={cn("inline-flex shrink-0 items-center justify-center font-semibold", className)}
-      style={{ width: size, height: size, borderRadius: radius, background: bg, color: fg, fontSize: Math.round(size * 0.46) }}
+      className={cn("wp-tint inline-flex shrink-0 items-center justify-center font-semibold", className)}
+      style={{ width: size, height: size, borderRadius: radius, "--tint": bg, "--tint-ink": fg, fontSize: Math.round(size * 0.46) } as React.CSSProperties}
     >
       {letter}
     </span>

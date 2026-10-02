@@ -30,6 +30,9 @@
   --danger: #b42318;
   --danger-soft: #fdecea;
   --canvas: #f5f5f2;
+  /* how strongly chosen node colors show in plan miniatures (softened in dark mode) */
+  --thumb-tint: 100%;
+  --thumb-area-tint: 40%;
   --canvas-dot: #d5d5ce;
   --scrim: rgba(20, 20, 26, 0.42);
   /* Elevation: rest (flat cards) → thumb (segment/handle) → raise (hovered card) → float (toolbars) → pop (overlays). */
@@ -64,6 +67,8 @@
   --danger: #f2827a;
   --danger-soft: #3a1c1a;
   --canvas: #111216;
+  --thumb-tint: 26%;
+  --thumb-area-tint: 10%;
   --canvas-dot: #2a2c33;
   --scrim: rgba(5, 5, 8, 0.62);
   /* Dark surfaces get depth from a faint top highlight as much as from the shadow. */

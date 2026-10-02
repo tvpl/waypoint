@@ -48,8 +48,8 @@ export function PlanThumb({ thumb, height = 116 }: { thumb: Thumb; height?: numb
               width={n.w}
               height={n.h}
               rx={area ? unit * 6 : unit * 4}
-              fill={n.color ? (area ? `${n.color}66` : n.color) : area ? "transparent" : n.kind === "note" ? "#FFF3C4" : "var(--surface)"}
-              stroke={area ? "var(--line-2)" : n.color ? "rgb(23 23 28 / 0.12)" : "var(--line-2)"}
+              fill={tinted(n.color ?? (n.kind === "note" && !area ? "#FFF3C4" : null), area)}
+              stroke={area || !n.color ? "var(--line-2)" : `color-mix(in srgb, ${n.color} 40%, var(--line-2))`}
               strokeWidth={unit}
               strokeDasharray={area && !n.color ? `${unit * 4} ${unit * 3}` : undefined}
             />
@@ -58,4 +58,10 @@ export function PlanThumb({ thumb, height = 116 }: { thumb: Thumb; height?: numb
       </svg>
     </div>
   );
+}
+
+/** Fill for a node color, mixed into the surface like the canvas does in dark mode. */
+function tinted(color: string | null, area: boolean) {
+  if (!color) return area ? "transparent" : "var(--surface)";
+  return `color-mix(in srgb, ${color} var(${area ? "--thumb-area-tint" : "--thumb-tint"}), ${area ? "transparent" : "var(--surface)"})`;
 }

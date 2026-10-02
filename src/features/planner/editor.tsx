@@ -16,6 +16,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   SelectionMode,
+  useNodesInitialized,
   useReactFlow,
   type Connection,
   type EdgeChange,
@@ -129,6 +130,24 @@ function isTyping(t: EventTarget | null) {
 }
 
 const isDefaultViewport = (v: Viewport) => v.x === 0 && v.y === 0 && v.zoom === 1;
+
+// Where each person last left a plan's canvas (per device), so reopening continues there.
+const viewportKey = (planId: string) => `wp-planner-viewport:${planId}`;
+function readViewport(planId: string): Viewport | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(viewportKey(planId)) ?? "null") as Viewport | null;
+    return v && [v.x, v.y, v.zoom].every(Number.isFinite) && v.zoom > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeViewport(planId: string, v: Viewport) {
+  try {
+    localStorage.setItem(viewportKey(planId), JSON.stringify({ x: Math.round(v.x), y: Math.round(v.y), zoom: Math.round(v.zoom * 1000) / 1000 }));
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 const normalizeForCanvas = (doc: PlanDocument) => fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport);
 
@@ -1060,6 +1079,24 @@ function EditorShell(props: PlanEditorProps) {
   }, [mode]);
 
   const fitOnInit = initialDoc.nodes.length > 0 && isDefaultViewport(initialDoc.viewport);
+  // Restore this person's last viewport. With fitOnInit React Flow fits once the nodes are
+  // measured, so the saved viewport is applied after that instead.
+  const nodesReady = useNodesInitialized();
+  const restoredViewport = useRef(false);
+  const restoreViewport = () => {
+    if (restoredViewport.current) return;
+    restoredViewport.current = true;
+    const v = readViewport(planId);
+    if (!v) return;
+    viewportRef.current = v;
+    void rf.setViewport(v);
+  };
+  useEffect(() => {
+    if (!fitOnInit || !nodesReady) return;
+    const raf = requestAnimationFrame(restoreViewport);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitOnInit, nodesReady]);
 
   return (
     <EditorContext.Provider value={api}>
@@ -1213,8 +1250,10 @@ function EditorShell(props: PlanEditorProps) {
                       setMenuTarget({ type: "edge", id: ed.id });
                     }}
                     onPaneContextMenu={(e) => setMenuTarget({ type: "pane", at: rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }) })}
+                    onInit={() => !fitOnInit && restoreViewport()}
                     onMoveEnd={(_, vp) => {
                       viewportRef.current = vp;
+                      writeViewport(planId, vp);
                     }}
                     defaultViewport={viewportRef.current}
                     fitView={fitOnInit}

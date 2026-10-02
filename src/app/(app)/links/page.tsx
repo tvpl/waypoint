@@ -59,9 +59,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
           q,
           sort,
           limit: 1000,
-        })
-          .filter((f) => !f.collectionId || !hidden.has(f.collectionId))
-          .map(toLinkItem);
+        }).map(toLinkItem);
 
   const current: CurrentCollection | null = node
     ? {
@@ -72,7 +70,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
       }
     : null;
 
-  const tags = listTags(wsId)
+  const tags = listTags(wsId, userId)
     .filter((t) => t.links > 0)
     .map((t) => ({ name: t.name, count: t.links }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));

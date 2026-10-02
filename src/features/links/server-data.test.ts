@@ -70,9 +70,14 @@ describe("libraryCounts", () => {
 
 describe("findByUrl", () => {
   it("finds duplicates with or without trailing slash", () => {
-    expect(data.findByUrl(ws, links.normalizeUrl("react.dev"))?.id).toBe(ids.l1);
-    expect(data.findByUrl(ws, "https://react.dev")?.id).toBe(ids.l1);
-    expect(data.findByUrl(ws, "https://nope.dev/")).toBeUndefined();
+    expect(data.findByUrl(ws, alice, links.normalizeUrl("react.dev"))?.id).toBe(ids.l1);
+    expect(data.findByUrl(ws, alice, "https://react.dev")?.id).toBe(ids.l1);
+    expect(data.findByUrl(ws, alice, "https://nope.dev/")).toBeUndefined();
+  });
+
+  it("doesn't reveal links inside someone else's private collection", () => {
+    expect(data.findByUrl(ws, alice, "https://secret.dev/")?.id).toBe(ids.l2);
+    expect(data.findByUrl(ws, bob, "https://secret.dev/")).toBeUndefined();
   });
 });
 

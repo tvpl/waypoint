@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Pin, Folder, Workflow, Upload } from "lucide-react";
 import { requireWorkspace } from "@/server/services/workspaces";
 import { recentPlans, pinnedPlans } from "@/server/services/home";
-import { pinnedCollections, recentFavorites, getCollectionTree } from "@/server/services/links";
+import { pinnedCollections, recentFavorites } from "@/server/services/links";
+import { visibleTree } from "@/features/links/server-data";
 import { WorkspaceSwitcher } from "@/components/shell/workspace-switcher";
 import { PlanThumb } from "@/components/plan-thumb";
 import { Badge } from "@/components/ui/misc";
@@ -36,7 +37,7 @@ export default async function HomePage() {
   const links = recentFavorites(ctx.user.id, ctx.workspace.id, 5);
   const pinnedCols = pinnedCollections(ctx.user.id, ctx.workspace.id);
   const pinnedPl = pinnedPlans(ctx.user.id, ctx.workspace.id);
-  const tree = getCollectionTree(ctx.workspace.id);
+  const { tree } = visibleTree(ctx.workspace.id, ctx.user.id);
   const counts = new Map<string, number>();
   const walk = (ns: typeof tree) => ns.forEach((n) => (counts.set(n.id, n.totalCount), walk(n.children)));
   walk(tree);

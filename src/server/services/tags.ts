@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { newId, normalizeTag } from "@/lib/utils";
+import { favoriteVisibleTo } from "./links";
 
 type Tx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 type Conn = ReturnType<typeof getDb> | Tx;
@@ -64,15 +65,20 @@ export function tagsForPlans(planIds: string[]): Map<string, string[]> {
   return out;
 }
 
-/** All tags of a workspace with usage counts across both modules. */
-export function listTags(workspaceId: string) {
+/**
+ * All tags of a workspace with usage counts across both modules. Link counts only
+ * include links `userId` can see (not inside someone else's private collection).
+ */
+export function listTags(workspaceId: string, userId: string) {
   return getDb()
     .select({
       id: schema.tags.id,
       name: schema.tags.name,
       color: schema.tags.color,
-      links: sql<number>`(select count(*) from favorite_tags ft join favorites f on f.id = ft.favorite_id where ft.tag_id = ${schema.tags.id} and f.archived_at is null)`,
-      plans: sql<number>`(select count(*) from plan_tags pt join plans p on p.id = pt.plan_id where pt.tag_id = ${schema.tags.id} and p.archived_at is null)`,
+      // Subqueries reference `tags.id` literally: a single-table select renders columns unqualified,
+      // and a bare "id" would resolve to the inner table instead.
+      links: sql<number>`(select count(*) from favorite_tags ft join favorites on favorites.id = ft.favorite_id where ft.tag_id = tags.id and favorites.archived_at is null and ${favoriteVisibleTo(workspaceId, userId)})`,
+      plans: sql<number>`(select count(*) from plan_tags pt join plans p on p.id = pt.plan_id where pt.tag_id = tags.id and p.archived_at is null)`,
     })
     .from(schema.tags)
     .where(eq(schema.tags.workspaceId, workspaceId))

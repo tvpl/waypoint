@@ -6,6 +6,7 @@ import type { PlanDocument, ResourceRef } from "@/domain/plan";
 import { domainOf } from "@/lib/utils";
 import { planAccess } from "./permissions";
 import { workspaceRole } from "./workspaces";
+import { collectionVisibleTo, favoriteVisibleTo } from "./links";
 import { refKey, type ResolvedResource, type ResourceSearchItem } from "@/features/planner/resource-types";
 
 export type { ResolvedResource, ResourceSearchItem };
@@ -152,6 +153,7 @@ export function searchResources(
         and(
           eq(schema.favorites.workspaceId, workspaceId),
           isNull(schema.favorites.archivedAt),
+          favoriteVisibleTo(workspaceId, userId),
           term ? likeAny(term, schema.favorites.title, schema.favorites.url, schema.favorites.description) : undefined,
         ),
       )
@@ -174,6 +176,7 @@ export function searchResources(
         and(
           eq(schema.collections.workspaceId, workspaceId),
           isNull(schema.collections.archivedAt),
+          collectionVisibleTo(workspaceId, userId),
           term ? likeAny(term, schema.collections.name, schema.collections.description) : undefined,
         ),
       )

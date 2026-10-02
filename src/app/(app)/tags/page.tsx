@@ -6,7 +6,7 @@ export const metadata = { title: "Tags" };
 
 export default async function TagsPage() {
   const ctx = await requireWorkspace();
-  const tags = listTags(ctx.workspace.id).filter((t) => t.links + t.plans > 0 || canEditWorkspace(ctx.role));
+  const tags = listTags(ctx.workspace.id, ctx.user.id).filter((t) => t.links + t.plans > 0 || canEditWorkspace(ctx.role));
   return (
     <main className="scrollbar-thin flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8 px-6 pb-16 pt-10 sm:px-10">

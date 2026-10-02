@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     } catch {
       return json(req, { link: null });
     }
-    const hit = findByUrl(ctx.workspaceId, url);
+    const hit = findByUrl(ctx.workspaceId, ctx.user.id, url);
     return json(req, { link: hit ? apiLink(hit.id, ctx, appOrigin(req)) : null });
   });
 }

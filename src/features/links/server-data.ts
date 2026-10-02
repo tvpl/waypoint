@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/server/db";
 import {
   collectionPath,
+  favoriteVisibleTo,
   getCollection,
   getCollectionTree,
   getFavorite,
@@ -21,6 +22,7 @@ function canSee(node: { visibility: string; createdBy: string | null }, userId: 
 }
 
 export function toTreeNode(n: CollectionNode, userId: string): TreeNode {
+  const children = n.children.filter((c) => canSee(c, userId)).map((c) => toTreeNode(c, userId));
   return {
     id: n.id,
     parentId: n.parentId,
@@ -31,8 +33,9 @@ export function toTreeNode(n: CollectionNode, userId: string): TreeNode {
     visibility: n.visibility,
     defaultView: n.defaultView,
     linkCount: n.linkCount,
-    totalCount: n.totalCount,
-    children: n.children.filter((c) => canSee(c, userId)).map((c) => toTreeNode(c, userId)),
+    // Only count links this user can see: hidden sub-collections don't add to the total.
+    totalCount: n.linkCount + children.reduce((s, c) => s + c.totalCount, 0),
+    children,
   };
 }
 
@@ -159,13 +162,15 @@ export function loadLinkDetail(id: string, ctx: WorkspaceContext): LinkDetail | 
   return { link, path, backlinks: refs, canEdit: canEditWorkspace(ctx.role) };
 }
 
-/** Existing link in the workspace with the same normalized URL (duplicate hint). */
-export function findByUrl(workspaceId: string, url: string) {
+/** Existing link visible to `userId` with the same normalized URL (duplicate hint). */
+export function findByUrl(workspaceId: string, userId: string, url: string) {
   const variants = new Set([url, url.endsWith("/") ? url.slice(0, -1) : `${url}/`]);
   return getDb()
     .select({ id: schema.favorites.id, title: schema.favorites.title, collectionId: schema.favorites.collectionId, archivedAt: schema.favorites.archivedAt })
     .from(schema.favorites)
-    .where(and(eq(schema.favorites.workspaceId, workspaceId), inArray(schema.favorites.url, [...variants])))
+    .where(
+      and(eq(schema.favorites.workspaceId, workspaceId), inArray(schema.favorites.url, [...variants]), favoriteVisibleTo(workspaceId, userId)),
+    )
     .get();
 }
 

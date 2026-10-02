@@ -5,6 +5,7 @@ import { searchIndex } from "@/server/services/search";
 import { getDb, schema } from "@/server/db";
 import { planAccess } from "@/server/services/permissions";
 import { listTags } from "@/server/services/tags";
+import { favoriteVisibleTo, hiddenCollectionIds } from "@/server/services/links";
 import { normalizeTag } from "@/lib/utils";
 
 export type SearchResponse = {
@@ -37,10 +38,11 @@ export async function GET(req: NextRequest) {
         .select({ f: schema.favorites, collectionName: schema.collections.name })
         .from(schema.favorites)
         .leftJoin(schema.collections, eq(schema.collections.id, schema.favorites.collectionId))
-        .where(inArray(schema.favorites.id, favIds))
+        .where(and(inArray(schema.favorites.id, favIds), favoriteVisibleTo(ctx.workspace.id, ctx.user.id)))
         .all()
     : [];
   const favMap = new Map(favs.map((r) => [r.f.id, r]));
+  const hiddenCols = hits.some((h) => h.type === "collection") ? hiddenCollectionIds(ctx.workspace.id, ctx.user.id) : new Set<string>();
 
   const res: SearchResponse = { ...empty };
   for (const h of hits) {
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
       const { f, collectionName } = favMap.get(h.id)!;
       res.links.push({ id: f.id, title: f.title, url: f.url, domain: f.domain, favicon: f.favicon, collectionName, openBehavior: f.openBehavior });
     }
-    if (h.type === "collection") res.collections.push({ id: h.id, name: h.title, snippet: h.snippet });
+    if (h.type === "collection" && !hiddenCols.has(h.id)) res.collections.push({ id: h.id, name: h.title, snippet: h.snippet });
   }
   res.nodes = res.nodes.slice(0, 8);
   res.links = res.links.slice(0, 10);
@@ -67,7 +69,7 @@ export async function GET(req: NextRequest) {
         .all()
         .map((t) => t.name),
     );
-    res.tags = listTags(ctx.workspace.id)
+    res.tags = listTags(ctx.workspace.id, ctx.user.id)
       .filter((t) => names.has(t.name))
       .map((t) => ({ name: t.name, links: t.links, plans: t.plans }));
   }

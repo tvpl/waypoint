@@ -44,6 +44,36 @@ export function getCollectionTree(workspaceId: string): CollectionNode[] {
   return roots;
 }
 
+/**
+ * Subquery with the ids of collections `userId` can't see: other people's private
+ * collections and everything nested below them (mirrors collectionAccess for members).
+ * An empty `userId` (anonymous) hides every private collection.
+ */
+function hiddenCollectionsSql(workspaceId: string, userId: string): SQL {
+  return sql`(with recursive hidden_cols(id) as (
+      select hc.id from collections hc
+        where hc.workspace_id = ${workspaceId} and hc.visibility = 'private' and hc.created_by is not ${userId}
+      union
+      select hc2.id from collections hc2 join hidden_cols on hc2.parent_id = hidden_cols.id
+    ) select id from hidden_cols)`;
+}
+
+/** Ids of collections hidden from `userId` (see hiddenCollectionsSql). */
+export function hiddenCollectionIds(workspaceId: string, userId: string): Set<string> {
+  const rows = getDb().all<{ id: string }>(sql`select id from ${hiddenCollectionsSql(workspaceId, userId)}`);
+  return new Set(rows.map((r) => r.id));
+}
+
+/** Condition on `favorites`: the link is not inside a collection hidden from `userId`. */
+export function favoriteVisibleTo(workspaceId: string, userId: string): SQL {
+  return sql`(${schema.favorites.collectionId} is null or ${schema.favorites.collectionId} not in ${hiddenCollectionsSql(workspaceId, userId)})`;
+}
+
+/** Condition on `collections`: the collection is not hidden from `userId`. */
+export function collectionVisibleTo(workspaceId: string, userId: string): SQL {
+  return sql`${schema.collections.id} not in ${hiddenCollectionsSql(workspaceId, userId)}`;
+}
+
 export function flattenTree(nodes: CollectionNode[], depth = 0): (CollectionNode & { depth: number })[] {
   return nodes.flatMap((n) => [{ ...n, depth }, ...flattenTree(n.children, depth + 1)]);
 }
@@ -388,7 +418,7 @@ export type FavoriteFilter = {
 
 export function listFavorites(workspaceId: string, userId: string, f: FavoriteFilter = {}): FavoriteView[] {
   const db = getDb();
-  const conds: (SQL | undefined)[] = [eq(schema.favorites.workspaceId, workspaceId)];
+  const conds: (SQL | undefined)[] = [eq(schema.favorites.workspaceId, workspaceId), favoriteVisibleTo(workspaceId, userId)];
   conds.push(f.scope === "archived" ? isNotNull(schema.favorites.archivedAt) : isNull(schema.favorites.archivedAt));
   if (f.collectionId) {
     conds.push(
@@ -517,6 +547,7 @@ export function pinnedCollections(userId: string, workspaceId: string) {
         eq(schema.userMarks.mark, "pin"),
         eq(schema.collections.workspaceId, workspaceId),
         isNull(schema.collections.archivedAt),
+        collectionVisibleTo(workspaceId, userId),
       ),
     )
     .orderBy(asc(schema.userMarks.createdAt))
@@ -535,6 +566,7 @@ export function recentFavorites(userId: string, workspaceId: string, limit = 6) 
         eq(schema.recents.entityType, "favorite"),
         eq(schema.favorites.workspaceId, workspaceId),
         isNull(schema.favorites.archivedAt),
+        favoriteVisibleTo(workspaceId, userId),
       ),
     )
     .orderBy(desc(schema.recents.openedAt))
@@ -547,7 +579,7 @@ export function recentFavorites(userId: string, workspaceId: string, limit = 6) 
   const added = getDb()
     .select()
     .from(schema.favorites)
-    .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt)))
+    .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt), favoriteVisibleTo(workspaceId, userId)))
     .orderBy(desc(schema.favorites.createdAt))
     .limit(limit * 2)
     .all()

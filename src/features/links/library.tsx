@@ -24,6 +24,7 @@ import {
   updateSavedSearchAction,
 } from "@/app/(app)/links/actions";
 import { ask } from "@/components/ui/ask";
+import { prefersReducedMotion } from "@/lib/utils";
 import { highlightTerms, isEmptyQuery, matchesLinkQuery, parseLinkQuery } from "@/domain/link-query";
 import { CollectionsPanel, type PanelHandlers } from "./collections-panel";
 import { LibraryHeader } from "./library-header";
@@ -58,6 +59,7 @@ import {
   type TreeNode,
   type ViewMode,
 } from "./types";
+import { overlayOpen } from "@/lib/dom";
 
 export type LibraryProps = {
   tree: TreeNode[];
@@ -115,7 +117,7 @@ const isTyping = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 };
-const anyDialogOpen = () => !!document.querySelector('[role="dialog"], [role="menu"], [role="alertdialog"]');
+const anyDialogOpen = overlayOpen;
 const extractUrl = (text: string) => {
   const t = text.trim();
   if (!t || /\s/.test(t)) return null;
@@ -262,9 +264,12 @@ export function LinksLibrary(props: LibraryProps) {
   );
 
   // ---------------------------------------------------------------- keyboard & paste
+  // Latest values for the window-level key handler (it's registered once).
+  const keyCtx = React.useRef({ visible: [] as LinkItem[], api: null as LibraryApi | null });
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || anyDialogOpen()) return;
+      if (handleListKey(e, keyCtx.current.visible, keyCtx.current.api)) return;
       if (e.key === "/") {
         e.preventDefault();
         filterRef.current?.focus();
@@ -495,6 +500,8 @@ export function LinksLibrary(props: LibraryProps) {
     },
   }), [canEdit, archivedScope, selection, toggleSelect, pin, highlight, summary, reorderable, dropOnLink, star, archive, remove, activeTags, toggleTag, navigate, sort, checkLinks, current, scope, run]);
 
+  keyCtx.current = { visible, api };
+
   // ---------------------------------------------------------------- collection operations
   const isInCurrent = (node: TreeNode) => {
     if (!current) return false;
@@ -583,6 +590,7 @@ export function LinksLibrary(props: LibraryProps) {
     ? { title: savedSearch.name, subtitle: `Busca salva · ${savedSearch.query}` }
     : SCOPE_COPY[scope];
   const pinnedSet = React.useMemo(() => new Set(props.pinned), [props.pinned]);
+  const childrenOf = React.useCallback((id: string | null) => (id ? (flat.find((n) => n.id === id)?.children ?? []) : tree), [flat, tree]);
   const collectionNames = React.useMemo(() => flat.map((n) => n.name), [flat]);
   const domains = React.useMemo(() => {
     const count = new Map<string, number>();
@@ -695,6 +703,7 @@ export function LinksLibrary(props: LibraryProps) {
                 onDelete={() => current && handlers.remove(current)}
                 onCheckHealth={() => handlers.checkHealth(current)}
                 onEnrich={() => enrich({ collectionId: current?.id ?? null, name: current?.name })}
+                childrenOf={childrenOf}
                 onOpenCollections={() => setDrawer(true)}
                 onAdd={() => openAdd()}
               />
@@ -1017,4 +1026,99 @@ function Empty({
   };
   const m = map[scope];
   return <EmptyState icon={m.icon} title={m.title} description={m.description} />;
+}
+
+// ------------------------------------------------------------------ keyboard navigation of the list
+
+const primaryOf = (id: string) => document.querySelector<HTMLElement>(`[data-link-primary="${CSS.escape(id)}"]`);
+
+function focusedLinkId(): string | null {
+  return (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-link-primary]")?.dataset.linkPrimary ?? null;
+}
+
+/** Nearest item in a direction, by on-screen geometry (works for grid, compact and list). */
+function neighbor(ids: string[], fromId: string, dir: "up" | "down"): string | null {
+  const from = primaryOf(fromId)?.getBoundingClientRect();
+  if (!from) return null;
+  let best: { id: string; score: number } | null = null;
+  for (const id of ids) {
+    if (id === fromId) continue;
+    const r = primaryOf(id)?.getBoundingClientRect();
+    if (!r) continue;
+    const dy = dir === "down" ? r.top - from.bottom : from.top - r.bottom;
+    if (dy < -4) continue;
+    const score = Math.max(dy, 0) * 4 + Math.abs(r.left - from.left);
+    if (!best || score < best.score) best = { id, score };
+  }
+  return best?.id ?? null;
+}
+
+function focusLink(id: string) {
+  const el = primaryOf(id);
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+
+/**
+ * j/k (and arrows once a link has focus) move between links; x s p e o # act on the
+ * focused one. Returns true when the key was handled.
+ */
+function handleListKey(e: KeyboardEvent, visible: LinkItem[], api: LibraryApi | null): boolean {
+  if (!api || !visible.length) return false;
+  const ids = visible.map((l) => l.id);
+  const current = focusedLinkId();
+  const at = current ? ids.indexOf(current) : -1;
+  const move = (id: string | null | undefined) => {
+    if (!id) return true;
+    e.preventDefault();
+    focusLink(id);
+    return true;
+  };
+  switch (e.key) {
+    case "j":
+      return move(ids[Math.min(at + 1, ids.length - 1)]);
+    case "k":
+      return move(ids[Math.max(at - 1, 0)]);
+    case "ArrowRight":
+      return at >= 0 && move(ids[Math.min(at + 1, ids.length - 1)]);
+    case "ArrowLeft":
+      return at >= 0 && move(ids[Math.max(at - 1, 0)]);
+    case "ArrowDown":
+      return at >= 0 && move(neighbor(ids, ids[at], "down"));
+    case "ArrowUp":
+      return at >= 0 && move(neighbor(ids, ids[at], "up"));
+  }
+  if (at < 0) return false;
+  const link = visible[at];
+  switch (e.key) {
+    case "x":
+      if (!api.canEdit) return false;
+      api.toggleSelect(link.id);
+      break;
+    case "s":
+      void api.star(link);
+      break;
+    case "p":
+      api.pin(link);
+      break;
+    case "e":
+      if (!api.canEdit) return false;
+      api.edit(link);
+      break;
+    case "o":
+      window.open(link.url, "_blank", "noopener,noreferrer");
+      fetch(`/api/links/${link.id}/open`, { method: "POST", keepalive: true }).catch(() => {});
+      break;
+    case "#":
+      if (!api.canEdit) return false;
+      api.archive([link.id], !link.archived);
+      // keep the keyboard flow going on the next link
+      setTimeout(() => focusLink(ids[at + 1] ?? ids[at - 1]), 50);
+      break;
+    default:
+      return false;
+  }
+  e.preventDefault();
+  return true;
 }

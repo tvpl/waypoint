@@ -6,7 +6,7 @@ import { AlertTriangle, Check, ChevronRight, ExternalLink, Eye, Link2, Loader2, 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input, Label, Textarea } from "@/components/ui/input";
-import { SiteIcon } from "@/components/ui/misc";
+import { Kbd, SiteIcon } from "@/components/ui/misc";
 import { cn, domainOf } from "@/lib/utils";
 import { monogramColors } from "@/lib/color";
 import { createLinkAction, updateLinkAction } from "@/app/(app)/links/actions";
@@ -401,7 +401,7 @@ function LinkForm({
         <Button type="submit" variant="primary" disabled={saving || !url.trim()}>
           {saving && <Loader2 className="animate-spin" />}
           {editing ? "Salvar alterações" : "Salvar link"}
-          <span className="font-mono text-caption opacity-80">⌘↵</span>
+          <Kbd className="border-0 bg-transparent p-0 text-inherit opacity-80">⌘↵</Kbd>
         </Button>
       </DialogFooter>
     </form>

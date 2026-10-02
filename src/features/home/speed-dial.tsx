@@ -11,6 +11,7 @@ import { monogramColors } from "@/lib/color";
 import { cn } from "@/lib/utils";
 import { recordOpen } from "@/features/links/link-opener";
 import { alwaysNewTab } from "@/features/links/prefs";
+import { overlayOpen } from "@/lib/dom";
 
 export type DialLink = {
   id: string;
@@ -53,7 +54,7 @@ export function SpeedDial({ links }: { links: DialLink[] }) {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || document.querySelector('[role="dialog"],[role="menu"]')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || overlayOpen()) return;
       const n = Number(e.key);
       if (!Number.isInteger(n) || n < 1 || n > 9 || !items[n - 1]) return;
       e.preventDefault();

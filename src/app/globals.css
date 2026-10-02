@@ -381,7 +381,78 @@
   }
 }
 
+/* ------------------------------------------------------------------
+   View transitions (React <ViewTransition>): page changes rise in,
+   view-mode switches crossfade. Clicks pass through while they run.
+------------------------------------------------------------------ */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-old(.wp-vt-fade) {
+  animation: 110ms ease-in both wp-fade-out;
+}
+::view-transition-new(.wp-vt-fade) {
+  animation: 180ms ease-out 60ms both wp-fade-in;
+}
+::view-transition-old(.wp-vt-page) {
+  animation: 120ms ease-in both wp-fade-out;
+}
+::view-transition-new(.wp-vt-page) {
+  animation: 260ms var(--ease-out) 40ms both wp-rise;
+}
+
+/*
+ * Phones: dropdown and context menus become bottom sheets — reachable with a thumb,
+ * big targets, and a dimmed page behind them.
+ */
+@media (max-width: 639px) and (pointer: coarse) {
+  [data-radix-popper-content-wrapper]:has(> [role="menu"]) {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    transform: none !important;
+    min-width: 0 !important;
+    z-index: 60 !important;
+  }
+  [data-radix-popper-content-wrapper] > [role="menu"] {
+    width: 100%;
+    max-height: 75dvh;
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    border-bottom: 0;
+    padding: 6px 8px calc(10px + env(safe-area-inset-bottom));
+    box-shadow:
+      0 0 0 100vmax var(--scrim),
+      var(--shadow-pop);
+  }
+  [data-radix-popper-content-wrapper] > [role="menu"]::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 4px auto 8px;
+    border-radius: 999px;
+    background: var(--line-2);
+  }
+  [data-radix-popper-content-wrapper] > [role="menu"][data-state="open"] {
+    animation: var(--animate-sheet-in) !important;
+  }
+  [data-radix-popper-content-wrapper] > [role="menu"][data-state="closed"] {
+    animation: var(--animate-sheet-out) !important;
+  }
+  [role="menu"] [role="menuitem"],
+  [role="menu"] [role="menuitemradio"] {
+    height: 44px;
+    font-size: 15px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
   *,
   *::before,
   *::after {

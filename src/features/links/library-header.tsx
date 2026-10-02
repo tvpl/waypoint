@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
-import type { CurrentCollection } from "./types";
+import type { CurrentCollection, TreeNode } from "./types";
+import { CollectionGlyph } from "./collection-style";
 
 function download(href: string) {
   const a = document.createElement("a");
@@ -115,6 +116,7 @@ export function LibraryHeader({
   onAdd,
   onCheckHealth,
   onEnrich,
+  childrenOf,
   onOpenCollections,
 }: {
   current: CurrentCollection | null;
@@ -133,6 +135,8 @@ export function LibraryHeader({
   onAdd: () => void;
   onCheckHealth: () => void;
   onEnrich: () => void;
+  /** Collections directly under a collection (null = top level), for the breadcrumb menus. */
+  childrenOf: (id: string | null) => TreeNode[];
   /** Phones: opens the collections drawer. */
   onOpenCollections: () => void;
 }) {
@@ -152,10 +156,10 @@ export function LibraryHeader({
         <Link href="/links" className="hover:text-ink">
           Links
         </Link>
-        {current?.path.map((p, i) => (
+        {(current?.path ?? []).map((p, i, path) => (
           <React.Fragment key={p.id}>
-            <ChevronRight className="size-3 shrink-0" aria-hidden />
-            {i === current.path.length - 1 ? (
+            <CrumbMenu items={childrenOf(i === 0 ? null : path[i - 1].id)} currentId={p.id} />
+            {i === path.length - 1 ? (
               <span className="truncate text-ink" aria-current="page">
                 {p.name}
               </span>
@@ -288,5 +292,34 @@ export function LibraryHeader({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Breadcrumb separator that lists the sibling collections at that level. */
+function CrumbMenu({ items, currentId }: { items: TreeNode[]; currentId: string }) {
+  if (items.length < 2) return <ChevronRight className="size-3 shrink-0" aria-hidden />;
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Outras coleções neste nível"
+          className="inline-flex h-5 w-4 shrink-0 items-center justify-center rounded text-muted hover:bg-hover hover:text-ink data-[state=open]:bg-hover data-[state=open]:text-ink"
+        >
+          <ChevronRight className="size-3 transition-transform [[data-state=open]>&]:rotate-90" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[320px] overflow-y-auto">
+        {items.map((c) => (
+          <DropdownMenuItem key={c.id} asChild>
+            <Link href={`/links?c=${c.id}`} className={cn(c.id === currentId && "font-semibold text-accent-ink")}>
+              <CollectionGlyph icon={c.icon} color={c.color} />
+              <span className="flex-1 truncate">{c.name}</span>
+              <span className="text-xs text-muted">{c.totalCount}</span>
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Command } from "cmdk";
 import { Dialog as D } from "radix-ui";
 import {
@@ -18,11 +18,19 @@ import {
   ArrowRightLeft,
   Upload,
   Boxes,
+  Clock,
+  Keyboard,
+  Pin,
+  ScanSearch,
+  ShieldAlert,
+  Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cycleTheme, OPEN_PALETTE_EVENT } from "@/lib/theme";
 import { Kbd, SiteIcon } from "@/components/ui/misc";
 import type { SearchResponse } from "@/app/api/search/route";
+import type { RecentsResponse } from "@/app/api/recents/route";
+import { openShortcuts } from "./shortcuts";
 import { createPlanAction } from "@/app/(app)/plans/actions";
 import { switchWorkspaceAction } from "./actions";
 
@@ -85,6 +93,20 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
   const [loading, setLoading] = useState(false);
   const [, start] = useTransition();
   const metaRef = useRef(false);
+  const pathname = usePathname();
+  const sp = useSearchParams();
+  const [recents, setRecents] = useState<RecentsResponse | null>(null);
+
+  // Recently opened items for the empty state, refreshed on every open.
+  useEffect(() => {
+    if (!open) return;
+    const ctrl = new AbortController();
+    fetch("/api/recents", { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: RecentsResponse | null) => d && setRecents(d))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -116,7 +138,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
 
   useEffect(() => {
     const q = query.trim();
-    if (!q) {
+    if (!q || q.startsWith(">")) {
       setData(null);
       setLoading(false);
       return;
@@ -155,9 +177,22 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
     [router],
   );
 
-  const q = query.trim();
-  const show = (s: Scope) => scope === "all" || scope === s;
+  const commandMode = query.trimStart().startsWith(">");
+  const q = commandMode ? query.trimStart().slice(1).trim() : query.trim();
+  const show = (s: Scope) => !commandMode && (scope === "all" || scope === s);
+  // Actions that only make sense where the user is.
+  const contextual =
+    pathname === "/links"
+      ? [
+          { id: "ctx-broken", label: "Ver links quebrados", icon: <ShieldAlert />, run: () => go("/links?scope=broken") },
+          { id: "ctx-starred", label: "Ver links com estrela", icon: <Star />, run: () => go("/links?scope=starred") },
+          { id: "ctx-foryou", label: "Ordenar por “Para você”", icon: <ScanSearch />, run: () => go(`/links?${withParam(sp, "sort", "foryou")}`) },
+        ]
+      : pathname.startsWith("/plans/")
+        ? [{ id: "ctx-present", label: "Apresentar este plan", icon: <Workflow />, run: () => go(`${pathname.replace(/\/edit$/, "")}?present=1`) }]
+        : [];
   const actions = [
+    ...contextual,
     { id: "new-plan", label: "Novo plan", icon: <Plus />, run: () => start(async () => { const id = await createPlanAction({}); go(`/plans/${id}/edit`); }) },
     { id: "add-link", label: "Adicionar link", icon: <Link2 />, run: () => go("/links?add=1") },
     { id: "new-col", label: "Nova coleção", icon: <FolderPlus />, run: () => go("/links?newCollection=1") },
@@ -169,6 +204,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
     { id: "go-tags", label: "Ir para Tags", icon: <Tag />, run: () => go("/tags") },
     { id: "theme", label: "Alternar tema", icon: <Moon />, run: () => cycleTheme() },
     { id: "settings", label: "Configurações", icon: <Settings />, run: () => go("/settings") },
+    { id: "shortcuts", label: "Atalhos de teclado", icon: <Keyboard />, run: () => (setOpen(false), openShortcuts()) },
     ...workspaces
       .filter((w) => w.id !== currentWorkspaceId)
       .map((w) => ({
@@ -201,13 +237,13 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
                 autoFocus
                 value={query}
                 onValueChange={setQuery}
-                placeholder="Buscar plans, blocos, links, coleções, tags…"
+                placeholder="Buscar plans, blocos, links, coleções, tags… ou > para comandos"
                 className="h-full flex-1 bg-transparent text-title outline-none"
               />
               {loading && <span className="h-3 w-3 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Buscando" />}
               <Kbd>esc</Kbd>
             </div>
-            {q && (
+            {q && !commandMode && (
               <div className="flex gap-1.5 border-b border-line px-3.5 py-2.5">
                 {SCOPES.map((s) => (
                   <button
@@ -225,7 +261,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
               </div>
             )}
             <Command.List className="scrollbar-thin max-h-[min(60vh,520px)] overflow-y-auto px-2 pb-2.5 pt-1.5">
-              {q && !loading && total === 0 && (
+              {q && !commandMode && !loading && total === 0 && (
                 <Command.Empty className="px-3 py-10 text-center text-sm text-muted">Nada encontrado para “{q}”.</Command.Empty>
               )}
               {data && show("plans") && (data.plans.length > 0 || data.nodes.length > 0) && (
@@ -289,8 +325,29 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
                   ))}
                 </Command.Group>
               )}
-              {scope === "all" && actions.length > 0 && (
-                <Command.Group heading="Ações" className={groupCls}>
+              {!q && !commandMode && recents && (recents.links.length > 0 || recents.plans.length > 0) && (
+                <Command.Group heading="Recentes" className={groupCls}>
+                  {recents.links.map((l) => (
+                    <Command.Item key={`rl-${l.id}`} value={`rl-${l.id}`} onSelect={() => openLink({ ...l, collectionName: null })} className={itemCls}>
+                      <SiteIcon src={l.favicon} label={l.title} size={28} />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">{l.title}</span>
+                        <span className="truncate text-xs text-muted">{l.domain}</span>
+                      </span>
+                      {l.pinned && <Pin className="size-3.5 text-muted" aria-label="No acesso rápido" />}
+                    </Command.Item>
+                  ))}
+                  {recents.plans.map((p) => (
+                    <Command.Item key={`rp-${p.id}`} value={`rp-${p.id}`} onSelect={() => go(p.published ? `/plans/${p.id}` : `/plans/${p.id}/edit`)} className={itemCls}>
+                      <IconTile><Clock /></IconTile>
+                      <span className="truncate">{p.title}</span>
+                      <span className="ml-auto text-xs text-muted">Plan</span>
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
+              {(scope === "all" || commandMode) && actions.length > 0 && (
+                <Command.Group heading={commandMode ? "Comandos" : "Ações"} className={groupCls}>
                   {actions.map((a) => (
                     <Command.Item key={a.id} value={`a-${a.id}`} onSelect={a.run} className={itemCls}>
                       <IconTile>{a.icon}</IconTile>
@@ -304,6 +361,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
               <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> navegar</span>
               <span className="flex items-center gap-1.5"><Kbd>↵</Kbd> abrir</span>
               <span className="flex items-center gap-1.5"><Kbd>⌘↵</Kbd> nova aba</span>
+              <span className="flex items-center gap-1.5"><Kbd>&gt;</Kbd> comandos</span>
               <span className="flex-1" />
               {q && data && <span>Busca full-text</span>}
             </div>
@@ -312,4 +370,10 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
       </D.Portal>
     </D.Root>
   );
+}
+
+function withParam(sp: URLSearchParams | null, key: string, value: string) {
+  const p = new URLSearchParams(sp?.toString() ?? "");
+  p.set(key, value);
+  return p.toString();
 }

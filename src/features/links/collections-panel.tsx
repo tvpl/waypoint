@@ -314,7 +314,12 @@ export function CollectionsPanel({
               )}
             </div>
           ) : (
-            <ul role="tree" aria-label="Coleções" className="flex flex-col gap-px">
+            <ul
+              role="tree"
+              aria-label="Coleções"
+              className="flex flex-col gap-px"
+              onKeyDown={(e) => treeKey(e, toggle, canEdit ? (id) => setRenaming(id) : undefined)}
+            >
               {tree.map((n) => (
                 <TreeRow
                   key={n.id}
@@ -543,6 +548,9 @@ function TreeRow(props: RowProps) {
                 href={`/links?c=${node.id}`}
                 draggable={false}
                 aria-current={on ? "page" : undefined}
+                data-tree-id={node.id}
+                data-tree-parent={node.parentId ?? ""}
+                data-tree-state={hasChildren ? (open ? "open" : "closed") : "leaf"}
                 className="min-w-0 flex-1 truncate outline-none after:absolute after:inset-0 after:rounded-chip after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
                 onDoubleClick={(e) => {
                   if (!canEdit) return;
@@ -608,4 +616,45 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (name: stri
       maxLength={120}
     />
   );
+}
+
+/** Arrow-key navigation of the collections tree (WAI-ARIA tree pattern, over the row links). */
+function treeKey(e: React.KeyboardEvent<HTMLUListElement>, toggle: (id: string, open?: boolean) => void, rename?: (id: string) => void) {
+  const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tree-id]");
+  if (!el || e.altKey || e.metaKey || e.ctrlKey) return;
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>("[data-tree-id]"));
+  const i = items.indexOf(el);
+  const id = el.dataset.treeId!;
+  const state = el.dataset.treeState;
+  const focus = (t?: HTMLElement | null) => {
+    if (!t) return;
+    e.preventDefault();
+    t.focus();
+  };
+  switch (e.key) {
+    case "ArrowDown":
+      return focus(items[i + 1]);
+    case "ArrowUp":
+      return focus(items[i - 1]);
+    case "Home":
+      return focus(items[0]);
+    case "End":
+      return focus(items.at(-1));
+    case "ArrowRight":
+      e.preventDefault();
+      if (state === "closed") toggle(id, true);
+      else if (state === "open") items[i + 1]?.focus();
+      return;
+    case "ArrowLeft":
+      e.preventDefault();
+      if (state === "open") toggle(id, false);
+      else items.find((t) => t.dataset.treeId === el.dataset.treeParent)?.focus();
+      return;
+    case "F2":
+      if (rename) {
+        e.preventDefault();
+        rename(id);
+      }
+      return;
+  }
 }

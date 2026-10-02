@@ -1,12 +1,15 @@
 "use client";
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { formatKeys, useIsMac } from "@/lib/platform";
 import { monogramColors } from "@/lib/color";
 
+/** Keyboard key(s). String content is shown for the user's platform ("⌘K" → "Ctrl+K" off Mac). */
 export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
+  const mac = useIsMac();
   return (
     <kbd className={cn("rounded-[5px] border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-caption font-normal text-muted", className)}>
-      {children}
+      {typeof children === "string" ? (children === "⌘" ? (mac ? "⌘" : "Ctrl") : formatKeys(children, mac)) : children}
     </kbd>
   );
 }

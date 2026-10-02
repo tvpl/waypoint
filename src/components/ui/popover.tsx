@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Popover as P, Tooltip as T } from "radix-ui";
 import { cn } from "@/lib/utils";
+import { formatKeys, useIsMac } from "@/lib/platform";
 
 export const Popover = P.Root;
 export const PopoverTrigger = P.Trigger;
@@ -23,6 +24,8 @@ export function PopoverContent({ className, sideOffset = 8, ...props }: React.Co
 export const TooltipProvider = T.Provider;
 
 export function Tooltip({ content, children, side = "bottom" }: { content: React.ReactNode; children: React.ReactNode; side?: "top" | "bottom" | "left" | "right" }) {
+  const mac = useIsMac();
+  if (typeof content === "string") content = formatKeys(content, mac);
   return (
     <T.Root delayDuration={350}>
       <T.Trigger asChild>{children}</T.Trigger>

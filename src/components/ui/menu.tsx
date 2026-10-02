@@ -2,11 +2,16 @@
 import * as React from "react";
 import { DropdownMenu as DM, ContextMenu as CM } from "radix-ui";
 import { cn } from "@/lib/utils";
+import { useKeys } from "@/lib/platform";
 
 const content =
   "z-50 min-w-[200px] overflow-hidden rounded-xl border border-line bg-surface p-1.5 text-ink shadow-pop wp-float";
 const item =
   "relative flex h-8 cursor-default select-none items-center gap-2.5 rounded-md px-2.5 text-body outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent-ink [&_svg]:size-[15px] [&_svg]:shrink-0";
+
+function Shortcut({ keys }: { keys: string }) {
+  return <span className="ml-auto pl-4 font-mono text-caption text-muted">{useKeys(keys)}</span>;
+}
 
 export const DropdownMenu = DM.Root;
 export const DropdownMenuTrigger = DM.Trigger;
@@ -24,7 +29,7 @@ export function DropdownMenuItem({ className, danger, shortcut, children, ...pro
   return (
     <DM.Item className={cn(item, danger && "text-danger data-[highlighted]:bg-danger-soft data-[highlighted]:text-danger", className)} {...props}>
       {children}
-      {shortcut && <span className="ml-auto pl-4 font-mono text-caption text-muted">{shortcut}</span>}
+      {shortcut && <Shortcut keys={shortcut} />}
     </DM.Item>
   );
 }
@@ -64,7 +69,7 @@ export function ContextMenuItem({ className, danger, shortcut, children, ...prop
   return (
     <CM.Item className={cn(item, danger && "text-danger data-[highlighted]:bg-danger-soft data-[highlighted]:text-danger", className)} {...props}>
       {children}
-      {shortcut && <span className="ml-auto pl-4 font-mono text-caption text-muted">{shortcut}</span>}
+      {shortcut && <Shortcut keys={shortcut} />}
     </CM.Item>
   );
 }

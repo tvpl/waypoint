@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { ViewTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -29,6 +30,7 @@ import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { HealthDot, shortUrl } from "./health";
 import type { LinkItem, SortMode, ViewMode } from "./types";
 import { normalizeText } from "@/domain/link-query";
+import { useFlip } from "@/lib/use-flip";
 
 // ------------------------------------------------------------------ shared bits
 
@@ -95,6 +97,100 @@ function useLinkHandlers(link: LinkItem) {
   return { onClick, onAuxClick, opener, lib };
 }
 
+const SWIPE_TRIGGER = 76;
+
+/**
+ * Touch gestures: long-press selects (editors), and on rows a horizontal swipe stars
+ * (→) or archives (←). Mouse and pen input are left alone.
+ */
+function useTouchGestures(link: LinkItem, { swipe = false }: { swipe?: boolean } = {}) {
+  const lib = useLibrary();
+  const [dx, setDx] = React.useState(0);
+  const st = React.useRef<{ x: number; y: number; mode: "idle" | "swipe" | "scroll"; fired: boolean; timer: number | null } | null>(null);
+  const clear = () => {
+    if (st.current?.timer) window.clearTimeout(st.current.timer);
+    if (st.current) st.current.timer = null;
+  };
+  const props = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      st.current = { x: e.clientX, y: e.clientY, mode: "idle", fired: false, timer: null };
+      if (lib.canEdit) {
+        st.current.timer = window.setTimeout(() => {
+          if (!st.current || st.current.mode !== "idle") return;
+          st.current.fired = true;
+          lib.toggleSelect(link.id);
+          navigator.vibrate?.(12);
+        }, 450);
+      }
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const s = st.current;
+      if (!s || e.pointerType !== "touch") return;
+      const mx = e.clientX - s.x;
+      const my = e.clientY - s.y;
+      if (Math.hypot(mx, my) > 8) clear();
+      if (s.mode === "idle" && Math.abs(my) > 10) s.mode = "scroll";
+      if (swipe && s.mode === "idle" && Math.abs(mx) > 12 && Math.abs(mx) > Math.abs(my) * 1.5) {
+        s.mode = "swipe";
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
+      if (s.mode === "swipe") setDx(Math.max(-120, Math.min(120, mx)));
+    },
+    onPointerUp: () => {
+      clear();
+      const s = st.current;
+      if (s?.mode === "swipe") {
+        if (dx >= SWIPE_TRIGGER) void lib.star(link);
+        else if (dx <= -SWIPE_TRIGGER && lib.canEdit) lib.archive([link.id], !link.archived);
+        s.fired = true; // swallow the click that follows
+      }
+      setDx(0);
+    },
+    onPointerCancel: () => {
+      clear();
+      st.current = null;
+      setDx(0);
+    },
+    onClickCapture: (e: React.MouseEvent) => {
+      if (st.current?.fired) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      st.current = null;
+    },
+    onContextMenu: (e: React.MouseEvent) => {
+      // the long-press already selected: no native link menu on top
+      if (st.current?.fired) e.preventDefault();
+    },
+    style: (swipe ? { touchAction: "pan-y", "--swipe": `${dx}px` } : {}) as React.CSSProperties,
+  };
+  return { props, dx };
+}
+
+/** What a swipe will do, shown behind a row while it's dragged sideways. */
+function SwipeUnderlay({ dx, link, canArchive }: { dx: number; link: LinkItem; canArchive: boolean }) {
+  if (!dx) return null;
+  const right = dx > 0;
+  const armed = Math.abs(dx) >= SWIPE_TRIGGER;
+  if (!right && !canArchive) return null;
+  return (
+    <span
+      aria-hidden
+      data-underlay
+      className={cn(
+        "pointer-events-none absolute inset-0 flex items-center rounded-[inherit] px-5 transition-colors [&_svg]:size-5",
+        right ? "justify-start" : "justify-end",
+        right ? (armed ? "bg-amber-bg text-amber-ink" : "bg-subtle text-muted") : armed ? "bg-danger-soft text-danger" : "bg-subtle text-muted",
+      )}
+    >
+      {right ? <Star className={cn(armed && "fill-current")} /> : link.archived ? <ArchiveRestore /> : <Archive />}
+    </span>
+  );
+}
+
+const coarsePointer = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
 /** Drag source + reorder drop target for a link element. */
 function useLinkDnd(link: LinkItem, axis: "x" | "y") {
   const lib = useLibrary();
@@ -102,7 +198,8 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
   const [dragging, setDragging] = React.useState(false);
   if (!lib.canEdit) return { props: {}, pos: null, dragging: false };
   const props = {
-    draggable: true,
+    // HTML5 drag fights long-press on touch screens; there, Move… does the job.
+    draggable: !coarsePointer(),
     onDragStart: (e: React.DragEvent) => {
       const sel = lib.selection.get();
       const ids = sel.has(link.id) ? [...sel] : [link.id];
@@ -290,13 +387,16 @@ function StarButton({ link, className }: { link: LinkItem; className?: string })
 function LinkCard({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, opener, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "x");
+  const touch = useTouchGestures(link);
   const selected = useSelected(link.id);
   const selectionMode = useSelectionMode();
   return (
     <article
+      data-flip={link.id}
       {...dnd.props}
+      {...touch.props}
       className={cn(
-        "group relative flex flex-col overflow-visible rounded-card border bg-surface transition-[box-shadow,transform,opacity] hover:-translate-y-px hover:shadow-raise dark:hover:shadow-[0_10px_30px_-12px_rgba(0,0,0,.7)]",
+        "group relative flex flex-col overflow-visible rounded-card border bg-surface transition-[box-shadow,transform,opacity] [-webkit-touch-callout:none] hover:-translate-y-px hover:shadow-raise",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
@@ -315,6 +415,7 @@ function LinkCard({ link }: { link: LinkItem }) {
             draggable={false}
             onClick={onClick}
             onAuxClick={onAuxClick}
+            data-link-primary={link.id}
             className="min-w-0 truncate text-lead font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
             <Highlight text={link.title} terms={lib.highlight} />
@@ -376,17 +477,22 @@ const rowIconBtn = "inline-flex h-7 w-7 items-center justify-center rounded-md t
 function CompactRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, opener, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
+  const touch = useTouchGestures(link, { swipe: true });
   const selected = useSelected(link.id);
   const selectionMode = useSelectionMode();
   return (
     <div
+      data-flip={link.id}
       {...dnd.props}
+      {...touch.props}
       className={cn(
         "group relative flex items-center gap-3 rounded-control border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2",
+        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]", touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
     >
+      <SwipeUnderlay dx={touch.dx} link={link} canArchive={lib.canEdit} />
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[6px]" : "-bottom-[6px]")} />}
       <span className="relative inline-flex">
         <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
@@ -403,6 +509,7 @@ function CompactRow({ link }: { link: LinkItem }) {
             draggable={false}
             onClick={onClick}
             onAuxClick={onAuxClick}
+            data-link-primary={link.id}
             className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-control after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
             <Highlight text={link.title} terms={lib.highlight} />
@@ -454,19 +561,24 @@ const listCols = "grid grid-cols-[minmax(0,1fr)_108px] gap-3 md:grid-cols-[minma
 function ListRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
+  const touch = useTouchGestures(link, { swipe: true });
   const selected = useSelected(link.id);
   const selectionMode = useSelectionMode();
   return (
     <div
       role="row"
+      data-flip={link.id}
       {...dnd.props}
+      {...touch.props}
       className={cn(
         listCols,
         "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-body last:border-b-0 hover:bg-surface-2 md:px-4",
+        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]", touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
         selected && "bg-accent-soft/60 hover:bg-accent-soft/80",
         dnd.dragging && "opacity-50",
       )}
     >
+      <SwipeUnderlay dx={touch.dx} link={link} canArchive={lib.canEdit} />
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[2px]" : "-bottom-[2px]")} />}
       <span role="cell" className="flex min-w-0 items-center gap-3">
         <span className="relative inline-flex">
@@ -484,6 +596,7 @@ function ListRow({ link }: { link: LinkItem }) {
               draggable={false}
               onClick={onClick}
               onAuxClick={onAuxClick}
+              data-link-primary={link.id}
               className="truncate font-medium text-ink outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-accent"
             >
               <Highlight text={link.title} terms={lib.highlight} />
@@ -558,21 +671,41 @@ function ListView({ links }: { links: LinkItem[] }) {
 }
 
 export function LinkViews({ links, view }: { links: LinkItem[]; view: ViewMode }) {
-  if (view === "list") return <ListView links={links} />;
-  if (view === "compact") {
-    return (
-      <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
-        {links.map((l) => (
-          <CompactRow key={l.id} link={l} />
-        ))}
-      </div>
-    );
-  }
+  const ref = React.useRef<HTMLDivElement>(null);
+  useFlip(ref, links, view);
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
-      {links.map((l) => (
-        <LinkCard key={l.id} link={l} />
-      ))}
+    // Switching views crossfades (the toggle navigates inside a transition).
+    <ViewTransition key={view} enter="wp-vt-fade" exit="wp-vt-fade" default="none">
+      <div ref={ref}>
+        {view === "list" ? (
+          <ListView links={links} />
+        ) : view === "compact" ? (
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
+            {links.map((l, i) => (
+              <Stagger key={l.id} i={i}>
+                <CompactRow link={l} />
+              </Stagger>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
+            {links.map((l, i) => (
+              <Stagger key={l.id} i={i}>
+                <LinkCard link={l} />
+              </Stagger>
+            ))}
+          </div>
+        )}
+      </div>
+    </ViewTransition>
+  );
+}
+
+/** Items rise in, a beat apart, the first time they mount (first rows only). */
+function Stagger({ i, children }: { i: number; children: React.ReactElement<{ className?: string }> }) {
+  return (
+    <div className="flex animate-stagger flex-col [&>*]:flex-1" style={{ animationDelay: `${Math.min(i, 14) * 22}ms` }}>
+      {children}
     </div>
   );
 }

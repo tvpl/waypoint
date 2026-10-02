@@ -15,6 +15,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  ScanSearch,
   Share2,
   ShieldCheck,
   Star,
@@ -43,7 +44,7 @@ import { cn } from "@/lib/utils";
 import { CollectionGlyph } from "./collection-style";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { getJson, PREF_EXPANDED, setJson } from "./prefs";
-import type { LibraryCounts, Scope, TagCount, TreeNode } from "./types";
+import { savedSearchHref, type LibraryCounts, type SavedSearchItem, type Scope, type TagCount, type TreeNode } from "./types";
 
 export type PanelHandlers = {
   newCollection: (parent: TreeNode | null) => void;
@@ -58,6 +59,8 @@ export type PanelHandlers = {
   tagHref: (tag: string) => string;
   /** Checks the links of a collection (with subcollections) or of the whole library (null). */
   checkHealth: (node: TreeNode | null) => void;
+  renameSaved: (s: SavedSearchItem) => void;
+  deleteSaved: (s: SavedSearchItem) => void;
 };
 
 function parentMap(nodes: TreeNode[], parent: string | null = null, out = new Map<string, string | null>()) {
@@ -95,10 +98,14 @@ export function CollectionsPanel({
   canEdit,
   handlers,
   className,
+  saved,
+  savedId,
 }: {
   className?: string;
   tree: TreeNode[];
   currentId: string | null;
+  saved: SavedSearchItem[];
+  savedId: string | null;
   scope: Scope;
   counts: LibraryCounts;
   tags: TagCount[];
@@ -149,7 +156,7 @@ export function CollectionsPanel({
   const quick: { scope: Scope; label: string; icon: React.ReactNode; count?: number; href: string }[] = [
     { scope: "all", label: "Todos", icon: <LayoutGrid />, count: counts.all, href: "/links" },
     { scope: "recent", label: "Recentes", icon: <Clock />, href: "/links?scope=recent" },
-    { scope: "starred", label: "Favoritos", icon: <Star />, count: counts.starred, href: "/links?scope=starred" },
+    { scope: "starred", label: "Com estrela", icon: <Star />, count: counts.starred, href: "/links?scope=starred" },
     { scope: "unsorted", label: "Sem coleção", icon: <Inbox />, count: counts.unsorted, href: "/links?scope=unsorted" },
     { scope: "broken", label: "Quebrados", icon: <Unlink />, count: counts.broken || undefined, href: "/links?scope=broken" },
     { scope: "shared", label: "Compartilhados", icon: <Users />, count: counts.shared || undefined, href: "/links?scope=shared" },
@@ -171,7 +178,7 @@ export function CollectionsPanel({
       <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3.5 pb-4">
         <nav aria-label="Filtros rápidos" className="flex flex-col gap-px">
           {quick.map((q) => {
-            const on = !currentId && scope === q.scope;
+            const on = !currentId && !savedId && scope === q.scope;
             const droppable = q.scope === "unsorted" && canEdit;
             return (
               <Link
@@ -227,6 +234,53 @@ export function CollectionsPanel({
             </button>
           )}
         </nav>
+
+        {saved.length > 0 && (
+          <nav aria-label="Buscas salvas" className="flex flex-col gap-1.5">
+            <SectionLabel className="px-2">Buscas salvas</SectionLabel>
+            <ul className="flex flex-col gap-px">
+              {saved.map((s) => {
+                const on = s.id === savedId;
+                return (
+                  <li key={s.id} className="group relative">
+                    <Link
+                      href={savedSearchHref(s)}
+                      aria-current={on ? "page" : undefined}
+                      title={s.query}
+                      className={cn(
+                        "flex h-[30px] items-center gap-2.5 rounded-chip px-2 pr-8 text-body [&_svg]:size-4",
+                        on ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-2 hover:bg-hover hover:text-ink",
+                      )}
+                    >
+                      <ScanSearch aria-hidden />
+                      <span className="flex-1 truncate">{s.name}</span>
+                    </Link>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Ações da busca ${s.name}`}
+                          className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-0 hover:bg-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 [&_svg]:size-4"
+                        >
+                          <MoreHorizontal />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onSelect={() => handlers.renameSaved(s)}>
+                          <Pencil /> Renomear
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem danger onSelect={() => handlers.deleteSaved(s)}>
+                          <Trash2 /> Excluir busca
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <div

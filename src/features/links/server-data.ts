@@ -7,14 +7,16 @@ import {
   getCollection,
   getCollectionTree,
   getFavorite,
+  listFavorites,
   listMarks,
   type CollectionNode,
+  type FavoriteFilter,
   type FavoriteView,
 } from "@/server/services/links";
 import { tagsForFavorites } from "@/server/services/tags";
 import { backlinks } from "@/server/services/plans";
 import { canEditWorkspace, type WorkspaceContext } from "@/server/services/workspaces";
-import type { Backlink, LibraryCounts, LinkDetail, LinkItem, TreeNode } from "./types";
+import { SCOPES, SORT_MODES, VIEW_MODES, type Backlink, type LibraryCounts, type LinkDetail, type LinkItem, type Scope, type SortMode, type TreeNode, type ViewMode } from "./types";
 
 /** Private collections are only visible to their creator (mirrors collectionAccess for members). */
 function canSee(node: { visibility: string; createdBy: string | null }, userId: string) {
@@ -71,6 +73,7 @@ export function flatNodes(nodes: TreeNode[]): TreeNode[] {
 type LinkSource = typeof schema.favorites.$inferSelect & {
   tags: string[];
   starred: boolean;
+  pinned?: boolean;
   collectionName: string | null;
   myOpenCount?: number;
   myLastOpenedAt?: Date | null;
@@ -93,6 +96,7 @@ export function toLinkItem(f: FavoriteView | LinkSource): LinkItem {
     collectionName: f.collectionName,
     tags: f.tags,
     starred: f.starred,
+    pinned: f.pinned ?? false,
     openCount: f.openCount,
     lastOpenedAt: f.lastOpenedAt ? f.lastOpenedAt.getTime() : null,
     myOpenCount: f.myOpenCount ?? 0,
@@ -139,7 +143,7 @@ export function isPinned(userId: string, collectionId: string) {
   return listMarks(userId, "pin").some((m) => m.entityType === "collection" && m.entityId === collectionId);
 }
 
-function isStarred(userId: string, favoriteId: string) {
+function hasMark(userId: string, favoriteId: string, mark: "star" | "pin") {
   return !!getDb()
     .select()
     .from(schema.userMarks)
@@ -148,7 +152,7 @@ function isStarred(userId: string, favoriteId: string) {
         eq(schema.userMarks.userId, userId),
         eq(schema.userMarks.entityType, "favorite"),
         eq(schema.userMarks.entityId, favoriteId),
-        eq(schema.userMarks.mark, "star"),
+        eq(schema.userMarks.mark, mark),
       ),
     )
     .get();
@@ -161,7 +165,20 @@ export function loadLinkDetail(id: string, ctx: WorkspaceContext): LinkDetail | 
   const col = fav.collectionId ? getCollection(fav.collectionId) : undefined;
   if (col && !canSee(col, ctx.user.id)) return null;
   const tags = tagsForFavorites([id]).get(id) ?? [];
-  const link = toLinkItem({ ...fav, tags, starred: isStarred(ctx.user.id, id), collectionName: col?.name ?? null });
+  const opened = getDb()
+    .select({ count: schema.recents.openCount, at: schema.recents.openedAt })
+    .from(schema.recents)
+    .where(and(eq(schema.recents.userId, ctx.user.id), eq(schema.recents.entityType, "favorite"), eq(schema.recents.entityId, id)))
+    .get();
+  const link = toLinkItem({
+    ...fav,
+    tags,
+    starred: hasMark(ctx.user.id, id, "star"),
+    pinned: hasMark(ctx.user.id, id, "pin"),
+    collectionName: col?.name ?? null,
+    myOpenCount: opened?.count ?? 0,
+    myLastOpenedAt: opened?.at ?? null,
+  });
   const path = fav.collectionId ? collectionPath(fav.collectionId).map((c) => ({ id: c.id, name: c.name })) : [];
   const refs: Backlink[] = backlinks("favorite", id, ctx.user.id).map((b) => ({
     planId: b.planId,
@@ -208,4 +225,52 @@ export function sharedCollectionIds(workspaceId: string) {
     )
     .all()
     .map((r) => r.id);
+}
+
+// ------------------------------------------------------------------ library URL state
+
+export type LibraryParams = Record<string, string | string[] | undefined>;
+
+/** Links per page; more load as the list scrolls (see loadMoreLinksAction). */
+export const LIBRARY_PAGE = 120;
+
+/** Reads the library URL (?c, ?scope, ?q, ?tag, ?sort, ?view) against the user's visible tree. */
+export function resolveLibraryParams(sp: LibraryParams, tree: TreeNode[]) {
+  const one = (k: string) => {
+    const v = sp[k];
+    return (Array.isArray(v) ? v[0] : v) ?? null;
+  };
+  const many = (k: string) => {
+    const v = sp[k];
+    return (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean) as string[];
+  };
+  const cId = one("c");
+  const node = cId ? findNode(tree, cId) : undefined;
+  const rawScope = one("scope");
+  const scope: Scope = !node && rawScope && (SCOPES as string[]).includes(rawScope) ? (rawScope as Scope) : "all";
+  const q = (one("q") ?? "").slice(0, 300);
+  const activeTags = [...new Set(many("tag").map((t) => t.slice(0, 48)))];
+  const filtering = !!q.trim() || activeTags.length > 0;
+  const rawSort = one("sort");
+  const manualAllowed = !!node || scope === "unsorted";
+  const defaultSort: SortMode = scope === "recent" ? "visited" : manualAllowed ? "manual" : "recent";
+  const sort: SortMode =
+    rawSort && (SORT_MODES as string[]).includes(rawSort) && (rawSort !== "manual" || manualAllowed) ? (rawSort as SortMode) : defaultSort;
+  const rawView = one("view");
+  const viewParam = rawView && (VIEW_MODES as string[]).includes(rawView) ? (rawView as ViewMode) : null;
+  const filter: FavoriteFilter = {
+    collectionId: node?.id,
+    deep: node ? filtering : undefined,
+    scope: node ? undefined : scope === "shared" ? "all" : scope,
+    tags: activeTags,
+    q,
+    sort,
+  };
+  return { one, cId, node, scope, q, activeTags, filtering, sort, viewParam, filter, invalidCollection: !!cId && !node };
+}
+
+/** One page of the library's links for these URL params, plus whether more follow. */
+export function loadLibraryPage(workspaceId: string, userId: string, filter: FavoriteFilter, offset: number, limit = LIBRARY_PAGE) {
+  const rows = listFavorites(workspaceId, userId, { ...filter, offset, limit: limit + 1 });
+  return { links: rows.slice(0, limit).map(toLinkItem), hasMore: rows.length > limit };
 }

@@ -205,6 +205,12 @@ export const favorites = sqliteTable(
     healthFinalUrl: text("health_final_url"),
     lastOpenedAt: integer("last_opened_at", { mode: "timestamp_ms" }),
     archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    /** Personal-ish notes (markdown-light), separate from the page description. */
+    notes: text("notes"),
+    /** Last metadata enrichment attempt (imports arrive bare; see services/link-enrich.ts). */
+    enrichedAt: integer("enriched_at", { mode: "timestamp_ms" }),
+    /** Set while the link waits in the inbox for triage (quick captures); null once filed. */
+    inboxAt: integer("inbox_at", { mode: "timestamp_ms" }),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -212,6 +218,7 @@ export const favorites = sqliteTable(
   (t) => [
     index("favorites_collection_idx").on(t.workspaceId, t.collectionId, t.sortOrder),
     index("favorites_recent_idx").on(t.workspaceId, t.updatedAt),
+    index("favorites_inbox_idx").on(t.workspaceId, t.inboxAt),
   ],
 );
 
@@ -320,7 +327,7 @@ export const shareLinks = sqliteTable(
   (t) => [uniqueIndex("share_links_resource").on(t.resourceType, t.resourceId)],
 );
 
-/** Per-user marks: pinned (home) and starred (favorites filter). */
+/** Per-user marks: pinned (home / quick access) and starred (favorites filter). */
 export const userMarks = sqliteTable(
   "user_marks",
   {
@@ -330,9 +337,32 @@ export const userMarks = sqliteTable(
     entityType: text("entity_type", { enum: ["plan", "collection", "favorite"] }).notNull(),
     entityId: text("entity_id").notNull(),
     mark: text("mark", { enum: ["pin", "star"] }).notNull(),
+    /** Manual order of pinned items (quick access); null sorts after, by creation. */
+    position: integer("position"),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.entityType, t.entityId, t.mark] })],
+);
+
+/** Saved library searches ("smart collections"): a named query, per user and workspace. */
+export const savedSearches = sqliteTable(
+  "saved_searches",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Library filter text (see domain/link-query.ts). */
+    query: text("query").notNull(),
+    sort: text("sort"),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("saved_searches_user_idx").on(t.userId, t.workspaceId, t.position)],
 );
 
 /** Recently opened plans / links per user. */

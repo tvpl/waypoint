@@ -75,3 +75,34 @@ describe("personal sorts", () => {
     expect(links.listFavorites("ws", "bob", { scope: "recent" }).map((f) => f.title)).toEqual(["Nunca"]);
   });
 });
+
+describe("query language", () => {
+  it("filters by operators in SQL", () => {
+    const q = (s: string, user = "alice") => links.listFavorites("ws", user, { q: s }).map((f) => f.title).sort();
+    expect(q("is:opened")).toEqual(["Antigo", "Diário", "Uma vez"]);
+    expect(q("is:unopened")).toEqual(["Nunca"]);
+    expect(q("site:daily.dev")).toEqual(["Diário"]);
+    expect(q("-site:daily.dev -site:old.dev")).toEqual(["Nunca", "Uma vez"]);
+    expect(q("diario")).toEqual(["Diário"]); // accent-insensitive through FTS
+    expect(q("aily")).toEqual(["Diário"]); // substring through the url
+    expect(q("added:1d")).toHaveLength(4);
+  });
+});
+
+describe("quick access", () => {
+  it("lists pins first, in order, then frecent links", () => {
+    expect(links.quickAccess("alice", "ws", 3).map((f) => f.title)).toEqual(["Diário", "Uma vez", "Antigo"]);
+    links.togglePinLink("alice", ids.never);
+    links.togglePinLink("alice", ids.old);
+    expect(links.quickAccess("alice", "ws", 3).map((f) => [f.title, f.pinned])).toEqual([
+      ["Nunca", true],
+      ["Antigo", true],
+      ["Diário", false],
+    ]);
+    links.reorderPinnedLinks("alice", [ids.old, ids.never]);
+    expect(links.quickAccess("alice", "ws", 2).map((f) => f.title)).toEqual(["Antigo", "Nunca"]);
+    expect(links.listFavorites("ws", "alice", { q: "is:pinned" }).map((f) => f.title).sort()).toEqual(["Antigo", "Nunca"]);
+    expect(links.togglePinLink("alice", ids.never)).toBe(false);
+    expect(links.quickAccess("bob", "ws", 5).map((f) => f.title)).toEqual(["Nunca"]);
+  });
+});

@@ -43,6 +43,8 @@ export type LinkItem = {
   collectionName: string | null;
   tags: string[];
   starred: boolean;
+  /** Pinned to this user's quick access. */
+  pinned: boolean;
   /** Workspace-wide opens. */
   openCount: number;
   lastOpenedAt: number | null;
@@ -87,3 +89,13 @@ export const VISIBILITY_LABEL: Record<Visibility, string> = {
   link: "Qualquer pessoa com o link",
   public: "Público",
 };
+
+/** A saved library search ("smart collection"), personal. */
+export type SavedSearchItem = { id: string; name: string; query: string; sort: SortMode | null };
+
+/** Builds the library URL of a saved search. */
+export function savedSearchHref(s: SavedSearchItem): string {
+  const p = new URLSearchParams({ q: s.query, saved: s.id });
+  if (s.sort) p.set("sort", s.sort);
+  return `/links?${p}`;
+}

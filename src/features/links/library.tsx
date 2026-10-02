@@ -11,18 +11,25 @@ import {
   applyRedirectAction,
   archiveCollectionAction,
   bulkLinksAction,
+  createSavedSearchAction,
   deleteCollectionAction,
+  deleteSavedSearchAction,
+  loadMoreLinksAction,
   moveCollectionAction,
   moveLinksAction,
   toggleStarAction,
   togglePinCollectionAction,
+  togglePinLinkAction,
   updateCollectionAction,
+  updateSavedSearchAction,
 } from "@/app/(app)/links/actions";
+import { ask } from "@/components/ui/ask";
+import { highlightTerms, isEmptyQuery, matchesLinkQuery, parseLinkQuery } from "@/domain/link-query";
 import { CollectionsPanel, type PanelHandlers } from "./collections-panel";
 import { LibraryHeader } from "./library-header";
 import { Toolbar } from "./toolbar";
 import { LinkViews } from "./link-views";
-import { LibraryContext, type LibraryApi } from "./library-context";
+import { createSelectionStore, LibraryContext, type LibraryApi } from "./library-context";
 import { LinkOpenerProvider } from "./link-opener";
 import { LinkPreview } from "./link-preview";
 import { LinkDialog, type LinkDialogState } from "./link-dialog";
@@ -32,16 +39,18 @@ import { BulkBar, MoveDialog } from "./bulk-bar";
 import { ConfirmDialog, type ConfirmRequest } from "./confirm-dialog";
 import { CollectionGlyph, CollectionTile } from "./collection-style";
 import { getDrag } from "./dnd";
-import { getPref, PREF_SUMMARY, PREF_VIEW, setPref } from "./prefs";
+import { getPref, PREF_SUMMARY, PREF_VIEW, setPref, setViewCookie } from "./prefs";
 import { flatNodesClient } from "./tree-utils";
 import { checkLinksNow, healthText, shortUrl, useHealthRun } from "./health";
+import { useEnrichRun } from "./enrich";
 import {
-  VIEW_MODES,
   SORT_MODES,
+  VIEW_MODES,
   VISIBILITY_LABEL,
   type CurrentCollection,
   type LibraryCounts,
   type LinkItem,
+  type SavedSearchItem,
   type Scope,
   type SortMode,
   type SummaryMode,
@@ -55,6 +64,13 @@ export type LibraryProps = {
   current: CurrentCollection | null;
   scope: Scope;
   links: LinkItem[];
+  /** More links exist after `links` (loaded on scroll). */
+  hasMore: boolean;
+  /** View remembered for this browser (cookie), so the server renders it without a flash. */
+  storedView: ViewMode | null;
+  saved: SavedSearchItem[];
+  /** The saved search being viewed (?saved=). */
+  savedSearch: SavedSearchItem | null;
   sharedCollections: TreeNode[];
   tags: TagCount[];
   counts: LibraryCounts;
@@ -109,21 +125,51 @@ const extractUrl = (text: string) => {
 };
 
 export function LinksLibrary(props: LibraryProps) {
-  const { tree, current, scope, links, sharedCollections, tags, counts, canEdit, q, activeTags, sort, viewParam, openId, filtering } = props;
+  const { tree, current, scope, links, sharedCollections, tags, counts, canEdit, q, activeTags, sort, viewParam, openId, filtering, saved, savedSearch } = props;
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, startTransition] = React.useTransition();
-  const [items, apply] = React.useOptimistic(links, reduce);
   const filterRef = React.useRef<HTMLInputElement>(null);
+
+  // ---------------------------------------------------------------- paging
+  // Further pages append to the server's first page; a new first page (navigation) resets them.
+  const [more, setMore] = React.useState<{ base: LinkItem[]; links: LinkItem[]; hasMore: boolean }>({ base: links, links: [], hasMore: props.hasMore });
+  if (more.base !== links) setMore({ base: links, links: [], hasMore: props.hasMore });
+  const loaded = React.useMemo(() => (more.links.length ? [...links, ...more.links] : links), [links, more.links]);
+  const [items, apply] = React.useOptimistic(loaded, reduce);
+  const loadingMore = React.useRef(false);
+  const loadMore = React.useCallback(() => {
+    if (loadingMore.current || !more.hasMore) return;
+    loadingMore.current = true;
+    const base = more.base;
+    loadMoreLinksAction(sp.toString(), base.length + more.links.length)
+      .then((r) => {
+        if (!r.ok) return void toast.error(r.error);
+        setMore((m) => (m.base === base ? { base, links: [...m.links, ...r.data!.links], hasMore: r.data!.hasMore } : m));
+      })
+      .finally(() => (loadingMore.current = false));
+  }, [more, sp]);
+
+  // ---------------------------------------------------------------- instant filter
+  // While the debounced URL update is in flight, filter what's loaded right away.
+  const [liveQ, setLiveQ] = React.useState(q);
+  const parsedLive = React.useMemo(() => parseLinkQuery(liveQ), [liveQ]);
+  const visible = React.useMemo(() => {
+    if (liveQ.trim() === q.trim() || isEmptyQuery(parsedLive)) return items;
+    return items.filter((l) => matchesLinkQuery(l, parsedLive));
+  }, [items, liveQ, q, parsedLive]);
+  const highlight = React.useMemo(() => highlightTerms(parsedLive), [parsedLive]);
 
   const [linkDialog, setLinkDialog] = React.useState<LinkDialogState>(null);
   const [colDialog, setColDialog] = React.useState<CollectionDialogState>(null);
   const [shareNode, setShareNode] = React.useState<TreeNode | null>(null);
   const [moveIds, setMoveIds] = React.useState<string[] | null>(null);
   const [confirm, setConfirm] = React.useState<ConfirmRequest | null>(null);
-  const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
+  const [selection] = React.useState(createSelectionStore);
+  const selected = React.useSyncExternalStore(selection.subscribe, selection.get, selection.get);
+  const setSelected = selection.set;
   const lastSelected = React.useRef<string | null>(null);
-  const [storedView, setStoredView] = React.useState<ViewMode | null>(null);
+  const [storedView, setStoredView] = React.useState<ViewMode | null>(props.storedView);
   const [summary, setSummary] = React.useState<SummaryMode>("default");
   const [externalOver, setExternalOver] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
@@ -132,8 +178,16 @@ export function LinksLibrary(props: LibraryProps) {
   React.useEffect(() => setDrawer(false), [spKey]);
 
   React.useEffect(() => {
-    setStoredView(getPref(PREF_VIEW, VIEW_MODES, "cards"));
     setSummary(getPref<SummaryMode>(PREF_SUMMARY, ["default", "always", "hover", "hidden"], "default"));
+    // One-time move of the view preference from localStorage to the cookie the server reads.
+    if (!props.storedView) {
+      const legacy = getPref<ViewMode | "">(PREF_VIEW, [...VIEW_MODES, ""], "");
+      if (legacy) {
+        setViewCookie(legacy);
+        setStoredView(legacy);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const view: ViewMode = viewParam ?? (current ? current.defaultView : (storedView ?? "cards"));
@@ -175,7 +229,11 @@ export function LinksLibrary(props: LibraryProps) {
     },
     [sp, activeTags],
   );
-  const onQuery = React.useCallback((v: string) => navigate({ q: v.trim() || null }), [navigate]);
+  const onQuery = React.useCallback(
+    // Editing the text leaves the saved search (its name would no longer describe the results).
+    (v: string) => navigate({ q: v.trim() || null, ...(savedSearch && v.trim() !== savedSearch.query ? { saved: null } : {}) }),
+    [navigate, savedSearch],
+  );
 
   // URL-driven dialogs (command palette: ?add=1&url=…, ?newCollection=1).
   React.useEffect(() => {
@@ -256,6 +314,7 @@ export function LinksLibrary(props: LibraryProps) {
   );
 
   const runHealth = useHealthRun();
+  const enrich = useEnrichRun();
   const checkLinks = React.useCallback(
     (ids: string[]) => {
       if (!canEdit || !ids.length) return;
@@ -361,7 +420,7 @@ export function LinksLibrary(props: LibraryProps) {
       setSelected((prev) => {
         const next = new Set(prev);
         if (opts?.range && lastSelected.current) {
-          const ids = items.map((l) => l.id);
+          const ids = visible.map((l) => l.id);
           const a = ids.indexOf(lastSelected.current);
           const b = ids.indexOf(id);
           if (a >= 0 && b >= 0) {
@@ -376,7 +435,18 @@ export function LinksLibrary(props: LibraryProps) {
         return next;
       });
     },
-    [items],
+    [visible, setSelected],
+  );
+
+  const pin = React.useCallback(
+    (link: LinkItem) =>
+      startTransition(async () => {
+        apply({ type: "patch", ids: [link.id], patch: { pinned: !link.pinned } });
+        const res = await togglePinLinkAction(link.id);
+        if (!res.ok) toast.error(res.error);
+        else toast.success(res.data?.pinned ? "Fixado no acesso rápido da Início" : "Removido do acesso rápido");
+      }),
+    [apply],
   );
 
   const dropOnLink = React.useCallback(
@@ -392,12 +462,13 @@ export function LinksLibrary(props: LibraryProps) {
     [items, run, current],
   );
 
-  const api: LibraryApi = {
+  const api: LibraryApi = React.useMemo(() => ({
     canEdit,
     archivedScope,
-    selected,
-    selectionMode: selected.size > 0,
+    selection,
     toggleSelect,
+    pin,
+    highlight,
     summaryFor: (l) => (summary === "default" ? l.summaryBehavior : summary),
     reorderable,
     dropOnLink,
@@ -422,7 +493,7 @@ export function LinksLibrary(props: LibraryProps) {
         `URL atualizada para ${shortUrl(url)}`,
       );
     },
-  };
+  }), [canEdit, archivedScope, selection, toggleSelect, pin, highlight, summary, reorderable, dropOnLink, star, archive, remove, activeTags, toggleTag, navigate, sort, checkLinks, current, scope, run]);
 
   // ---------------------------------------------------------------- collection operations
   const isInCurrent = (node: TreeNode) => {
@@ -469,14 +540,59 @@ export function LinksLibrary(props: LibraryProps) {
     moveLinks,
     tagHref,
     checkHealth: (node) => runHealth({ collectionId: node?.id ?? null, name: node?.name }),
+    renameSaved: async (s) => {
+      const name = await ask.prompt({ title: "Renomear busca", label: "Nome", initial: s.name, confirmLabel: "Renomear" });
+      if (name && name !== s.name) run(null, () => updateSavedSearchAction(s.id, { name }));
+    },
+    deleteSaved: async (s) => {
+      const ok = await ask.confirm({ title: `Excluir “${s.name}”?`, description: "Só a busca salva é excluída — os links continuam onde estão.", confirmLabel: "Excluir", danger: true });
+      if (!ok) return;
+      const was = savedSearch?.id === s.id;
+      run(null, () => deleteSavedSearchAction(s.id), () => {
+        toast.success("Busca excluída");
+        if (was) navigate({ saved: null });
+      });
+    },
+  };
+
+  const saveSearch = async () => {
+    const query = (filterRef.current?.value ?? q).trim();
+    if (!query) return;
+    const name = await ask.prompt({
+      title: "Salvar busca",
+      description: "Ela aparece na barra lateral e se atualiza sozinha com os links que combinarem.",
+      label: "Nome",
+      initial: query.replace(/\b[a-z]+:/g, "").replace(/["#]/g, "").trim().slice(0, 40) || "Minha busca",
+      confirmLabel: "Salvar",
+    });
+    if (!name) return;
+    const res = await createSavedSearchAction({ name, query, sort: sp.get("sort") });
+    if (!res.ok) return void toast.error(res.error);
+    toast.success(`“${name}” salva na barra lateral`);
+    navigate({ q: query, saved: res.data!.id });
+  };
+
+  const updateSaved = () => {
+    if (!savedSearch) return;
+    const query = (filterRef.current?.value ?? q).trim();
+    run(null, () => updateSavedSearchAction(savedSearch.id, { query, sort: sp.get("sort") }), "Busca salva atualizada");
   };
 
   const currentNode = current;
-  const copy = SCOPE_COPY[scope];
+  const copy = savedSearch
+    ? { title: savedSearch.name, subtitle: `Busca salva · ${savedSearch.query}` }
+    : SCOPE_COPY[scope];
+  const pinnedSet = React.useMemo(() => new Set(props.pinned), [props.pinned]);
+  const collectionNames = React.useMemo(() => flat.map((n) => n.name), [flat]);
+  const domains = React.useMemo(() => {
+    const count = new Map<string, number>();
+    for (const l of links) if (l.domain) count.set(l.domain, (count.get(l.domain) ?? 0) + 1);
+    return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([d]) => d.replace(/^www\./, ""));
+  }, [links]);
 
   // ---------------------------------------------------------------- render
   const sortOptions: SortMode[] = SORT_MODES.filter((s) => s !== "manual" || !!current || scope === "unsorted");
-  const empty = scope === "shared" && !current ? sharedCollections.length === 0 : items.length === 0;
+  const empty = scope === "shared" && !current ? sharedCollections.length === 0 : visible.length === 0;
 
   return (
     <LibraryContext.Provider value={api}>
@@ -490,9 +606,11 @@ export function LinksLibrary(props: LibraryProps) {
             counts={counts}
             tags={tags}
             activeTags={activeTags}
-            pinned={new Set(props.pinned)}
+            pinned={pinnedSet}
             canEdit={canEdit}
             handlers={handlers}
+            saved={saved}
+            savedId={savedSearch?.id ?? null}
           />
           <D.Root open={drawer} onOpenChange={setDrawer}>
             <D.Portal>
@@ -519,8 +637,10 @@ export function LinksLibrary(props: LibraryProps) {
                   counts={counts}
                   tags={tags}
                   activeTags={activeTags}
-                  pinned={new Set(props.pinned)}
+                  pinned={pinnedSet}
                   canEdit={canEdit}
+                  saved={saved}
+                  savedId={savedSearch?.id ?? null}
                   handlers={{
                     ...handlers,
                     newCollection: (p) => (setDrawer(false), handlers.newCollection(p)),
@@ -574,6 +694,7 @@ export function LinksLibrary(props: LibraryProps) {
                 onArchive={() => current && handlers.archive(current)}
                 onDelete={() => current && handlers.remove(current)}
                 onCheckHealth={() => handlers.checkHealth(current)}
+                onEnrich={() => enrich({ collectionId: current?.id ?? null, name: current?.name })}
                 onOpenCollections={() => setDrawer(true)}
                 onAdd={() => openAdd()}
               />
@@ -582,10 +703,14 @@ export function LinksLibrary(props: LibraryProps) {
                 <Toolbar
                   q={q}
                   onQuery={onQuery}
+                  onLiveQuery={setLiveQ}
                   filterRef={filterRef}
-                  placeholder={current ? "Filtrar nesta coleção…" : "Filtrar links…"}
+                  placeholder={current ? "Filtrar nesta coleção… (tag:, site:, is:)" : "Filtrar links… (tag:, site:, in:, is:)"}
                   activeTags={activeTags}
                   tags={tags}
+                  collections={collectionNames}
+                  domains={domains}
+                  onSaveSearch={savedSearch && savedSearch.query === q.trim() ? undefined : saveSearch}
                   onToggleTag={toggleTag}
                   sort={sort}
                   sortOptions={sortOptions}
@@ -597,11 +722,26 @@ export function LinksLibrary(props: LibraryProps) {
                   }}
                   view={view}
                   onView={(v) => {
-                    setPref(PREF_VIEW, v);
-                    setStoredView(v);
-                    navigate({ view: v });
+                    if (current) {
+                      // Inside a collection the choice becomes its default (for everyone, editors only).
+                      if (canEdit && v !== current.defaultView) run(null, () => updateCollectionAction(current.id, { defaultView: v }));
+                      navigate({ view: v });
+                    } else {
+                      setViewCookie(v);
+                      setStoredView(v);
+                      navigate({ view: null });
+                    }
                   }}
                 />
+              )}
+
+              {savedSearch && savedSearch.query !== q.trim() && q.trim() && (
+                <div className="-mt-1 flex animate-in flex-wrap items-center gap-2 rounded-control border border-accent-line bg-accent-soft/60 px-3 py-2 text-body text-accent-ink">
+                  <span className="flex-1">A busca mudou desde que foi salva.</span>
+                  <Button size="sm" variant="soft" onClick={updateSaved}>
+                    Atualizar “{savedSearch.name}”
+                  </Button>
+                </div>
               )}
 
               {current && (current.children.length > 0 || canEdit) && (
@@ -629,13 +769,13 @@ export function LinksLibrary(props: LibraryProps) {
                     </button>
                   )}
                   <span className="ml-auto text-xs text-muted" aria-live="polite">
-                    <ResultCount n={items.length} deep={filtering} />
+                    <ResultCount n={visible.length} more={more.hasMore} deep={filtering} />
                   </span>
                 </div>
               )}
-              {!current && scope !== "shared" && items.length > 0 && (
+              {!current && scope !== "shared" && visible.length > 0 && (
                 <span className="-mt-2 text-xs text-muted" aria-live="polite">
-                  <ResultCount n={items.length} deep={false} />
+                  <ResultCount n={visible.length} more={more.hasMore} deep={false} />
                 </span>
               )}
 
@@ -652,9 +792,12 @@ export function LinksLibrary(props: LibraryProps) {
               ) : scope === "shared" && !current ? (
                 <SharedGrid nodes={sharedCollections} />
               ) : (
-                <LinkViews links={items} view={view} />
+                <>
+                  <LinkViews links={visible} view={view} />
+                  {more.hasMore && <LoadMore onVisible={loadMore} />}
+                </>
               )}
-              {reorderable && items.length > 1 && <p className="text-center text-xs text-muted">Arraste os links para reordenar ou solte-os em uma coleção na barra lateral.</p>}
+              {reorderable && visible.length > 1 && <p className="text-center text-xs text-muted">Arraste os links para reordenar ou solte-os em uma coleção na barra lateral.</p>}
             </div>
           </main>
         </div>
@@ -664,8 +807,8 @@ export function LinksLibrary(props: LibraryProps) {
             count={selected.size}
             archivedScope={archivedScope}
             tags={tags}
-            allSelected={selected.size === items.length}
-            onSelectAll={() => setSelected(new Set(items.map((l) => l.id)))}
+            allSelected={selected.size === visible.length}
+            onSelectAll={() => setSelected(new Set(visible.map((l) => l.id)))}
             onMove={() => setMoveIds([...selected])}
             onTag={(tag) => {
               const ids = [...selected];
@@ -700,12 +843,30 @@ export function LinksLibrary(props: LibraryProps) {
   );
 }
 
-function ResultCount({ n, deep }: { n: number; deep: boolean }) {
+function ResultCount({ n, more, deep }: { n: number; more: boolean; deep: boolean }) {
   return (
     <>
-      {n} {n === 1 ? "link" : "links"}
+      {n}
+      {more ? "+" : ""} {n === 1 && !more ? "link" : "links"}
       {deep ? " (incluindo subcoleções)" : ""}
     </>
+  );
+}
+
+/** Sentinel that asks for the next page when it scrolls into view. */
+function LoadMore({ onVisible }: { onVisible: () => void }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && onVisible(), { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onVisible]);
+  return (
+    <div ref={ref} className="flex justify-center py-4" role="status" aria-label="Carregando mais links">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line-2 border-t-accent" />
+    </div>
   );
 }
 

@@ -15,15 +15,18 @@ import {
   getFavorite,
   moveCollection,
   moveFavorite,
+  reorderPinnedLinks,
   toggleMark,
+  togglePinLink,
   updateCollection,
   updateFavorite,
 } from "@/server/services/links";
+import { createSavedSearch, deleteSavedSearch, updateSavedSearch } from "@/server/services/saved-searches";
 import { tagsForFavorites } from "@/server/services/tags";
 import { markHealthy } from "@/server/services/link-health";
 import { ensureShareLink, revokeShareLink } from "@/server/services/plans";
-import { favoritesInWorkspace } from "@/features/links/server-data";
-import type { ActionResult } from "@/features/links/types";
+import { favoritesInWorkspace, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
+import type { ActionResult, LinkItem } from "@/features/links/types";
 
 // ------------------------------------------------------------------ helpers
 
@@ -60,6 +63,8 @@ function assertCollection(ctx: WorkspaceContext, id: string | null | undefined) 
 function assertFavorite(ctx: WorkspaceContext, id: string) {
   const f = getFavorite(id);
   if (!f || f.workspaceId !== ctx.workspace.id) throw new UserError("Link não encontrado.");
+  // Links inside someone else's private collection don't exist for this user.
+  if (f.collectionId) assertCollection(ctx, f.collectionId);
   return f;
 }
 
@@ -312,6 +317,96 @@ export async function regenerateShareLinkAction(collectionId: string): Promise<A
     const token = ensureShareLink("collection", collectionId, ctx.user.id);
     done();
     return { ok: true, data: { token } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ quick access (personal)
+
+/** Pins a link to the user's quick access (Início, new tab). Personal, so viewers may pin too. */
+export async function togglePinLinkAction(linkId: string): Promise<ActionResult<{ pinned: boolean }>> {
+  try {
+    const ctx = await requireWorkspace();
+    assertFavorite(ctx, id.parse(linkId));
+    const pinned = togglePinLink(ctx.user.id, linkId);
+    done();
+    return { ok: true, data: { pinned } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function reorderPinnedLinksAction(ids: string[]): Promise<ActionResult> {
+  try {
+    const ctx = await requireWorkspace();
+    reorderPinnedLinks(ctx.user.id, z.array(id).max(100).parse(ids));
+    done();
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ saved searches (personal)
+
+const savedInput = z.object({
+  name: z.string().trim().min(1, "Dê um nome à busca.").max(80),
+  query: z.string().trim().min(1, "A busca está vazia.").max(300),
+  sort: z.string().max(20).nullable().optional(),
+});
+
+export async function createSavedSearchAction(input: z.input<typeof savedInput>): Promise<ActionResult<{ id: string }>> {
+  try {
+    const ctx = await requireWorkspace();
+    const data = savedInput.parse(input);
+    const savedId = createSavedSearch({ userId: ctx.user.id, workspaceId: ctx.workspace.id, ...data });
+    revalidatePath("/links");
+    return { ok: true, data: { id: savedId } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function updateSavedSearchAction(savedId: string, patch: Partial<z.input<typeof savedInput>>): Promise<ActionResult> {
+  try {
+    const ctx = await requireWorkspace();
+    updateSavedSearch(ctx.user.id, id.parse(savedId), savedInput.partial().parse(patch));
+    revalidatePath("/links");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteSavedSearchAction(savedId: string): Promise<ActionResult> {
+  try {
+    const ctx = await requireWorkspace();
+    deleteSavedSearch(ctx.user.id, id.parse(savedId));
+    revalidatePath("/links");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ paging
+
+/** Next page of the library for the current URL (?c, ?scope, ?q…), starting at `offset`. */
+export async function loadMoreLinksAction(search: string, offset: number): Promise<ActionResult<{ links: LinkItem[]; hasMore: boolean }>> {
+  try {
+    const ctx = await requireWorkspace();
+    const params = new URLSearchParams(search.slice(0, 4000));
+    const record: Record<string, string | string[]> = {};
+    for (const key of new Set(params.keys())) {
+      const all = params.getAll(key);
+      record[key] = all.length > 1 ? all : all[0];
+    }
+    const { tree } = visibleTree(ctx.workspace.id, ctx.user.id);
+    const { filter, invalidCollection } = resolveLibraryParams(record, tree);
+    if (invalidCollection) return { ok: true, data: { links: [], hasMore: false } };
+    const start = z.number().int().min(0).max(100_000).parse(offset);
+    return { ok: true, data: loadLibraryPage(ctx.workspace.id, ctx.user.id, filter, start) };
   } catch (e) {
     return fail(e);
   }

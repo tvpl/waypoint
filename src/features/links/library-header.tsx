@@ -2,22 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Archive,
-  ChevronRight,
-  Download,
-  FolderPlus,
-  MoreHorizontal,
-  PanelLeft,
-  Pencil,
-  Pin,
-  PinOff,
-  Plus,
-  Share2,
-  ShieldCheck,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { Archive, ChevronRight, Download, FolderPlus, ImagePlus, MoreHorizontal, PanelLeft, Pencil, Pin, PinOff, Plus, Share2, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
@@ -129,6 +114,7 @@ export function LibraryHeader({
   onDelete,
   onAdd,
   onCheckHealth,
+  onEnrich,
   onOpenCollections,
 }: {
   current: CurrentCollection | null;
@@ -146,6 +132,7 @@ export function LibraryHeader({
   onDelete: () => void;
   onAdd: () => void;
   onCheckHealth: () => void;
+  onEnrich: () => void;
   /** Phones: opens the collections drawer. */
   onOpenCollections: () => void;
 }) {
@@ -256,6 +243,10 @@ export function LibraryHeader({
                   <DropdownMenuItem onSelect={onCheckHealth}>
                     <ShieldCheck />
                     {current ? "Verificar links desta coleção" : "Verificar links"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onEnrich}>
+                    <ImagePlus />
+                    Buscar ícones e capas que faltam
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>

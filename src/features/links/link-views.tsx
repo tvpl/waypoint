@@ -12,6 +12,8 @@ import {
   MoreHorizontal,
   PanelRight,
   Pencil,
+  Pin,
+  PinOff,
   ShieldCheck,
   Star,
   Trash2,
@@ -21,19 +23,68 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { SiteIcon } from "@/components/ui/misc";
 import { cn, timeAgo } from "@/lib/utils";
 import { recordOpen, useLinkOpener } from "./link-opener";
-import { useLibrary } from "./library-context";
+import { useLibrary, useSelected, useSelectionMode } from "./library-context";
 import { Cover } from "./cover";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { HealthDot, shortUrl } from "./health";
 import type { LinkItem, SortMode, ViewMode } from "./types";
+import { normalizeText } from "@/domain/link-query";
 
 // ------------------------------------------------------------------ shared bits
+
+/** Marks search terms inside `text`, ignoring case and accents. */
+export function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  const parts = React.useMemo(() => {
+    if (!terms.length || !text) return null;
+    // Normalized copy plus, for each normalized char, the index of its source char.
+    let norm = "";
+    const src: number[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const n = normalizeText(text[i]);
+      for (const ch of n) {
+        norm += ch;
+        src.push(i);
+      }
+    }
+    const ranges: [number, number][] = [];
+    for (const t of terms) {
+      let from = 0;
+      let at: number;
+      while (t && (at = norm.indexOf(t, from)) >= 0) {
+        ranges.push([src[at], src[at + t.length - 1] + 1]);
+        from = at + t.length;
+      }
+    }
+    if (!ranges.length) return null;
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [];
+    for (const r of ranges) {
+      const last = merged.at(-1);
+      if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+      else merged.push([...r]);
+    }
+    const out: React.ReactNode[] = [];
+    let pos = 0;
+    merged.forEach(([a, b], i) => {
+      if (a > pos) out.push(text.slice(pos, a));
+      out.push(
+        <mark key={i} className="rounded-[3px] bg-amber-bg px-px text-inherit">
+          {text.slice(a, b)}
+        </mark>,
+      );
+      pos = b;
+    });
+    if (pos < text.length) out.push(text.slice(pos));
+    return out;
+  }, [text, terms]);
+  return <>{parts ?? text}</>;
+}
 
 function useLinkHandlers(link: LinkItem) {
   const lib = useLibrary();
   const opener = useLinkOpener();
   const onClick = (e: React.MouseEvent) => {
-    if (lib.canEdit && (lib.selectionMode || e.shiftKey)) {
+    if (lib.canEdit && (lib.selection.get().size > 0 || e.shiftKey)) {
       e.preventDefault();
       lib.toggleSelect(link.id, { range: e.shiftKey });
       return;
@@ -53,7 +104,8 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
   const props = {
     draggable: true,
     onDragStart: (e: React.DragEvent) => {
-      const ids = lib.selected.has(link.id) ? [...lib.selected] : [link.id];
+      const sel = lib.selection.get();
+      const ids = sel.has(link.id) ? [...sel] : [link.id];
       startDrag(e, { kind: "links", ids }, { url: link.url });
       setDragging(true);
     },
@@ -82,7 +134,8 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
 
 function Checkbox({ link, className }: { link: LinkItem; className?: string }) {
   const lib = useLibrary();
-  const on = lib.selected.has(link.id);
+  const on = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   // Selection only exists to run bulk edits, which viewers can't do.
   if (!lib.canEdit) return null;
   return (
@@ -97,7 +150,7 @@ function Checkbox({ link, className }: { link: LinkItem; className?: string }) {
       }}
       className={cn(
         "relative z-10 m-0 h-4 w-4 cursor-pointer accent-[var(--accent)] transition-opacity",
-        on || lib.selectionMode ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+        on || selectionMode ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
         className,
       )}
     />
@@ -134,7 +187,11 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => lib.star(link)}>
           <Star />
-          {link.starred ? "Remover dos favoritos" : "Favoritar"}
+          {link.starred ? "Remover estrela" : "Marcar com estrela"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => lib.pin(link)}>
+          {link.pinned ? <PinOff /> : <Pin />}
+          {link.pinned ? "Tirar do acesso rápido" : "Fixar no acesso rápido"}
         </DropdownMenuItem>
         {lib.canEdit && (
           <>
@@ -185,7 +242,9 @@ function Summary({ link, className }: { link: LinkItem; className?: string }) {
   const mode = lib.summaryFor(link);
   if (mode === "hidden" || !link.description) return null;
   return (
-    <p className={cn(className, mode === "hover" && "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100")}>{link.description}</p>
+    <p className={cn(className, mode === "hover" && "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100")}>
+      <Highlight text={link.description} terms={lib.highlight} />
+    </p>
   );
 }
 
@@ -231,7 +290,8 @@ function StarButton({ link, className }: { link: LinkItem; className?: string })
 function LinkCard({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, opener, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "x");
-  const selected = lib.selected.has(link.id);
+  const selected = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   return (
     <article
       {...dnd.props}
@@ -257,7 +317,7 @@ function LinkCard({ link }: { link: LinkItem }) {
             onAuxClick={onAuxClick}
             className="min-w-0 truncate text-lead font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
-            {link.title}
+            <Highlight text={link.title} terms={lib.highlight} />
           </a>
         </div>
         <span className="flex min-w-0 items-center gap-1.5">
@@ -316,7 +376,8 @@ const rowIconBtn = "inline-flex h-7 w-7 items-center justify-center rounded-md t
 function CompactRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, opener, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
-  const selected = lib.selected.has(link.id);
+  const selected = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   return (
     <div
       {...dnd.props}
@@ -328,7 +389,7 @@ function CompactRow({ link }: { link: LinkItem }) {
     >
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[6px]" : "-bottom-[6px]")} />}
       <span className="relative inline-flex">
-        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
+        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
         <span className="absolute inset-0 flex items-center justify-center">
           <Checkbox link={link} />
         </span>
@@ -344,7 +405,7 @@ function CompactRow({ link }: { link: LinkItem }) {
             onAuxClick={onAuxClick}
             className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-control after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
-            {link.title}
+            <Highlight text={link.title} terms={lib.highlight} />
           </a>
           <HealthDot link={link} />
         </span>
@@ -393,7 +454,8 @@ const listCols = "grid grid-cols-[minmax(0,1fr)_108px] gap-3 md:grid-cols-[minma
 function ListRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
-  const selected = lib.selected.has(link.id);
+  const selected = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   return (
     <div
       role="row"
@@ -408,7 +470,7 @@ function ListRow({ link }: { link: LinkItem }) {
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[2px]" : "-bottom-[2px]")} />}
       <span role="cell" className="flex min-w-0 items-center gap-3">
         <span className="relative inline-flex">
-          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
+          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
           <span className="absolute inset-0 flex items-center justify-center">
             <Checkbox link={link} />
           </span>
@@ -424,7 +486,7 @@ function ListRow({ link }: { link: LinkItem }) {
               onAuxClick={onAuxClick}
               className="truncate font-medium text-ink outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-accent"
             >
-              {link.title}
+              <Highlight text={link.title} terms={lib.highlight} />
             </a>
             <span className="hidden shrink truncate font-mono text-xs text-muted lg:inline">{link.domain}</span>
             <HealthDot link={link} className="self-center" />

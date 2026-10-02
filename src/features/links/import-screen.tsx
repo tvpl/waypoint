@@ -9,6 +9,7 @@ import { Input, Label, SectionLabel } from "@/components/ui/input";
 import { cn, normalizeTag } from "@/lib/utils";
 import { CollectionPicker } from "./collection-picker";
 import type { TreeNode } from "./types";
+import { useEnrichRun } from "./enrich";
 
 type Preview = { folders: number; links: number; topFolders: string[] };
 type Result = { collections: number; links: number; collectionId: string | null };
@@ -23,6 +24,7 @@ const BROWSERS: { name: string; steps: string }[] = [
 
 export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[]; canEdit: boolean; workspaceName: string }) {
   const router = useRouter();
+  const enrich = useEnrichRun();
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<Preview | null>(null);
@@ -76,6 +78,8 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
     }
     setResult(json);
     router.refresh();
+    // Imports carry only title + URL: fetch icons, covers and descriptions in the background.
+    if (json.links > 0) void enrich({ collectionId: json.collectionId }, { quietWhenNothing: true });
   };
 
   const target = result?.collectionId ? `/links?c=${result.collectionId}` : "/links";

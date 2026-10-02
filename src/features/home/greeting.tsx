@@ -15,11 +15,11 @@ export function Greeting({ name }: { name: string }) {
     : "";
   return (
     <div className="flex flex-col gap-2.5">
-      <h1 className="font-display text-[52px] leading-none tracking-[-0.01em] sm:text-[64px]">
+      <h1 className="font-display text-display-sm leading-none tracking-[-0.01em] sm:text-display">
         {now ? greet(now) : "Olá"}, {first}
         <span className="text-accent">.</span>
       </h1>
-      <p className="min-h-[26px] text-title text-muted first-letter:uppercase">{date && `${date} — o que vamos organizar hoje?`}</p>
+      <p className="min-h-[22px] text-lead text-muted first-letter:uppercase">{date && `${date} — o que vamos organizar hoje?`}</p>
     </div>
   );
 }

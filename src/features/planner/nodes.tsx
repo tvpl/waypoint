@@ -342,22 +342,38 @@ export const LinkNode = memo(function LinkNode(p: P) {
   const kindLabel = res ? res.subtitle : ctx.mode === "edit" ? "Defina o destino no painel" : "";
   const sub = res && d.openIn ? `${kindLabel} · ${OPEN_LABEL[d.openIn]}` : kindLabel;
   const External = res?.external ? ExternalLink : ArrowUpRight;
+  const h = p.height ?? 0;
+  // The card grows into a richer preview as it gets taller: description, then cover.
+  const cover = h >= 150 ? d.image || res?.image || null : null;
+  const description = h >= 96 ? d.description || res?.description || null : null;
+  const [coverFailed, setCoverFailed] = useState(false);
   return (
     <Chrome p={p} kind="link">
-      <div className={cn(cls, "flex h-full w-full items-center gap-2.5 overflow-hidden rounded-xl border border-line-2 bg-surface px-3.5 py-2.5 text-ink shadow-rest")}>
-        <SiteIcon src={res?.favicon} label={title} size={30} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-w-0 items-center gap-1.5">
-            {editing ? (
-              <InlineTitle id={p.id} value={d.title} className="text-sm font-semibold" />
-            ) : (
-              <span className="truncate text-sm font-semibold leading-[18px]">{title}</span>
-            )}
-            <StatusDot status={d.status} />
+      <div className={cn(cls, "flex h-full w-full flex-col overflow-hidden rounded-xl border border-line-2 bg-surface text-ink shadow-rest")}>
+        {cover && !coverFailed && (
+          <div className="relative min-h-0 flex-1 basis-[45%] overflow-hidden border-b border-line">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cover} alt="" referrerPolicy="no-referrer" draggable={false} onError={() => setCoverFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
           </div>
-          {sub && <span className="truncate text-xs leading-4 text-muted">{sub}</span>}
+        )}
+        <div className={cn("flex min-h-0 flex-col gap-1.5 px-3.5 py-2.5", !(cover && !coverFailed) && "flex-1 justify-center")}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <SiteIcon src={res?.favicon} label={title} size={30} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex min-w-0 items-center gap-1.5">
+                {editing ? (
+                  <InlineTitle id={p.id} value={d.title} className="text-sm font-semibold" />
+                ) : (
+                  <span className="truncate text-sm font-semibold leading-[18px]">{title}</span>
+                )}
+                <StatusDot status={d.status} />
+              </div>
+              {sub && <span className="truncate text-xs leading-4 text-muted">{sub}</span>}
+            </div>
+            {res && <External className="size-3.5 shrink-0 text-muted" aria-hidden />}
+          </div>
+          {description && <p className="line-clamp-3 text-xs leading-[17px] text-ink-2">{description}</p>}
         </div>
-        {res && <External className="size-3.5 shrink-0 text-muted" aria-hidden />}
       </div>
     </Chrome>
   );

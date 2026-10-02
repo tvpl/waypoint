@@ -25,7 +25,7 @@ export function readDragPayload(e: React.DragEvent): DragPayload | null {
 }
 
 /** Debounced search against /api/resources/search. Empty query → recent items. */
-export function useResourceSearch(q: string, opts: { limit?: number; exclude?: string; enabled?: boolean } = {}) {
+export function useResourceSearch(q: string, opts: { limit?: number; exclude?: string; enabled?: boolean; types?: string } = {}) {
   const [items, setItems] = useState<ResourceSearchItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const enabled = opts.enabled ?? true;
@@ -37,6 +37,7 @@ export function useResourceSearch(q: string, opts: { limit?: number; exclude?: s
       try {
         const sp = new URLSearchParams({ q, limit: String(opts.limit ?? 4) });
         if (opts.exclude) sp.set("exclude", opts.exclude);
+        if (opts.types) sp.set("types", opts.types);
         const res = await fetch(`/api/resources/search?${sp}`, { signal: ctrl.signal });
         if (res.ok) setItems(((await res.json()) as { items: ResourceSearchItem[] }).items);
       } catch {
@@ -49,7 +50,7 @@ export function useResourceSearch(q: string, opts: { limit?: number; exclude?: s
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [q, opts.limit, opts.exclude, enabled]);
+  }, [q, opts.limit, opts.exclude, opts.types, enabled]);
   return { items, loading };
 }
 

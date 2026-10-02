@@ -1,9 +1,10 @@
 "use client";
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, type EdgeProps, type EdgeTypes } from "@xyflow/react";
 import { EDGE_KINDS, type EdgeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE, type PlanFlowEdge } from "@/domain/canvas-adapter";
 import { cn } from "@/lib/utils";
+import { usePlanner } from "./context";
 
 /** Direction (degrees) an edge travels when it enters a handle on each side of the target. */
 const ENTRY_ANGLE: Record<Position, number> = {
@@ -27,6 +28,8 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
     offset: 18,
   });
   const label = p.data?.label;
+  const { mode, editingId, setEditingId, commitEdgeLabel } = usePlanner();
+  const editing = mode === "edit" && editingId === p.id && !!commitEdgeLabel;
   return (
     <>
       <BaseEdge
@@ -47,7 +50,20 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
           transform={`translate(${p.targetX} ${p.targetY}) rotate(${ENTRY_ANGLE[p.targetPosition]})`}
         />
       )}
-      {label && (
+      {editing && (
+        <EdgeLabelRenderer>
+          <EdgeLabelInput
+            x={lx}
+            y={ly}
+            initial={label ?? ""}
+            onDone={(v) => {
+              if (v !== null && v !== (label ?? "")) commitEdgeLabel!(p.id, v);
+              setEditingId(null);
+            }}
+          />
+        </EdgeLabelRenderer>
+      )}
+      {label && !editing && (
         <EdgeLabelRenderer>
           <div
             className={cn("wp-edge-label nodrag nopan", p.selected && "is-selected", p.data?._dim === true && "is-dim")}
@@ -63,6 +79,40 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
 });
 
 export const edgeTypes: EdgeTypes = { plan: PlanEdge };
+
+/** Label editor at the middle of an edge (double-click it). Enter saves, Esc cancels. */
+function EdgeLabelInput({ x, y, initial, onDone }: { x: number; y: number; initial: string; onDone: (v: string | null) => void }) {
+  const [v, setV] = useState(initial);
+  const ref = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  const finish = (value: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(value);
+  };
+  return (
+    <input
+      ref={ref}
+      value={v}
+      aria-label="Rótulo da conexão"
+      placeholder="Rótulo…"
+      maxLength={120}
+      className="wp-edge-label-input nodrag nopan"
+      style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => finish(v)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") finish(v);
+        if (e.key === "Escape") finish(null);
+      }}
+    />
+  );
+}
 
 /** Small inline sample of a connection kind (legend, pickers). */
 export function EdgeSample({ kind, width = 36, className }: { kind: EdgeKind; width?: number; className?: string }) {

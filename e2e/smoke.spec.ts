@@ -13,6 +13,9 @@ test("anonymous visitors are sent to login", async ({ page }) => {
 test("plan: create, edit, autosave, publish, view", async ({ page }) => {
   await signUp(page);
   await page.getByRole("button", { name: "Novo plan" }).click();
+  // starting-point picker: blank is preselected
+  await expect(page.getByRole("radio", { name: /Em branco/ })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Criar plan" }).click();
   await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
   const editUrl = page.url();
 

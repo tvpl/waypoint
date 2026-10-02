@@ -63,6 +63,7 @@ export function resolveResource(ref: ResourceRef, userId: string | null, workspa
         external: true,
         favicon: f.favicon,
         description: f.description,
+        image: f.coverImage,
       };
     }
     case "collection": {
@@ -163,7 +164,7 @@ export function searchResources(
     for (const f of rows) {
       out.push({
         ref: { type: "favorite", id: f.id },
-        resource: { kind: "favorite", title: f.title, subtitle: `Favorito · ${f.domain}`, href: f.url, external: true, favicon: f.favicon, description: f.description },
+        resource: { kind: "favorite", title: f.title, subtitle: `Favorito · ${f.domain}`, href: f.url, external: true, favicon: f.favicon, description: f.description, image: f.coverImage },
       });
     }
   }

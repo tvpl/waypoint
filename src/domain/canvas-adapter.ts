@@ -269,6 +269,27 @@ export function fromFlow(nodes: AnyFlowNode[], edges: AnyFlowEdge[], viewport: V
   };
 }
 
+/**
+ * Cheap identity of everything `fromFlow` reads (selection and other UI-only flags
+ * excluded). When two fingerprints match, the content signature can't have changed —
+ * lets the editor skip serializing the whole document on selection/hover updates.
+ */
+export function flowFingerprint(nodes: AnyFlowNode[], edges: AnyFlowEdge[]): unknown[] {
+  const out: unknown[] = [];
+  for (const n of nodes) {
+    out.push(n.id, n.type, n.position.x, n.position.y, n.width, n.height, n.measured?.width, n.measured?.height, n.style?.width, n.style?.height, n.parentId, n.zIndex, n.data);
+  }
+  out.push("|");
+  for (const e of edges) out.push(e.id, e.source, e.target, e.sourceHandle, e.targetHandle, e.data);
+  return out;
+}
+
+export function sameFingerprint(a: readonly unknown[] | null, b: readonly unknown[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false;
+  return true;
+}
+
 /** Stable string of the document *content* (viewport excluded) — used to detect real changes. */
 export function contentSignature(doc: Pick<PlanDocument, "nodes" | "edges">): string {
   return stableStringify([doc.nodes, doc.edges]);

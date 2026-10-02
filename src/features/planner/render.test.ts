@@ -163,7 +163,7 @@ describe("planner SSR", () => {
         filter: "mine",
         canCreate: true,
         plans: [
-          { id: "p1", title: "Roadmap 2027", description: null, updatedAt: Date.now(), publishedVersion: 1, access: "owner", isTemplate: false, archived: false, thumbnail: [{ x: 0, y: 0, w: 100, h: 40, kind: "block" }], tags: [] },
+          { id: "p1", title: "Roadmap 2027", description: null, updatedAt: Date.now(), publishedVersion: 1, access: "owner", isTemplate: false, archived: false, thumbnail: { nodes: [{ x: 0, y: 0, w: 100, h: 40, kind: "block" }], edges: [] }, tags: [] },
         ],
       }),
     );

@@ -296,7 +296,8 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
           nodesFocusable={false}
           edgesFocusable={false}
           zoomOnDoubleClick={false}
-          panOnScroll={false}
+          // same as the editor: wheel/trackpad pans, pinch or ⌘/Ctrl+wheel zooms
+          panOnScroll={!stage}
           minZoom={0.1}
           maxZoom={2.5}
           fitView

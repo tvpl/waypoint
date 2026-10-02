@@ -210,7 +210,7 @@ function Signal({ href, icon, tone, children }: { href: string; icon: React.Reac
   );
 }
 
-type PlanCardData = { id: string; title: string; published: boolean; updatedAt: Date; thumbnail: Parameters<typeof PlanThumb>[0]["nodes"] };
+type PlanCardData = { id: string; title: string; published: boolean; updatedAt: Date; thumbnail: Parameters<typeof PlanThumb>[0]["thumb"] };
 
 function PlanCard({ plan, hero }: { plan: PlanCardData; hero?: boolean }) {
   return (
@@ -222,7 +222,7 @@ function PlanCard({ plan, hero }: { plan: PlanCardData; hero?: boolean }) {
       )}
     >
       <div className="flex flex-1 flex-col justify-center bg-surface-2">
-        <PlanThumb nodes={plan.thumbnail} height={hero ? 248 : 116} />
+        <PlanThumb thumb={plan.thumbnail} height={hero ? 248 : 116} />
       </div>
       <div className="flex flex-col gap-1.5 px-4 py-3.5">
         <div className="flex items-center justify-between gap-2">

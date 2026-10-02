@@ -40,7 +40,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
           {canCreate && (
             <div className="flex flex-wrap gap-2">
               <ImportPlanButton />
-              <NewPlanButton />
+              <NewPlanButton variant="primary" />
             </div>
           )}
         </header>

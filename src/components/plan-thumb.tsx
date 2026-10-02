@@ -1,9 +1,12 @@
-import type { ThumbNode } from "@/server/services/plans";
-import { readableText } from "@/lib/color";
+import type { Thumb } from "@/domain/plan-thumb";
 
-/** Miniature of a plan's layout, scaled to fit (pure CSS, no canvas lib). */
-export function PlanThumb({ nodes, height = 116 }: { nodes: ThumbNode[]; height?: number }) {
-  const pad = 14;
+/**
+ * Miniature of a plan: boxes and connections drawn as SVG, scaled to fit. Default
+ * fills come from theme tokens (so dark mode isn't a field of white boxes); chosen
+ * node colors are kept, as on the canvas.
+ */
+export function PlanThumb({ thumb, height = 116 }: { thumb: Thumb; height?: number }) {
+  const { nodes, edges } = thumb;
   if (nodes.length === 0) {
     return <div className="dot-grid border-b border-line" style={{ height }} aria-hidden />;
   }
@@ -11,36 +14,48 @@ export function PlanThumb({ nodes, height = 116 }: { nodes: ThumbNode[]; height?
   const minY = Math.min(...nodes.map((n) => n.y));
   const maxX = Math.max(...nodes.map((n) => n.x + n.w));
   const maxY = Math.max(...nodes.map((n) => n.y + n.h));
-  const w = Math.max(1, maxX - minX);
-  const h = Math.max(1, maxY - minY);
-  // width is fluid: express positions in % horizontally, px vertically
-  const scaleY = (height - pad * 2) / h;
-  const aspect = w / h;
+  const pad = Math.max(maxX - minX, maxY - minY) * 0.06 + 8;
+  const vb = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+  const center = (i: number) => ({ x: nodes[i].x + nodes[i].w / 2, y: nodes[i].y + nodes[i].h / 2 });
+  // Stroke widths in viewBox units that read as ~1px at thumbnail size.
+  const unit = (maxX - minX + pad * 2) / 320;
   return (
     <div className="relative overflow-hidden border-b border-line bg-surface-2" style={{ height }} aria-hidden>
-      <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        style={{ height: height - pad * 2, width: `min(calc(100% - ${pad * 2}px), ${Math.round((height - pad * 2) * aspect)}px)` }}
-      >
-        {nodes.map((n, i) => {
-          const container = n.kind === "container" || n.kind === "section";
-          const fill = n.color ?? (n.kind === "note" ? "#FFF3C4" : container ? "transparent" : "#E8EDFF");
+      <svg viewBox={vb} preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full">
+        {edges.map(([a, b], i) => {
+          const p = center(a);
+          const q = center(b);
+          const mx = (p.x + q.x) / 2;
           return (
-            <div
+            <path
               key={i}
-              className="absolute rounded-[3px]"
-              style={{
-                left: `${((n.x - minX) / w) * 100}%`,
-                top: (n.y - minY) * scaleY,
-                width: `${(n.w / w) * 100}%`,
-                height: Math.max(3, n.h * scaleY),
-                background: container ? (n.color ? `${n.color}55` : "transparent") : fill,
-                border: container ? "1px dashed var(--line-2)" : `1px solid ${readableText(fill === "transparent" ? "#FFFFFF" : fill).border}`,
-              }}
+              d={`M ${p.x} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x} ${q.y}`}
+              fill="none"
+              stroke="var(--line-2)"
+              strokeWidth={unit * 1.4}
             />
           );
         })}
-      </div>
+        {nodes.map((n, i) => {
+          const area = n.kind === "container" || n.kind === "section";
+          const text = n.kind === "text";
+          if (text) return <rect key={i} x={n.x} y={n.y + n.h * 0.3} width={n.w * 0.7} height={n.h * 0.4} rx={unit * 2} fill="var(--line-2)" />;
+          return (
+            <rect
+              key={i}
+              x={n.x}
+              y={n.y}
+              width={n.w}
+              height={n.h}
+              rx={area ? unit * 6 : unit * 4}
+              fill={n.color ? (area ? `${n.color}66` : n.color) : area ? "transparent" : n.kind === "note" ? "#FFF3C4" : "var(--surface)"}
+              stroke={area ? "var(--line-2)" : n.color ? "rgb(23 23 28 / 0.12)" : "var(--line-2)"}
+              strokeWidth={unit}
+              strokeDasharray={area && !n.color ? `${unit * 4} ${unit * 3}` : undefined}
+            />
+          );
+        })}
+      </svg>
     </div>
   );
 }

@@ -7,7 +7,8 @@ export type DragPayload = { kind: "collection"; id: string } | { kind: "links"; 
 
 let current: DragPayload | null = null;
 
-export const DND_MIME = "application/x-waypoint";
+/** Library-only payload (the planner has its own MIME for its toolbox; it also accepts this one). */
+export const DND_MIME = "application/x-waypoint-links";
 
 export function startDrag(e: React.DragEvent, payload: DragPayload, extra?: { url?: string; label?: string }) {
   current = payload;

@@ -1,30 +1,10 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
-import { Link2, Plus, Search } from "lucide-react";
+import { Link2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/misc";
 import { openPalette } from "@/lib/theme";
-import { createPlanAction } from "@/app/(app)/plans/actions";
-
-export function NewPlanButton() {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  return (
-    <Button
-      disabled={pending}
-      onClick={() =>
-        start(async () => {
-          const id = await createPlanAction({});
-          router.push(`/plans/${id}/edit`);
-        })
-      }
-    >
-      <Plus /> Novo plan
-    </Button>
-  );
-}
+export { NewPlanButton } from "@/features/planner/new-plan-dialog";
 
 export function AddLinkButton() {
   return (

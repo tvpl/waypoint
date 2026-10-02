@@ -1,5 +1,5 @@
 "use client";
-import { ArrowLeftRight, Grid3x3, Group, Hand, Magnet, MousePointer2, Network, Trash2, Workflow, X } from "lucide-react";
+import { ArrowLeftRight, Grid3x3, Group, Hand, Magnet, Map as MapIcon, MousePointer2, Network, Trash2, Workflow, X } from "lucide-react";
 import { EDGE_KINDS } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
@@ -47,6 +47,11 @@ export function BottomPill() {
         <Tooltip content={ed.snap ? "Desativar encaixe na grade" : "Encaixar na grade"} side="top">
           <button type="button" aria-label="Encaixar na grade" aria-pressed={ed.snap} className={cn(pillBtn, ed.snap && "text-accent-ink")} onClick={() => ed.setSnap(!ed.snap)}>
             <Magnet strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+        <Tooltip content={ed.minimap ? "Ocultar minimapa (M)" : "Mostrar minimapa (M)"} side="top">
+          <button type="button" aria-label="Minimapa" aria-pressed={ed.minimap} className={cn(pillBtn, ed.minimap && "text-accent-ink")} onClick={() => ed.setMinimap(!ed.minimap)}>
+            <MapIcon strokeWidth={1.75} />
           </button>
         </Tooltip>
       </span>

@@ -321,3 +321,44 @@
 .wp-presentation[data-idle] .react-flow__pane {
   cursor: none;
 }
+
+/* ---------------------------------------------------------------- minimap & guides */
+.wp-flow {
+  --minimap-node: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  --minimap-mask: color-mix(in srgb, var(--bg) 62%, transparent);
+  /* chosen node colors are softened on dark surfaces, like on the canvas */
+  --minimap-tint: 100%;
+}
+.dark .wp-flow {
+  --minimap-tint: 28%;
+}
+.wp-flow .react-flow__minimap.wp-minimap {
+  margin: 0 16px 76px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+}
+.wp-flow .react-flow__minimap.wp-minimap svg {
+  display: block;
+}
+.wp-guide {
+  z-index: 1000;
+  outline: 0.75px dashed color-mix(in srgb, #e5484d 85%, transparent);
+}
+
+/* ---------------------------------------------------------------- edge label editing */
+.wp-edge-label-input {
+  position: absolute;
+  pointer-events: all;
+  min-width: 120px;
+  padding: 3px 8px;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 12px/1.4 var(--font-sans);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}

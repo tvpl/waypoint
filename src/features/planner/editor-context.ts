@@ -55,6 +55,8 @@ export type EditorApi = {
   grid: boolean;
   setGrid: (v: boolean) => void;
   snap: boolean;
+  minimap: boolean;
+  setMinimap: (v: boolean) => void;
   setSnap: (v: boolean) => void;
 
   inspectorTab: InspectorTab;

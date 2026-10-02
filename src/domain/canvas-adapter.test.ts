@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDocument, type PlanDocument } from "./plan";
-import { COLLAPSED_HEIGHT, contentSignature, fromFlow, toFlowEdges, toFlowNodes } from "./canvas-adapter";
+import { COLLAPSED_HEIGHT, contentSignature, flowFingerprint, fromFlow, sameFingerprint, toFlowEdges, toFlowNodes } from "./canvas-adapter";
 
 const doc: PlanDocument = normalizeDocument({
   schemaVersion: 1,
@@ -110,5 +110,18 @@ describe("canvas adapter", () => {
     expect(gw.selected).toBe(true);
     expect(gw.draggable).toBe(false);
     expect(gw.connectable).toBe(false);
+  });
+});
+
+describe("flowFingerprint", () => {
+  const data = { title: "A" };
+  const node = { id: "a", type: "block", position: { x: 1, y: 2 }, width: 10, height: 20, data };
+  it("ignores selection but sees moves and data changes", () => {
+    const fp = flowFingerprint([node], []);
+    expect(sameFingerprint(fp, flowFingerprint([{ ...node, selected: true } as typeof node], []))).toBe(true);
+    expect(sameFingerprint(fp, flowFingerprint([{ ...node, position: { x: 2, y: 2 } }], []))).toBe(false);
+    expect(sameFingerprint(fp, flowFingerprint([{ ...node, data: { ...data } }], []))).toBe(false);
+    expect(sameFingerprint(fp, flowFingerprint([node], [{ id: "e", source: "a", target: "a" }]))).toBe(false);
+    expect(sameFingerprint(null, fp)).toBe(false);
   });
 });

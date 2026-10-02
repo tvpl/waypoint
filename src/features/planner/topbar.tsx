@@ -1,20 +1,29 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, CloudOff, Download, Eye, FileJson, History, ImageDown, Loader2, MoreHorizontal, Pencil, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, CloudOff, Presentation, Download, Eye, FileJson, History, ImageDown, Loader2, MoreHorizontal, Pencil, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
-import { cn } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 import type { SaveStatus } from "./autosave";
 
 export type ExportKind = "json" | "png" | "svg" | "pdf";
 
-export function SaveIndicator({ status, error }: { status: SaveStatus; error?: string | null }) {
+export function SaveIndicator({ status, error, savedAt }: { status: SaveStatus; error?: string | null; savedAt?: number | null }) {
+  // Re-render now and then so "há 2 min" stays true.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (status !== "saved" || !savedAt) return;
+    const t = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, [status, savedAt]);
+  const ago = savedAt ? timeAgo(savedAt) : null;
   const map: Record<SaveStatus, { icon: React.ReactNode; text: string; cls: string }> = {
-    saved: { icon: <Check className="size-3.5 text-success-ink" />, text: "Salvo", cls: "text-muted" },
-    dirty: { icon: <Loader2 className="size-3.5 animate-spin" />, text: "Salvando…", cls: "text-muted" },
+    saved: { icon: <Check className="size-3.5 text-success-ink" />, text: ago && ago !== "agora" ? `Salvo ${ago}` : "Salvo", cls: "text-muted" },
+    // While edits are queued (debounce) just a quiet dot; the spinner is for the request itself.
+    dirty: { icon: <span className="size-1.5 rounded-full bg-amber-ink/70" aria-hidden />, text: "Editando…", cls: "text-muted" },
     saving: { icon: <Loader2 className="size-3.5 animate-spin" />, text: "Salvando…", cls: "text-muted" },
     offline: { icon: <CloudOff className="size-3.5" />, text: "Alterações offline — tentando novamente", cls: "text-amber-ink" },
     conflict: { icon: <TriangleAlert className="size-3.5" />, text: "Conflito", cls: "text-danger" },
@@ -117,6 +126,8 @@ export function EditorTopbar(props: {
   onUndo: () => void;
   onRedo: () => void;
   onHistory: () => void;
+  onPresent: () => void;
+  savedAt: number | null;
   onShare: () => void;
   onPublish: () => void;
   publishing: boolean;
@@ -180,7 +191,7 @@ export function EditorTopbar(props: {
         <span className="hidden sm:contents">
           <PublishBadge published={props.published} unpublished={props.unpublished} />
         </span>
-        <SaveIndicator status={props.status} error={props.saveError} />
+        <SaveIndicator status={props.status} error={props.saveError} savedAt={props.savedAt} />
       </div>
       <div role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-control bg-subtle p-[3px] max-sm:hidden">
         {seg("edit", "Editar", Pencil)}
@@ -198,6 +209,11 @@ export function EditorTopbar(props: {
           </Button>
         </Tooltip>
         <span className="hidden md:contents">
+          <Tooltip content="Apresentar (tela cheia, passo a passo)">
+            <Button variant="ghost" size="icon" aria-label="Apresentar" onClick={props.onPresent}>
+              <Presentation />
+            </Button>
+          </Tooltip>
           <Tooltip content="Histórico de versões">
             <Button variant="ghost" size="icon" aria-label="Histórico de versões" onClick={props.onHistory}>
               <History />

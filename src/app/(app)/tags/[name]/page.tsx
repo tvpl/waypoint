@@ -81,7 +81,7 @@ export default async function TagPage({ params }: { params: Promise<{ name: stri
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {plans.map((p) => (
                 <Link key={p.id} href={`/plans/${p.id}`} className="flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-shadow hover:shadow-pop">
-                  <PlanThumb nodes={p.thumbnail} />
+                  <PlanThumb thumb={p.thumbnail} />
                   <div className="flex items-center justify-between gap-2 px-4 py-3.5">
                     <span className="truncate text-lead font-semibold">{p.title}</span>
                     {p.publishedVersionId ? <Badge tone="success">Publicado</Badge> : <Badge tone="amber">Rascunho</Badge>}

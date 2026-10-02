@@ -12,6 +12,8 @@ export type PlannerContextValue = {
   editingId: string | null;
   setEditingId: (id: string | null) => void;
   commitTitle: (id: string, title: string) => void;
+  /** Edge label edited on the canvas (double-click an edge). */
+  commitEdgeLabel?: (id: string, label: string) => void;
   toggleCollapsed: (id: string) => void;
   childCount: (id: string) => number;
   /** Only node selected (shows the size badge). */

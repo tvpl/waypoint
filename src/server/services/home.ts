@@ -2,9 +2,9 @@ import "server-only";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { planAccess } from "./permissions";
-import { listPlans, type ThumbNode } from "./plans";
+import { listPlans, type Thumb } from "./plans";
 
-export type HomePlan = { id: string; title: string; published: boolean; updatedAt: Date; thumbnail: ThumbNode[] };
+export type HomePlan = { id: string; title: string; published: boolean; updatedAt: Date; thumbnail: Thumb };
 
 /** Recently opened plans, padded with recently updated ones. */
 export function recentPlans(userId: string, workspaceId: string, limit = 3): HomePlan[] {

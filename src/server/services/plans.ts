@@ -14,6 +14,7 @@ import { planAccess, type Access } from "./permissions";
 import { indexEntity, reindexPlanNodes, removePlanFromIndex } from "./search";
 import { setPlanTags, tagsForPlans } from "./tags";
 import { UserError } from "./workspaces";
+import { planThumb } from "@/domain/plan-thumb";
 
 export type PlanRow = typeof schema.plans.$inferSelect;
 
@@ -49,23 +50,7 @@ function parseDoc(row: { nodesJson: string; edgesJson: string; viewportJson: str
   });
 }
 
-/** Lightweight shape for list thumbnails. */
-export type ThumbNode = { x: number; y: number; w: number; h: number; color?: string; kind: string };
-
-function thumbnail(doc: PlanDocument): ThumbNode[] {
-  // absolute positions (children are relative to parents)
-  const byId = new Map(doc.nodes.map((n) => [n.id, n]));
-  const abs = (id: string, depth = 0): { x: number; y: number } => {
-    const n = byId.get(id)!;
-    if (!n.parentId || depth > 20 || !byId.has(n.parentId)) return { x: n.x, y: n.y };
-    const p = abs(n.parentId, depth + 1);
-    return { x: p.x + n.x, y: p.y + n.y };
-  };
-  return doc.nodes.slice(0, 60).map((n) => {
-    const p = abs(n.id);
-    return { x: p.x, y: p.y, w: n.width, h: n.height, color: n.data.color, kind: n.kind };
-  });
-}
+export type { Thumb, ThumbNode } from "@/domain/plan-thumb";
 
 // ------------------------------------------------------------------ queries
 
@@ -123,7 +108,7 @@ export function listPlans(userId: string, workspaceId: string, filter: PlanListF
     tags: tagMap.get(r.plan.id) ?? [],
     publishedVersion: r.publishedVersion ?? null,
     access: planAccess(userId, r.plan) as Access,
-    thumbnail: r.nodesJson ? thumbnail(parseDoc(r as { nodesJson: string; edgesJson: string; viewportJson: string })) : [],
+    thumbnail: r.nodesJson ? planThumb(parseDoc(r as { nodesJson: string; edgesJson: string; viewportJson: string })) : { nodes: [], edges: [] },
   }));
 }
 

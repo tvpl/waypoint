@@ -9,6 +9,9 @@ import {
   applyNodeChanges,
   Background,
   BackgroundVariant,
+  MiniMap,
+  ViewportPortal,
+  reconnectEdge,
   ConnectionMode,
   ReactFlow,
   ReactFlowProvider,
@@ -27,7 +30,9 @@ import type { EdgeKind, NodeData, NodeKind, PlanDocument, ResourceRef } from "@/
 import {
   contentSignature,
   edgeMarker,
+  flowFingerprint,
   fromFlow,
+  sameFingerprint,
   toFlowEdge,
   toFlowEdges,
   toFlowNodes,
@@ -35,7 +40,7 @@ import {
   type PlanFlowNode,
 } from "@/domain/canvas-adapter";
 import { Button } from "@/components/ui/button";
-import { cn, motionMs, newId, timeAgo } from "@/lib/utils";
+import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { EditorContext, type EditorApi, type InspectorTab, type PlanMeta, type Tool } from "./editor-context";
 import { nodeTypes } from "./nodes";
@@ -62,6 +67,7 @@ import {
   type Clip,
 } from "./doc-ops";
 import { createNode, PARENT_KINDS } from "./defaults";
+import { helperLines, type Guides } from "./helper-lines";
 import { autoLayout, type LayoutDirection } from "./auto-layout";
 import { clearBackup, readBackup, useAutosave } from "./autosave";
 import { Toolbox } from "./toolbox";
@@ -72,11 +78,15 @@ import { EditorTopbar, type ExportKind } from "./topbar";
 import { ShareDialog, type RestoredDraft } from "./share-dialog";
 import { ViewBody } from "./view-page";
 import { readDragPayload, DND_MIME } from "./resource-picker";
+import { DND_MIME as LIBRARY_MIME } from "@/features/links/dnd";
 import { fallbackResource, refKey, type ResolvedResource } from "./resource-types";
 import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
+
+/** Marks our own nodes on the system clipboard (set on copy, checked on paste). */
+const NODES_MIME = "application/x-waypoint-nodes";
 
 export type PlanEditorProps = {
   plan: { id: string; title: string; description: string | null; tags: string[]; visibility: string };
@@ -150,6 +160,20 @@ function EditorShell(props: PlanEditorProps) {
   const connectOnce = useRef(false);
   const [grid, setGrid] = useState(true);
   const [snap, setSnap] = useState(false);
+  const [minimap, setMinimapState] = useState(false);
+  useEffect(() => {
+    try {
+      setMinimapState(localStorage.getItem("wp-planner-minimap") === "1");
+    } catch {}
+  }, []);
+  const setMinimap = useCallback((v: boolean) => {
+    setMinimapState(v);
+    try {
+      localStorage.setItem("wp-planner-minimap", v ? "1" : "0");
+    } catch {}
+  }, []);
+  const [guides, setGuides] = useState<Guides | null>(null);
+  const altDown = useRef(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("content");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -179,8 +203,16 @@ function EditorShell(props: PlanEditorProps) {
 
   const autosave = useAutosave({ planId, initialVersion: props.initial.version, initialSignature: initialSig, getDocument: docOf });
 
+  const lastPrint = useRef<unknown[] | null>(null);
   useEffect(() => {
     if (nodes.some((n) => n.dragging || n.resizing)) return;
+    // selection / hover updates don't touch content: skip the full serialization
+    const print = flowFingerprint(nodes, edges);
+    if (sameFingerprint(lastPrint.current, print)) {
+      pendingKey.current = null;
+      return;
+    }
+    lastPrint.current = print;
     const doc = docOf();
     const sig = contentSignature(doc);
     if (sig !== presentSig.current) {
@@ -328,8 +360,8 @@ function EditorShell(props: PlanEditorProps) {
     (kind: NodeKind, opts: { at?: { x: number; y: number }; data?: Partial<NodeData> } = {}) => {
       const node = createNode(kind, opts.at ?? viewportCenter(), opts.data, { center: true });
       if (snap) {
-        node.x = Math.round(node.x / 10) * 10;
-        node.y = Math.round(node.y / 10) * 10;
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
       }
       insert(node);
       if (kind === "link") setInspectorTab("action");
@@ -341,6 +373,8 @@ function EditorShell(props: PlanEditorProps) {
     },
     [insert, viewportCenter, snap],
   );
+  const addNodeRef = useRef(addNode);
+  addNodeRef.current = addNode;
 
   const addResourceNode = useCallback(
     (ref: ResourceRef, resource: ResolvedResource, at?: { x: number; y: number }) => {
@@ -350,6 +384,72 @@ function EditorShell(props: PlanEditorProps) {
       setInspectorTab("action");
     },
     [cacheResource, insert, viewportCenter],
+  );
+
+  /** A link card for an external URL; title, description and cover arrive from the page shortly after. */
+  const addUrlNodes = useCallback(
+    (urls: string[], at?: { x: number; y: number }) => {
+      const base = at ?? viewportCenter();
+      const ids: string[] = [];
+      let doc = docOf();
+      urls.slice(0, 12).forEach((raw, i) => {
+        const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+        const ref: ResourceRef = { type: "url", url };
+        const node = createNode("link", { x: base.x, y: base.y + i * 96 }, { title: "", resource: ref, openIn: "new-tab" }, { center: true });
+        ids.push(node.id);
+        doc = addNodes(doc, [node]);
+        void fetch(`/api/metadata?url=${encodeURIComponent(url)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((m: { title?: string; description?: string; image?: string; favicon?: string; error?: string } | null) => {
+            if (!m || m.error) return;
+            const domain = domainOf(url);
+            cacheResource(ref, { kind: "url", title: m.title || domain, subtitle: domain, href: url, external: true, favicon: m.favicon ?? null, description: m.description ?? null, image: m.image ?? null });
+            updateNodeData(node.id, { title: m.title?.slice(0, 300) ?? "", description: m.description?.slice(0, 600), image: m.image && m.image.length <= 2048 ? m.image : undefined }, `meta:${node.id}`);
+            // Room for the cover when the page has one.
+            if (m.image && urls.length === 1) updateNodeSize(node.id, { width: 280, height: 230 });
+          })
+          .catch(() => {});
+      });
+      pendingKey.current = null;
+      applyDoc(doc, { nodes: ids });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [docOf, applyDoc, viewportCenter, cacheResource],
+  );
+
+  /** Cards for library links (resolved like any other ref on the next render). */
+  const addFavoriteNodes = useCallback(
+    (favoriteIds: string[], at?: { x: number; y: number }) => {
+      const base = at ?? viewportCenter();
+      let doc = docOf();
+      const ids: string[] = [];
+      favoriteIds.slice(0, 24).forEach((id, i) => {
+        const node = createNode("link", { x: base.x + Math.floor(i / 6) * 270, y: base.y + (i % 6) * 88 }, { title: "", resource: { type: "favorite", id }, openIn: "new-tab" }, { center: true });
+        ids.push(node.id);
+        doc = addNodes(doc, [node]);
+      });
+      pendingKey.current = null;
+      applyDoc(doc, { nodes: ids });
+    },
+    [docOf, applyDoc, viewportCenter],
+  );
+
+  const uploadImage = useCallback(
+    async (file: File, at?: { x: number; y: number }) => {
+      const fd = new FormData();
+      fd.set("file", file);
+      const id = toast.loading("Enviando imagem…");
+      try {
+        const res = await fetch("/api/assets", { method: "POST", body: fd });
+        const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (!res.ok || !body.url) throw new Error(body.error ?? "Falha no envio.");
+        addNodeRef.current("image", { at, data: { image: body.url, title: file.name.replace(/\.[a-z0-9]+$/i, "") } });
+        toast.success("Imagem adicionada", { id });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Falha no envio.", { id });
+      }
+    },
+    [],
   );
 
   const updateNodeData = useCallback((id: string, patch: Partial<NodeData>, key?: string) => {
@@ -584,6 +684,8 @@ function EditorShell(props: PlanEditorProps) {
     setGrid,
     snap,
     setSnap,
+    minimap,
+    setMinimap,
     inspectorTab,
     setInspectorTab,
     resourceFor,
@@ -615,6 +717,7 @@ function EditorShell(props: PlanEditorProps) {
       editingId,
       setEditingId,
       commitTitle: (id, title) => updateNodeData(id, { title }),
+      commitEdgeLabel: (id, label) => updateEdge(id, { label: label.trim() || undefined }),
       toggleCollapsed: (id) => apiRef.current.toggleCollapsed(id),
       childCount,
       singleSelectedId,
@@ -625,7 +728,7 @@ function EditorShell(props: PlanEditorProps) {
       commentCount,
       openNodeComments,
     }),
-    [resourceFor, editingId, updateNodeData, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
+    [resourceFor, editingId, updateNodeData, updateEdge, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
   );
 
   const commentNodes = useMemo(
@@ -659,8 +762,7 @@ function EditorShell(props: PlanEditorProps) {
       };
       if (mod && k === "z" && !e.shiftKey) return run(undo);
       if ((mod && k === "y") || (mod && k === "z" && e.shiftKey)) return run(redo);
-      if (mod && k === "c") return a.selectedNodes.length ? run(a.copy) : undefined;
-      if (mod && k === "v") return run(() => a.paste());
+      // ⌘C / ⌘V go through the copy/paste events below (they need the system clipboard).
       if (mod && k === "d") return run(a.duplicate);
       if (mod && k === "a") return run(a.selectAll);
       if (mod && k === "g" && e.shiftKey) return run(a.ungroup);
@@ -679,26 +781,116 @@ function EditorShell(props: PlanEditorProps) {
       if (k === "v") return run(() => a.setTool("select"));
       if (k === "h") return run(() => a.setTool("hand"));
       if (k === "c") return run(() => (a.selectedNodes.length === 1 ? a.startConnectFrom(a.selectedNodes[0].id) : a.setTool("connect")));
+      if (k === "+" || k === "=") return run(() => rf.zoomIn({ duration: motionMs(150) }));
+      if (k === "-" || k === "_") return run(() => rf.zoomOut({ duration: motionMs(150) }));
+      if (k === "0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
+      if (k === "1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
+      if (k === "m") return run(() => a.setMinimap(!a.minimap));
       if (k === "]") return run(a.bringToFront);
       if (k === "[") return run(a.sendToBack);
       if (k.startsWith("arrow")) pendingKey.current = "nudge";
     };
+    const onAlt = (e: KeyboardEvent) => (altDown.current = e.altKey);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, undo, redo]);
+    window.addEventListener("keydown", onAlt, true);
+    window.addEventListener("keyup", onAlt, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onAlt, true);
+      window.removeEventListener("keyup", onAlt, true);
+    };
+  }, [mode, undo, redo, rf]);
+
+  // ---------------------------------------------------------------- clipboard
+  useEffect(() => {
+    if (mode !== "edit") return;
+    const outside = (e: Event) => isTyping(e.target) || !!(e.target as HTMLElement | null)?.closest?.('[role="dialog"], [data-planner-panel]');
+    const onCopy = (e: ClipboardEvent) => {
+      if (outside(e) || !apiRef.current.selectedNodes.length || window.getSelection()?.toString()) return;
+      apiRef.current.copy();
+      // Mark the system clipboard so a later paste knows these nodes are the newest thing there.
+      e.clipboardData?.setData(NODES_MIME, "1");
+      e.clipboardData?.setData("text/plain", `${apiRef.current.selectedNodes.map((n) => n.data.title).filter(Boolean).join("\n")}`);
+      e.preventDefault();
+    };
+    // Pasted content lands under the pointer when it's over the canvas (else the viewport center).
+    let pointer: { x: number; y: number } | null = null;
+    const onMove = (e: PointerEvent) => (pointer = { x: e.clientX, y: e.clientY });
+    const pasteAt = () => {
+      const r = wrapRef.current?.getBoundingClientRect();
+      if (!pointer || !r || pointer.x < r.left || pointer.x > r.right || pointer.y < r.top || pointer.y > r.bottom) return undefined;
+      return rf.screenToFlowPosition(pointer);
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (outside(e)) return;
+      const cd = e.clipboardData;
+      e.preventDefault();
+      if (cd?.types.includes(NODES_MIME)) return apiRef.current.paste();
+      const at = pasteAt();
+      const image = Array.from(cd?.files ?? []).find((f) => f.type.startsWith("image/"));
+      if (image) return void uploadImage(image, at);
+      const text = cd?.getData("text/plain")?.trim() ?? "";
+      const urls = text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t));
+      if (urls.length && urls.join(" ").length >= text.replace(/\s+/g, " ").length - urls.length) return addUrlNodes(urls, at);
+      if (text) {
+        // Plain text becomes a note (first line as the title).
+        const [first, ...rest] = text.split("\n");
+        return addNodeRef.current("note", { at, data: { title: first.slice(0, 120), description: rest.join("\n").trim().slice(0, 4000) } });
+      }
+      apiRef.current.paste();
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("copy", onCopy);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("copy", onCopy);
+      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, [mode, addUrlNodes, uploadImage, rf]);
 
   // ---------------------------------------------------------------- flow handlers
-  const onNodesChange = useCallback((changes: NodeChange<PlanFlowNode>[]) => {
-    // removal goes through our own delete (keeps descendants/edges consistent)
-    const filtered = changes.filter((c) => c.type !== "remove");
-    if (filtered.length) setNodes((list) => applyNodeChanges(filtered, list));
-  }, []);
+  const onNodesChange = useCallback(
+    (changes: NodeChange<PlanFlowNode>[]) => {
+      // removal goes through our own delete (keeps descendants/edges consistent)
+      const filtered = changes.filter((c) => c.type !== "remove");
+      const ch = filtered.length === 1 ? filtered[0] : null;
+      // Alignment guides while dragging one node (hold Alt to move freely).
+      if (ch?.type === "position" && ch.dragging && ch.position && !altDown.current) {
+        const node = nodesRef.current.find((n) => n.id === ch.id);
+        if (node) {
+          const size = (n: PlanFlowNode) => ({ width: n.measured?.width ?? n.width ?? 0, height: n.measured?.height ?? n.height ?? 0 });
+          const others = nodesRef.current
+            .filter((n) => n.id !== node.id && (n.parentId ?? null) === (node.parentId ?? null) && !n.hidden)
+            .map((n) => ({ id: n.id, x: n.position.x, y: n.position.y, ...size(n) }));
+          const g = helperLines({ id: node.id, x: ch.position.x, y: ch.position.y, ...size(node) }, others, 6 / rf.getViewport().zoom);
+          if (g.x != null) ch.position.x = g.x;
+          if (g.y != null) ch.position.y = g.y;
+          const parent = node.parentId ? rf.getInternalNode(node.parentId)?.internals.positionAbsolute : null;
+          const ox = parent?.x ?? 0;
+          const oy = parent?.y ?? 0;
+          setGuides({
+            vertical: g.vertical && { x: g.vertical.x + ox, y1: g.vertical.y1 + oy, y2: g.vertical.y2 + oy },
+            horizontal: g.horizontal && { y: g.horizontal.y + oy, x1: g.horizontal.x1 + ox, x2: g.horizontal.x2 + ox },
+          });
+        }
+      } else if (ch?.type === "position" && !ch.dragging) setGuides(null);
+      if (filtered.length) setNodes((list) => applyNodeChanges(filtered, list));
+    },
+    [rf],
+  );
   const onEdgesChange = useCallback((changes: EdgeChange<PlanFlowEdge>[]) => {
     const filtered = changes.filter((c) => c.type !== "remove");
     if (filtered.length) setEdges((list) => applyEdgeChanges(filtered, list));
   }, []);
 
   const onConnect = useCallback((c: Connection) => createEdge(c.source, c.target, c.sourceHandle, c.targetHandle), [createEdge]);
+  // Dragging an edge's end to another node moves the connection (same id, kind and label).
+  const onReconnect = useCallback((old: PlanFlowEdge, c: Connection) => {
+    if (!c.source || !c.target || c.source === c.target) return;
+    pendingKey.current = null;
+    setEdges((list) => reconnectEdge(old, c, list, { shouldReplaceId: false }));
+  }, []);
 
   // Dropping a connection anywhere on a node (not only on a handle) connects to it.
   const onConnectEnd: OnConnectEnd = useCallback(
@@ -729,6 +921,7 @@ function EditorShell(props: PlanEditorProps) {
 
   const onNodeDragStop: OnNodeDrag<PlanFlowNode> = useCallback((_e, _node, dragged) => {
     setDropTarget(null);
+    setGuides(null);
     const ids = dragged.map((d) => d.id);
     // functional update: runs after React Flow's final position change in the same batch
     setNodes((prev) => {
@@ -758,7 +951,7 @@ function EditorShell(props: PlanEditorProps) {
 
   const onDragOver = (e: React.DragEvent) => {
     const types = Array.from(e.dataTransfer.types);
-    if (types.includes(DND_MIME) || types.includes("Files")) {
+    if (types.includes(DND_MIME) || types.includes(LIBRARY_MIME) || types.includes("Files") || types.includes("text/uri-list")) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       if (!dropping) setDropping(true);
@@ -775,20 +968,24 @@ function EditorShell(props: PlanEditorProps) {
       else addResourceNode(p.ref, p.resource, at);
       return;
     }
-    const file = Array.from(e.dataTransfer.files ?? []).find((f) => f.type.startsWith("image/"));
-    if (!file) return;
-    e.preventDefault();
-    const fd = new FormData();
-    fd.set("file", file);
-    const id = toast.loading("Enviando imagem…");
+    // Links dragged from the library (another tab or window).
     try {
-      const res = await fetch("/api/assets", { method: "POST", body: fd });
-      const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
-      if (!res.ok || !body.url) throw new Error(body.error ?? "Falha no envio.");
-      addNode("image", { at, data: { image: body.url, title: file.name.replace(/\.[a-z0-9]+$/i, "") } });
-      toast.success("Imagem adicionada", { id });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha no envio.", { id });
+      const lib = JSON.parse(e.dataTransfer.getData(LIBRARY_MIME) || "null") as { kind?: string; ids?: string[] } | null;
+      if (lib?.kind === "links" && lib.ids?.length) {
+        e.preventDefault();
+        return addFavoriteNodes(lib.ids, at);
+      }
+    } catch {}
+    const file = Array.from(e.dataTransfer.files ?? []).find((f) => f.type.startsWith("image/"));
+    if (file) {
+      e.preventDefault();
+      return uploadImage(file, at);
+    }
+    // A link dragged from the browser's address bar or another page.
+    const urls = (e.dataTransfer.getData("text/uri-list") || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#") && /^https?:/i.test(l));
+    if (urls.length) {
+      e.preventDefault();
+      addUrlNodes(urls, at);
     }
   };
 
@@ -887,6 +1084,12 @@ function EditorShell(props: PlanEditorProps) {
             onUndo={undo}
             onRedo={redo}
             onHistory={() => openShare("history")}
+            onPresent={async () => {
+              // Present what's on the canvas: save first, then open the view in presentation mode.
+              await autosave.flush();
+              router.push(`/plans/${planId}?present=1`);
+            }}
+            savedAt={autosave.savedAt}
             onShare={() => openShare("share")}
             onPublish={publish}
             publishing={publishing}
@@ -986,6 +1189,9 @@ function EditorShell(props: PlanEditorProps) {
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
                     onConnectEnd={onConnectEnd}
+                    onReconnect={onReconnect}
+                    edgesReconnectable
+                    onEdgeDoubleClick={(_, ed) => tool === "select" && setEditingId(ed.id)}
                     onNodeDrag={onNodeDrag}
                     onNodeDragStop={onNodeDragStop}
                     onNodeClick={onNodeClick}
@@ -1018,7 +1224,7 @@ function EditorShell(props: PlanEditorProps) {
                     connectionMode={ConnectionMode.Loose}
                     connectionRadius={28}
                     snapToGrid={snap}
-                    snapGrid={[10, 10]}
+                    snapGrid={[20, 20]}
                     deleteKeyCode={null}
                     selectionKeyCode="Shift"
                     multiSelectionKeyCode={["Shift", "Meta", "Control"]}
@@ -1033,6 +1239,35 @@ function EditorShell(props: PlanEditorProps) {
                     className={cn("wp-flow", `wp-tool-${tool}`)}
                   >
                     {grid && <Background variant={BackgroundVariant.Dots} gap={20} size={1.3} color="var(--canvas-dot)" />}
+                    {minimap && (
+                      <MiniMap
+                        pannable
+                        zoomable
+                        position="bottom-right"
+                        ariaLabel="Minimapa"
+                        className="wp-minimap wp-no-print"
+                        nodeColor={(n) => (typeof n.data.color === "string" ? `color-mix(in srgb, ${n.data.color} var(--minimap-tint), var(--surface))` : "var(--minimap-node)")}
+                        nodeStrokeWidth={0}
+                        nodeBorderRadius={4}
+                        maskColor="var(--minimap-mask)"
+                      />
+                    )}
+                    {guides && (guides.vertical || guides.horizontal) && (
+                      <ViewportPortal>
+                        {guides.vertical && (
+                          <div
+                            className="wp-guide pointer-events-none absolute"
+                            style={{ left: guides.vertical.x, top: guides.vertical.y1 - 12, height: guides.vertical.y2 - guides.vertical.y1 + 24, width: 0 }}
+                          />
+                        )}
+                        {guides.horizontal && (
+                          <div
+                            className="wp-guide pointer-events-none absolute"
+                            style={{ top: guides.horizontal.y, left: guides.horizontal.x1 - 12, width: guides.horizontal.x2 - guides.horizontal.x1 + 24, height: 0 }}
+                          />
+                        )}
+                      </ViewportPortal>
+                    )}
                   </ReactFlow>
                   {nodes.length === 0 && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">

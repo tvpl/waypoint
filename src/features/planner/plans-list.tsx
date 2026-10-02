@@ -13,13 +13,12 @@ import {
   Loader2,
   MoreHorizontal,
   Pencil,
-  Plus,
   Search,
   Trash2,
   Upload,
   Workflow,
 } from "lucide-react";
-import type { ThumbNode } from "@/server/services/plans";
+import type { Thumb } from "@/server/services/plans";
 import { PlanThumb } from "@/components/plan-thumb";
 import { Button } from "@/components/ui/button";
 import { Badge, EmptyState } from "@/components/ui/misc";
@@ -39,7 +38,7 @@ export type PlanCardData = {
   access: "owner" | "editor" | "viewer";
   isTemplate: boolean;
   archived: boolean;
-  thumbnail: ThumbNode[];
+  thumbnail: Thumb;
   tags: string[];
 };
 
@@ -50,28 +49,8 @@ const TABS: { value: PlanFilter; label: string }[] = [
   { value: "archived", label: "Arquivados" },
 ];
 
-export function NewPlanButton({ disabled, variant = "primary" }: { disabled?: boolean; variant?: "primary" | "secondary" }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  return (
-    <Button
-      variant={variant}
-      disabled={disabled || pending}
-      onClick={() =>
-        start(async () => {
-          try {
-            const id = await createPlanAction({});
-            router.push(`/plans/${id}/edit`);
-          } catch {
-            toast.error("Não foi possível criar o plan.");
-          }
-        })
-      }
-    >
-      {pending ? <Loader2 className="animate-spin" /> : <Plus />} Novo plan
-    </Button>
-  );
-}
+import { NewPlanButton } from "./new-plan-dialog";
+export { NewPlanButton };
 
 export function ImportPlanButton({ disabled }: { disabled?: boolean }) {
   const router = useRouter();
@@ -166,7 +145,7 @@ function Empty({ filter, canCreate }: { filter: PlanFilter; canCreate: boolean }
       icon={<Workflow />}
       title="Seu primeiro plan começa aqui"
       description="Mapeie arquiteturas, roadmaps e fluxos com blocos, containers e conexões — e ligue cada bloco aos seus links."
-      action={canCreate ? <NewPlanButton /> : undefined}
+      action={canCreate ? <NewPlanButton variant="primary" /> : undefined}
     />
   );
 }
@@ -197,7 +176,7 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
   return (
     <article className="group relative flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface transition-[box-shadow,transform] focus-within:shadow-pop hover:-translate-y-px hover:shadow-pop">
       <Link href={href} className="flex flex-1 flex-col outline-none">
-        <PlanThumb nodes={p.thumbnail} />
+        <PlanThumb thumb={p.thumbnail} />
         <div className="flex flex-col gap-1.5 px-4 py-3.5">
           <div className="flex items-center justify-between gap-2">
             <h3 className="truncate text-lead font-semibold">{p.title}</h3>

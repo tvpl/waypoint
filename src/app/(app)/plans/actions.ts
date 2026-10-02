@@ -6,6 +6,7 @@ import { archivePlan, createPlan, deletePlan, duplicatePlan, getPlanWithAccess, 
 import { atLeast } from "@/server/services/permissions";
 import { normalizeDocument } from "@/domain/plan";
 import type { Role } from "@/server/db/schema";
+import { starterTemplate } from "@/features/planner/starter-templates";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -33,10 +34,18 @@ async function requireCreator() {
 }
 
 /** Creates an empty plan (or one from a template) in the active workspace and returns its id. */
-export async function createPlanAction(input: { title?: string; templateId?: string }): Promise<string> {
+export async function createPlanAction(input: { title?: string; templateId?: string; starter?: string }): Promise<string> {
   const ctx = await requireCreator();
   let id: string;
-  if (input.templateId) {
+  const starter = input.starter ? starterTemplate(input.starter) : undefined;
+  if (starter) {
+    id = createPlan({
+      workspaceId: ctx.workspace.id,
+      userId: ctx.user.id,
+      title: input.title?.trim() || (starter.id === "blank" ? "Plan sem título" : starter.title),
+      document: starter.build(),
+    });
+  } else if (input.templateId) {
     const tpl = getPlanWithAccess(input.templateId, ctx.user.id);
     if (!tpl || !tpl.plan.isTemplate) throw new UserError("Template não encontrado.");
     id = duplicatePlan(tpl.plan.id, ctx.user.id, ctx.workspace.id, { title: input.title?.trim() || tpl.plan.title });

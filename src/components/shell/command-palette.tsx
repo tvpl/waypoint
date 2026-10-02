@@ -68,12 +68,12 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 const itemCls =
-  "flex min-h-10 cursor-default items-center gap-3 rounded-[10px] px-3 py-1.5 text-sm text-ink outline-none data-[selected=true]:bg-accent-soft data-[selected=true]:text-ink";
+  "flex min-h-10 cursor-default items-center gap-3 rounded-control px-3 py-1.5 text-sm text-ink outline-none data-[selected=true]:bg-accent-soft data-[selected=true]:text-ink";
 const groupCls =
-  "[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[.06em] [&_[cmdk-group-heading]]:text-muted";
+  "[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-caption [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[.06em] [&_[cmdk-group-heading]]:text-muted";
 
 function IconTile({ children }: { children: React.ReactNode }) {
-  return <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-subtle text-ink-2 [&_svg]:size-[15px]">{children}</span>;
+  return <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chip bg-subtle text-ink-2 [&_svg]:size-[15px]">{children}</span>;
 }
 
 export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces: { id: string; name: string }[]; currentWorkspaceId: string }) {
@@ -185,10 +185,10 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
   return (
     <D.Root open={open} onOpenChange={setOpen}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-50 bg-scrim" />
+        <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out" />
         <D.Content
           aria-describedby={undefined}
-          className="fixed left-1/2 top-[10vh] z-50 w-[calc(100vw-32px)] max-w-[680px] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-surface text-ink shadow-pop outline-none data-[state=open]:animate-in"
+          className="fixed left-1/2 top-[10vh] z-50 w-[calc(100vw-32px)] max-w-[680px] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-surface text-ink shadow-pop outline-none data-[state=open]:animate-in data-[state=closed]:animate-out"
           onKeyDown={(e) => {
             metaRef.current = e.metaKey || e.ctrlKey;
           }}
@@ -202,7 +202,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
                 value={query}
                 onValueChange={setQuery}
                 placeholder="Buscar plans, blocos, links, coleções, tags…"
-                className="h-full flex-1 bg-transparent text-[17px] outline-none"
+                className="h-full flex-1 bg-transparent text-title outline-none"
               />
               {loading && <span className="h-3 w-3 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Buscando" />}
               <Kbd>esc</Kbd>

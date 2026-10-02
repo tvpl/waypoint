@@ -14,11 +14,11 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
         <div className="flex flex-col items-start gap-5">
           <Logo size={40} />
           <div className="flex flex-col gap-2">
-            <h1 className="font-display text-5xl leading-none">
+            <h1 className="font-display text-display-lg leading-none tracking-[-0.01em]">
               {mode === "login" ? "Bem-vindo de volta" : "Comece a organizar"}
               <span className="text-accent">.</span>
             </h1>
-            <p className="text-[15px] text-muted">
+            <p className="text-lead text-muted">
               {mode === "login" ? "Entre para acessar seus plans e links." : "Crie sua conta — seu workspace pessoal é criado automaticamente."}
             </p>
           </div>
@@ -37,7 +37,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
             <Input id="password" name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required />
           </Field>
           {state?.error && (
-            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
+            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-body text-danger">
               {state.error}
             </p>
           )}
@@ -45,7 +45,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
             {pending ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
           </Button>
         </form>
-        <p className="text-center text-[13px] text-muted">
+        <p className="text-center text-body text-muted">
           {mode === "login" ? (
             <>
               Ainda não tem conta? <Link href="/signup" className="font-medium text-accent-ink">Criar conta</Link>

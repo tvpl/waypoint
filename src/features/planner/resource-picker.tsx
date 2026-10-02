@@ -58,7 +58,7 @@ export function ResourceIcon({ resource, size = 26 }: { resource: ResolvedResour
   const Icon = resource.kind === "plan" ? Workflow : resource.kind === "collection" ? Folder : Link2;
   const tint = resource.kind === "plan" ? "bg-accent-soft text-accent-ink" : resource.kind === "collection" ? "bg-amber-bg text-amber-ink" : "bg-subtle text-ink-2";
   return (
-    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-[7px]", tint)} style={{ width: size, height: size }} aria-hidden>
+    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-chip", tint)} style={{ width: size, height: size }} aria-hidden>
       <Icon style={{ width: size * 0.54, height: size * 0.54 }} strokeWidth={1.75} />
     </span>
   );
@@ -90,8 +90,8 @@ export function ResourceRow({
     >
       <ResourceIcon resource={item.resource} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] font-medium text-ink">{item.resource.title}</span>
-        <span className="truncate text-[11px] text-muted">{item.resource.subtitle}</span>
+        <span className="truncate text-body font-medium text-ink">{item.resource.title}</span>
+        <span className="truncate text-caption text-muted">{item.resource.subtitle}</span>
       </span>
       {draggable && <GripVertical className="size-3.5 shrink-0 text-muted opacity-60 group-hover:opacity-100" aria-hidden />}
     </button>

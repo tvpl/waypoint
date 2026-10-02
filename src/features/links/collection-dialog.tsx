@@ -31,7 +31,7 @@ export function VisibilityChoice({ value, onChange }: { value: EditableVisibilit
           <label
             key={o.value}
             className={cn(
-              "flex cursor-pointer items-start gap-2.5 rounded-[10px] border px-3 py-2.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
+              "flex cursor-pointer items-start gap-2.5 rounded-control border px-3 py-2.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
               on ? "border-accent bg-accent-soft" : "border-line-2 bg-surface hover:bg-surface-2",
             )}
           >
@@ -40,7 +40,7 @@ export function VisibilityChoice({ value, onChange }: { value: EditableVisibilit
               {o.icon}
             </span>
             <span className="flex flex-col gap-0.5">
-              <span className={cn("text-[13px] font-medium", on ? "text-accent-ink" : "text-ink")}>{o.label}</span>
+              <span className={cn("text-body font-medium", on ? "text-accent-ink" : "text-ink")}>{o.label}</span>
               <span className="text-xs text-muted">{o.sub}</span>
             </span>
           </label>

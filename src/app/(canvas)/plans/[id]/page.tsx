@@ -115,14 +115,14 @@ function Unavailable({ signedIn, next }: { signedIn: boolean; next: string }) {
   return (
     <Shell>
       <div className="flex max-w-md flex-col gap-2">
-        <h1 className="font-display text-5xl leading-none">Plan indisponível</h1>
-        <p className="text-[15px] text-muted">
+        <h1 className="font-display text-display-lg leading-none tracking-[-0.01em]">Plan indisponível</h1>
+        <p className="text-lead text-muted">
           {signedIn ? "Este plan não existe ou você não tem acesso a ele. Peça ao dono para compartilhar com você." : "Este plan é privado ou o link expirou. Entre para ver se você tem acesso."}
         </p>
       </div>
       <Link
         href={signedIn ? "/plans" : `/login?next=${encodeURIComponent(next)}`}
-        className="inline-flex h-9 items-center rounded-[9px] bg-accent px-4 text-sm font-medium text-white"
+        className="inline-flex h-9 items-center rounded-control bg-accent px-4 text-sm font-medium text-white"
       >
         {signedIn ? "Ver meus plans" : "Entrar"}
       </Link>
@@ -134,10 +134,10 @@ function NotPublished({ signedIn }: { signedIn: boolean }) {
   return (
     <Shell>
       <div className="flex max-w-md flex-col gap-2">
-        <h1 className="font-display text-5xl leading-none">Ainda não publicado</h1>
-        <p className="text-[15px] text-muted">Este plan ainda está em rascunho. Ele aparece aqui assim que o dono publicar a primeira versão.</p>
+        <h1 className="font-display text-display-lg leading-none tracking-[-0.01em]">Ainda não publicado</h1>
+        <p className="text-lead text-muted">Este plan ainda está em rascunho. Ele aparece aqui assim que o dono publicar a primeira versão.</p>
       </div>
-      <Link href={signedIn ? "/plans" : "/"} className="inline-flex h-9 items-center rounded-[9px] border border-line-2 bg-surface px-4 text-sm font-medium">
+      <Link href={signedIn ? "/plans" : "/"} className="inline-flex h-9 items-center rounded-control border border-line-2 bg-surface px-4 text-sm font-medium">
         {signedIn ? "Ver meus plans" : "Ir para o Waypoint"}
       </Link>
     </Shell>

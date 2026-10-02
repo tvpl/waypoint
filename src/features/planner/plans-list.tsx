@@ -127,7 +127,7 @@ export function PlansList({ filter, plans, canCreate }: { filter: PlanFilter; pl
         {plans.length > 0 && (
           <label className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-muted focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15 sm:w-60">
             <Search className="size-3.5 shrink-0" aria-hidden />
-            <input value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder="Filtrar plans" aria-label="Filtrar plans" className="w-full bg-transparent text-[13px] text-ink outline-none" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder="Filtrar plans" aria-label="Filtrar plans" className="w-full bg-transparent text-body text-ink outline-none" />
           </label>
         )}
       </div>
@@ -195,15 +195,15 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
     });
 
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-[14px] border border-line bg-surface transition-[box-shadow,transform] focus-within:shadow-pop hover:-translate-y-px hover:shadow-pop">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface transition-[box-shadow,transform] focus-within:shadow-pop hover:-translate-y-px hover:shadow-pop">
       <Link href={href} className="flex flex-1 flex-col outline-none">
         <PlanThumb nodes={p.thumbnail} />
         <div className="flex flex-col gap-1.5 px-4 py-3.5">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="truncate text-[15px] font-semibold">{p.title}</h3>
+            <h3 className="truncate text-lead font-semibold">{p.title}</h3>
             <StatusBadge p={p} />
           </div>
-          <p className="flex items-center gap-1.5 text-[13px] text-muted">
+          <p className="flex items-center gap-1.5 text-body text-muted">
             <span suppressHydrationWarning>editado {timeAgo(p.updatedAt)}</span>
             {p.access === "viewer" && <span>· somente leitura</span>}
           </p>

@@ -19,7 +19,7 @@ export function Greeting({ name }: { name: string }) {
         {now ? greet(now) : "Olá"}, {first}
         <span className="text-accent">.</span>
       </h1>
-      <p className="min-h-[26px] text-[17px] text-muted first-letter:uppercase">{date && `${date} — o que vamos organizar hoje?`}</p>
+      <p className="min-h-[26px] text-title text-muted first-letter:uppercase">{date && `${date} — o que vamos organizar hoje?`}</p>
     </div>
   );
 }

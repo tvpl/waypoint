@@ -131,7 +131,7 @@ export function CommentsToggle({ count, open, onClick, className }: { count: num
       >
         <MessageSquare />
         {count > 0 && (
-          <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-surface">
+          <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-micro font-semibold leading-none text-white ring-2 ring-surface">
             {count > 99 ? "99+" : count}
           </span>
         )}
@@ -176,7 +176,7 @@ function Avatar({ id, name, size = 28 }: { id: string; name: string; size?: numb
 function Body({ text, names }: { text: string; names: string[] }) {
   const parts = useMemo(() => splitMentions(text, names), [text, names]);
   return (
-    <p className="whitespace-pre-wrap break-words text-[13px] leading-[19px] text-ink">
+    <p className="whitespace-pre-wrap break-words text-body leading-[19px] text-ink">
       {parts.map((p, i) =>
         p.mention ? (
           <span key={i} className="rounded-[4px] bg-accent-soft px-0.5 font-medium text-accent-ink">
@@ -316,7 +316,7 @@ function MentionTextarea({
             onCancel();
           }
         }}
-        className="block max-h-[220px] min-h-[38px] w-full resize-none rounded-[9px] border border-line-2 bg-surface px-3 py-2 text-[13px] leading-[19px] text-ink outline-none transition-[border,box-shadow] placeholder:text-muted focus:border-accent focus:ring-3 focus:ring-accent/15"
+        className="block max-h-[220px] min-h-[38px] w-full resize-none rounded-control border border-line-2 bg-surface px-3 py-2 text-body leading-[19px] text-ink outline-none transition-[border,box-shadow] placeholder:text-muted focus:border-accent focus:ring-3 focus:ring-accent/15"
       />
       {showList && (
         <ul id={listId} role="listbox" aria-label="Mencionar" className="absolute bottom-full left-0 z-30 mb-1.5 w-full max-w-[260px] overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-pop animate-in">
@@ -331,7 +331,7 @@ function MentionTextarea({
                 pick(p);
               }}
               onMouseEnter={() => setActive(i)}
-              className={cn("flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px]", i === active && "bg-accent-soft text-accent-ink")}
+              className={cn("flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-body", i === active && "bg-accent-soft text-accent-ink")}
             >
               <Avatar id={p.id} name={p.name} size={20} />
               <span className="truncate">{p.name}</span>
@@ -463,10 +463,10 @@ export function CommentsPanel({
       className={cn("flex w-[340px] max-w-full shrink-0 flex-col overflow-hidden border-l border-line bg-surface text-ink", className)}
     >
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <h2 id={titleId} data-panel-title tabIndex={-1} className="flex-1 text-[15px] font-semibold outline-none">
+        <h2 id={titleId} data-panel-title tabIndex={-1} className="flex-1 text-lead font-semibold outline-none">
           Comentários
           {store.counts.unresolvedThreads > 0 && (
-            <span className="ml-1.5 text-[13px] font-normal text-muted">
+            <span className="ml-1.5 text-body font-normal text-muted">
               {store.counts.unresolvedThreads} {store.counts.unresolvedThreads === 1 ? "aberto" : "abertos"}
             </span>
           )}
@@ -484,7 +484,7 @@ export function CommentsPanel({
       </div>
 
       <div ref={listRef} className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
-        {!snap && store.error && <p className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px] text-muted">{store.error}</p>}
+        {!snap && store.error && <p className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-body text-muted">{store.error}</p>}
         {!snap && !store.error && (
           <div className="flex flex-1 items-center justify-center py-10">
             <Loader2 className="size-5 animate-spin text-muted" aria-label="Carregando comentários" />
@@ -497,7 +497,7 @@ export function CommentsPanel({
             </span>
             <div className="flex flex-col gap-1">
               <p className="text-sm font-semibold">{resolvedCount && !showResolved ? "Tudo resolvido" : "Nenhum comentário ainda"}</p>
-              <p className="text-[13px] leading-5 text-muted">
+              <p className="text-body leading-5 text-muted">
                 {resolvedCount && !showResolved ? "Ative “Mostrar resolvidos” para ver as conversas encerradas." : "Comente o plan ou um elemento específico. Use @ para mencionar alguém."}
               </p>
             </div>
@@ -513,7 +513,7 @@ export function CommentsPanel({
                     disabled={!nodeById.has(key) || !onSelectNode}
                     onClick={() => onSelectNode?.(key)}
                     className={cn(
-                      "min-w-0 truncate rounded-md text-left text-[11px] font-semibold uppercase tracking-[.06em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+                      "min-w-0 truncate rounded-md text-left text-caption font-semibold uppercase tracking-[.06em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
                       nodeById.has(key) && onSelectNode && "hover:text-accent-ink",
                       key === target.nodeId && "text-accent-ink",
                     )}
@@ -522,7 +522,7 @@ export function CommentsPanel({
                     {labelOf(key)}
                   </button>
                 ) : (
-                  <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted">No plan</span>
+                  <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">No plan</span>
                 )}
                 <span className="h-px flex-1 bg-line" aria-hidden />
                 {key && (
@@ -577,7 +577,7 @@ export function CommentsPanel({
             placeholder="Escreva um comentário… use @ para mencionar"
           />
           <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1 text-[11px] text-muted">
+            <span className="flex items-center gap-1 text-caption text-muted">
               <AtSign className="size-3" aria-hidden /> menções · <kbd className="font-mono">⌘/Ctrl ↵</kbd> envia
             </span>
             <Button size="sm" variant="primary" onClick={() => void send()} disabled={!draft.trim() || sending}>
@@ -622,7 +622,7 @@ function Thread({ thread, store, names, onSelectNode }: { thread: CommentThread;
       }}
     >
       {resolved && (
-        <span className="-mb-1 inline-flex items-center gap-1 self-start rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-medium text-success-ink">
+        <span className="-mb-1 inline-flex items-center gap-1 self-start rounded-full bg-success-bg px-2 py-0.5 text-caption font-medium text-success-ink">
           <Check className="size-3" aria-hidden /> Resolvido
         </span>
       )}
@@ -714,8 +714,8 @@ function CommentItem({ c, store, names, small }: { c: CommentView; store: Commen
       <Avatar id={c.author.id} name={c.author.name} size={small ? 22 : 28} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[13px] font-semibold">{c.author.name}</span>
-          <time dateTime={new Date(c.createdAt).toISOString()} title={formatDateTime(c.createdAt)} className="shrink-0 text-[11px] text-muted" suppressHydrationWarning>
+          <span className="truncate text-body font-semibold">{c.author.name}</span>
+          <time dateTime={new Date(c.createdAt).toISOString()} title={formatDateTime(c.createdAt)} className="shrink-0 text-caption text-muted" suppressHydrationWarning>
             {timeAgo(c.createdAt)}
             {edited && " · editado"}
           </time>

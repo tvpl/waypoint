@@ -2,7 +2,10 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export const inputClass =
-  "h-9 w-full rounded-[9px] border border-line-2 bg-surface px-3 text-sm text-ink outline-none transition-[border,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-60";
+  "h-9 w-full rounded-control border border-line-2 bg-surface px-3 text-sm text-ink outline-none transition-[border,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-60";
+
+/** Native <select> styled like an input, with its own chevron (see wp-select in globals.css). */
+export const selectClass = cn(inputClass, "wp-select pr-8");
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...props },
@@ -32,5 +35,5 @@ export function Field({ label, htmlFor, hint, children, className }: { label: st
 }
 
 export function SectionLabel({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
-  return <span className={cn("text-[11px] font-semibold uppercase tracking-[.06em] text-muted", className)} {...props} />;
+  return <span className={cn("text-caption font-semibold uppercase tracking-[.06em] text-muted", className)} {...props} />;
 }

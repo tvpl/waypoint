@@ -71,7 +71,7 @@ export function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2.5">
-      <label className="flex h-9 w-full items-center sm:w-[260px] gap-2 rounded-[9px] border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
+      <label className="flex h-9 w-full items-center sm:w-[260px] gap-2 rounded-control border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
         <Search className="size-4 shrink-0" aria-hidden />
         <input
           ref={filterRef}
@@ -88,14 +88,14 @@ export function Toolbar({
           }}
           placeholder={placeholder}
           aria-label={placeholder}
-          className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="h-full min-w-0 flex-1 bg-transparent text-body text-ink outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {draft ? (
           <button type="button" aria-label="Limpar filtro" onClick={() => setDraft("")} className="rounded p-0.5 hover:text-ink">
             <X className="size-3.5" />
           </button>
         ) : (
-          <Kbd className="px-1 py-0 text-[10px]">/</Kbd>
+          <Kbd className="px-1 py-0 text-micro">/</Kbd>
         )}
       </label>
 
@@ -122,10 +122,10 @@ export function Toolbar({
             <Command loop label="Filtrar por tag">
               <div className="flex h-10 items-center gap-2 border-b border-line px-3">
                 <Search className="size-4 text-muted" aria-hidden />
-                <Command.Input autoFocus placeholder="Buscar tag…" className="h-full flex-1 bg-transparent text-[13px] outline-none" />
+                <Command.Input autoFocus placeholder="Buscar tag…" className="h-full flex-1 bg-transparent text-body outline-none" />
               </div>
               <Command.List className="scrollbar-thin max-h-72 overflow-y-auto p-1.5">
-                <Command.Empty className="px-2 py-6 text-center text-[13px] text-muted">{tags.length ? "Nenhuma tag encontrada." : "Ainda não há tags."}</Command.Empty>
+                <Command.Empty className="px-2 py-6 text-center text-body text-muted">{tags.length ? "Nenhuma tag encontrada." : "Ainda não há tags."}</Command.Empty>
                 {tags.map((t) => {
                   const on = activeTags.includes(t.name);
                   return (
@@ -133,7 +133,7 @@ export function Toolbar({
                       key={t.name}
                       value={t.name}
                       onSelect={() => onToggleTag(t.name)}
-                      className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px] outline-none data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-ink"
+                      className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-body outline-none data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-ink"
                     >
                       <span className={cn("inline-flex h-4 w-4 items-center justify-center rounded border", on ? "border-accent bg-accent text-white" : "border-line-2")}>
                         {on && <Check className="size-3" aria-hidden />}

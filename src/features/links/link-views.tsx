@@ -144,7 +144,7 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
                 <Waypoints />
                 <span className="flex min-w-0 flex-col">
                   <span>Atualizar para a nova URL</span>
-                  <span className="max-w-[220px] truncate font-mono text-[11px] text-muted">{shortUrl(link.healthFinalUrl, 40)}</span>
+                  <span className="max-w-[220px] truncate font-mono text-caption text-muted">{shortUrl(link.healthFinalUrl, 40)}</span>
                 </span>
               </DropdownMenuItem>
             )}
@@ -178,7 +178,7 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
 }
 
 const floatBtn =
-  "inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 text-ink shadow-[0_1px_3px_rgba(23,23,28,.15)] backdrop-blur hover:bg-surface [&_svg]:size-[15px]";
+  "inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 text-ink shadow-thumb backdrop-blur hover:bg-surface [&_svg]:size-[15px]";
 
 function Summary({ link, className }: { link: LinkItem; className?: string }) {
   const lib = useLibrary();
@@ -236,7 +236,7 @@ function LinkCard({ link }: { link: LinkItem }) {
     <article
       {...dnd.props}
       className={cn(
-        "group relative flex flex-col overflow-visible rounded-[14px] border bg-surface transition-[box-shadow,transform,opacity] hover:-translate-y-px hover:shadow-[0_10px_30px_-12px_rgba(23,23,28,.22)] dark:hover:shadow-[0_10px_30px_-12px_rgba(0,0,0,.7)]",
+        "group relative flex flex-col overflow-visible rounded-card border bg-surface transition-[box-shadow,transform,opacity] hover:-translate-y-px hover:shadow-raise dark:hover:shadow-[0_10px_30px_-12px_rgba(0,0,0,.7)]",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
@@ -255,7 +255,7 @@ function LinkCard({ link }: { link: LinkItem }) {
             draggable={false}
             onClick={onClick}
             onAuxClick={onAuxClick}
-            className="min-w-0 truncate text-[15px] font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-[14px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+            className="min-w-0 truncate text-lead font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
             {link.title}
           </a>
@@ -264,7 +264,7 @@ function LinkCard({ link }: { link: LinkItem }) {
           <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
           <HealthDot link={link} />
         </span>
-        <Summary link={link} className="line-clamp-2 text-[13px] leading-[19px] text-ink-2" />
+        <Summary link={link} className="line-clamp-2 text-body leading-[19px] text-ink-2" />
         {link.tags.length > 0 && (
           <div className="mt-0.5 flex flex-wrap gap-1.5">
             <Tags link={link} max={4} />
@@ -275,7 +275,7 @@ function LinkCard({ link }: { link: LinkItem }) {
         <Checkbox link={link} className="h-[18px] w-[18px]" />
       </div>
       {link.starred && (
-        <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex pointer-coarse:hidden h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-[0_1px_3px_rgba(23,23,28,.15)] transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
+        <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex pointer-coarse:hidden h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-thumb transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
           <Star className="size-[15px] fill-amber-ink text-amber-ink" aria-label="Favorito" />
         </span>
       )}
@@ -321,7 +321,7 @@ function CompactRow({ link }: { link: LinkItem }) {
     <div
       {...dnd.props}
       className={cn(
-        "group relative flex items-center gap-3 rounded-[10px] border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2",
+        "group relative flex items-center gap-3 rounded-control border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
@@ -342,14 +342,14 @@ function CompactRow({ link }: { link: LinkItem }) {
             draggable={false}
             onClick={onClick}
             onAuxClick={onAuxClick}
-            className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-[10px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+            className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-control after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
             {link.title}
           </a>
           <HealthDot link={link} />
         </span>
         <Summary link={link} className="truncate text-xs text-muted" />
-        {lib.summaryFor(link) === "hidden" || !link.description ? <span className="truncate font-mono text-[11px] text-muted">{link.domain}</span> : null}
+        {lib.summaryFor(link) === "hidden" || !link.description ? <span className="truncate font-mono text-caption text-muted">{link.domain}</span> : null}
       </div>
       <div className="hidden shrink-0 gap-1.5 xl:flex">
         <Tags link={link} max={2} />
@@ -400,7 +400,7 @@ function ListRow({ link }: { link: LinkItem }) {
       {...dnd.props}
       className={cn(
         listCols,
-        "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-[13px] last:border-b-0 hover:bg-surface-2 md:px-4",
+        "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-body last:border-b-0 hover:bg-surface-2 md:px-4",
         selected && "bg-accent-soft/60 hover:bg-accent-soft/80",
         dnd.dragging && "opacity-50",
       )}

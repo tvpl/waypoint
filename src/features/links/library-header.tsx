@@ -156,12 +156,12 @@ export function LibraryHeader({
       <button
         type="button"
         onClick={onOpenCollections}
-        className="-ml-1 mb-1 inline-flex h-8 items-center gap-1.5 self-start rounded-lg border border-line-2 bg-surface px-2.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink md:hidden [&_svg]:size-4"
+        className="-ml-1 mb-1 inline-flex h-8 items-center gap-1.5 self-start rounded-lg border border-line-2 bg-surface px-2.5 text-body font-medium text-ink-2 hover:bg-surface-2 hover:text-ink md:hidden [&_svg]:size-4"
       >
         <PanelLeft aria-hidden />
         Coleções
       </button>
-      <nav aria-label="Caminho" className="flex min-h-5 min-w-0 items-center gap-1.5 text-[13px] text-muted">
+      <nav aria-label="Caminho" className="flex min-h-5 min-w-0 items-center gap-1.5 text-body text-muted">
         <Link href="/links" className="hover:text-ink">
           Links
         </Link>
@@ -183,7 +183,7 @@ export function LibraryHeader({
       </nav>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 max-sm:basis-full">
-          <h1 className="font-display text-[32px] font-normal leading-[1.05] tracking-[-0.005em] sm:text-[40px]">
+          <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">
             {current ? (
               <InlineEdit
                 value={current.name}
@@ -191,7 +191,7 @@ export function LibraryHeader({
                 label="Nome da coleção"
                 canEdit={canEdit}
                 onSave={(v) => v && onRename(v)}
-                inputClassName="font-display text-[32px] sm:text-[40px] leading-[1.05] px-1.5 -mx-1.5"
+                inputClassName="font-display text-display-sm sm:text-display leading-[1.05] tracking-[-0.01em] px-1.5 -mx-1.5"
               />
             ) : (
               title

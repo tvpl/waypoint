@@ -36,15 +36,15 @@ export function CollectionList({
 }) {
   const flat = React.useMemo(() => flattenWithPath(tree).filter((f) => !exclude?.has(f.id)), [tree, exclude]);
   const item =
-    "flex h-9 cursor-default items-center gap-2 rounded-md px-2 text-[13px] outline-none data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-ink";
+    "flex h-9 cursor-default items-center gap-2 rounded-md px-2 text-body outline-none data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-ink";
   return (
     <Command loop label="Escolher coleção" className="flex flex-col">
       <div className="flex h-10 items-center gap-2 border-b border-line px-3">
         <Search className="size-4 text-muted" aria-hidden />
-        <Command.Input autoFocus={autoFocus} placeholder="Buscar coleção…" className="h-full flex-1 bg-transparent text-[13px] outline-none" />
+        <Command.Input autoFocus={autoFocus} placeholder="Buscar coleção…" className="h-full flex-1 bg-transparent text-body outline-none" />
       </div>
       <Command.List className="scrollbar-thin max-h-72 overflow-y-auto p-1.5">
-        <Command.Empty className="px-2 py-6 text-center text-[13px] text-muted">Nenhuma coleção encontrada.</Command.Empty>
+        <Command.Empty className="px-2 py-6 text-center text-body text-muted">Nenhuma coleção encontrada.</Command.Empty>
         {allowNone && (
           <Command.Item value={`__none ${noneLabel}`} onSelect={() => onSelect(null)} className={item}>
             <Inbox className="size-[15px] text-muted" aria-hidden />
@@ -93,7 +93,7 @@ export function CollectionPicker({
           id={id}
           type="button"
           className={cn(
-            "flex h-[38px] w-full items-center gap-2 rounded-[9px] border border-line-2 bg-surface px-3 text-left text-[13px] text-ink outline-none focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/15",
+            "flex h-[38px] w-full items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-left text-body text-ink outline-none focus-visible:border-accent focus-visible:ring-3 focus-visible:ring-accent/15",
             className,
           )}
         >

@@ -21,7 +21,7 @@ import { EdgeSample } from "./edges";
 
 export type MenuTarget = { type: "node"; id: string } | { type: "edge"; id: string } | { type: "pane"; at: { x: number; y: number } } | null;
 
-const label = "px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-[.06em] text-muted";
+const label = "px-2.5 pb-1 pt-1.5 text-caption font-semibold uppercase tracking-[.06em] text-muted";
 
 export function CanvasContextMenu({ target, children }: { target: MenuTarget; children: React.ReactNode }) {
   const ed = useEditor();

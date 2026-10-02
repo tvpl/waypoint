@@ -81,7 +81,7 @@ export function EdgeLegend({ kinds = EDGE_KINDS }: { kinds?: readonly EdgeKind[]
   return (
     <ul className="flex flex-col gap-2.5">
       {kinds.map((k) => (
-        <li key={k} className="flex items-center gap-2.5 text-[13px] text-ink-2">
+        <li key={k} className="flex items-center gap-2.5 text-body text-ink-2">
           <EdgeSample kind={k} />
           <span>{EDGE_APPEARANCE[k].label}</span>
         </li>

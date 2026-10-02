@@ -53,7 +53,7 @@ function Chrome({ p, kind, children, resizable = true }: { p: P; kind: NodeKind;
         <NodeResizer isVisible={p.selected} minWidth={mw} minHeight={mh} handleClassName="wp-resize-handle" lineClassName="wp-resize-line" />
       )}
       {edit && p.selected && singleSelectedId === p.id && (
-        <div className="pointer-events-none absolute -top-[26px] left-0 z-10 whitespace-nowrap rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium text-white">
+        <div className="pointer-events-none absolute -top-[26px] left-0 z-10 whitespace-nowrap rounded bg-accent px-1.5 py-0.5 text-caption font-medium text-white">
           {KIND_LABEL[kind]} · {Math.round(p.width ?? 0)} × {Math.round(p.height ?? 0)}
         </div>
       )}
@@ -163,7 +163,7 @@ export const BlockNode = memo(function BlockNode(p: P) {
       <div
         className={cn(
           cls,
-          "flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-[0_1px_2px_rgba(23,23,28,.05)]",
+          "flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-rest",
           dark ? "" : "border-line-2 bg-surface text-ink",
         )}
         style={dark ? { background: tone.fill, borderColor: tone.fill, color: ink!.fg, boxShadow: "0 10px 24px -14px rgba(23,23,28,.6)" } : undefined}
@@ -201,7 +201,7 @@ export const BlockNode = memo(function BlockNode(p: P) {
             {tags.length > 0 && (p.height ?? 0) >= 92 && (
               <div className="mt-1.5 flex min-w-0 gap-1 overflow-hidden">
                 {tags.slice(0, 4).map((t) => (
-                  <span key={t} className={cn("shrink-0 rounded-full px-1.5 py-px text-[11px]", dark ? "bg-white/12" : "bg-subtle text-ink-2")}>
+                  <span key={t} className={cn("shrink-0 rounded-full px-1.5 py-px text-caption", dark ? "bg-white/12" : "bg-subtle text-ink-2")}>
                     #{t}
                   </span>
                 ))}
@@ -229,10 +229,10 @@ export const ContainerNode = memo(function ContainerNode(p: P) {
         className={cn(cls, "h-full w-full rounded-2xl border", tone ? "wp-area" : "border-line bg-surface-2/80")}
         style={toneVars(tone)}
       >
-        <div className={cn("wp-hit flex h-11 items-center gap-1.5 pl-4 pr-2 text-[11px] font-semibold uppercase tracking-[.08em]", tone ? "wp-area-label" : "text-ink-2")}>
+        <div className={cn("wp-hit flex h-11 items-center gap-1.5 pl-4 pr-2 text-caption font-semibold uppercase tracking-[.08em]", tone ? "wp-area-label" : "text-ink-2")}>
           <PlanIcon name={d.icon} fallback="boxes" size={14} />
           {editing ? (
-            <InlineTitle id={p.id} value={d.title} className="text-[11px] font-semibold uppercase tracking-[.08em]" />
+            <InlineTitle id={p.id} value={d.title} className="text-caption font-semibold uppercase tracking-[.08em]" />
           ) : (
             <span className="truncate">{d.title || "Container"}</span>
           )}
@@ -312,7 +312,7 @@ export const NoteNode = memo(function NoteNode(p: P) {
   return (
     <Chrome p={p} kind="note">
       <div
-        className={cn(cls, "flex h-full w-full items-start gap-2 overflow-hidden rounded-[4px_12px_12px_12px] border px-3.5 py-3 text-[13px] leading-[18px] shadow-[0_6px_16px_-10px_rgba(23,23,28,.35)]")}
+        className={cn(cls, "flex h-full w-full items-start gap-2 overflow-hidden rounded-[4px_12px_12px_12px] border px-3.5 py-3 text-body leading-[18px] shadow-[0_6px_16px_-10px_rgba(23,23,28,.35)]")}
         style={{ ...style, transform: "rotate(-1deg)" }}
       >
         {d.icon && <PlanIcon name={d.icon} size={16} className="mt-px shrink-0" />}
@@ -344,7 +344,7 @@ export const LinkNode = memo(function LinkNode(p: P) {
   const External = res?.external ? ExternalLink : ArrowUpRight;
   return (
     <Chrome p={p} kind="link">
-      <div className={cn(cls, "flex h-full w-full items-center gap-2.5 overflow-hidden rounded-xl border border-line-2 bg-surface px-3.5 py-2.5 text-ink shadow-[0_1px_2px_rgba(23,23,28,.05)]")}>
+      <div className={cn(cls, "flex h-full w-full items-center gap-2.5 overflow-hidden rounded-xl border border-line-2 bg-surface px-3.5 py-2.5 text-ink shadow-rest")}>
         <SiteIcon src={res?.favicon} label={title} size={30} />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-1.5">
@@ -372,7 +372,7 @@ export const ImageNode = memo(function ImageNode(p: P) {
   useEffect(() => setFailed(false), [d.image]);
   return (
     <Chrome p={p} kind="image">
-      <div className={cn(cls, "relative h-full w-full overflow-hidden rounded-xl border border-line-2 bg-surface shadow-[0_1px_2px_rgba(23,23,28,.05)]")}>
+      <div className={cn(cls, "relative h-full w-full overflow-hidden rounded-xl border border-line-2 bg-surface shadow-rest")}>
         {d.image && !failed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={d.image} alt={d.title || ""} draggable={false} referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-cover" />
@@ -410,7 +410,7 @@ export const TextNode = memo(function TextNode(p: P) {
             {d.title || <span className="opacity-40">Texto</span>}
           </span>
         )}
-        {d.description && <span className="line-clamp-3 text-[13px] leading-[18px] text-muted">{d.description}</span>}
+        {d.description && <span className="line-clamp-3 text-body leading-[18px] text-muted">{d.description}</span>}
       </div>
     </Chrome>
   );

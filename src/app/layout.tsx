@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "sonner";
+import { AskHost } from "@/components/ui/ask";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
@@ -19,14 +20,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f5f2" },
-    { media: "(prefers-color-scheme: dark)", color: "#0e0f12" },
-  ],
+  viewportFit: "cover",
 };
 
-// Applies the stored theme before paint to avoid a light/dark flash.
-const themeScript = `(function(){try{var t=localStorage.getItem('wp-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+// Applies the stored theme before paint to avoid a light/dark flash, including the browser
+// chrome color (kept in sync afterwards by lib/theme.ts).
+const themeScript = `(function(){try{var t=localStorage.getItem('wp-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);var m=document.createElement('meta');m.name='theme-color';m.content=d?'#0e0f12':'#f5f5f2';document.head.appendChild(m);}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -36,7 +35,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
-        <Toaster position="bottom-right" toastOptions={{ className: "!bg-surface !text-ink !border-line" }} />
+        <AskHost />
+        {/* Above the phone tab bar (64px + safe area); colors come from the theme tokens. */}
+        <Toaster
+          position="bottom-right"
+          mobileOffset={{ bottom: "calc(76px + env(safe-area-inset-bottom))" }}
+          toastOptions={{ className: "!bg-surface !text-ink !border-line !shadow-pop !rounded-card" }}
+        />
       </body>
     </html>
   );

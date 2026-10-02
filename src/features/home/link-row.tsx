@@ -19,7 +19,7 @@ export function LinkRow({ id, title, url, domain, favicon, openBehavior, when }:
       <span className="shrink-0 text-xs text-muted">{when}</span>
     </>
   );
-  const cls = "flex items-center gap-3 rounded-[10px] px-3 py-2.5 transition-colors hover:bg-surface";
+  const cls = "flex items-center gap-3 rounded-control px-3 py-2.5 transition-colors hover:bg-surface";
   if (openBehavior === "new_tab") {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer" onClick={record} className={cls}>

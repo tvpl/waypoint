@@ -50,7 +50,7 @@ export function Cover({ link }: { link: CoverLink }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={icon} alt="" width={30} height={30} referrerPolicy="no-referrer" loading="lazy" {...iconProps} className="size-[30px] object-contain" />
         ) : (
-          <span className="font-display text-[34px] leading-none">{letter}</span>
+          <span className="font-display text-display-sm leading-none">{letter}</span>
         )}
       </span>
     </div>

@@ -41,7 +41,7 @@ export function SearchBar() {
     <button
       type="button"
       onClick={() => openPalette()}
-      className="flex h-[58px] w-full items-center gap-3 rounded-[14px] border border-line-2 bg-surface px-[18px] text-left text-base text-muted shadow-[0_1px_2px_rgba(23,23,28,.04),0_12px_32px_-20px_rgba(23,23,28,.25)] transition-colors hover:border-accent-line"
+      className="flex h-[58px] w-full items-center gap-3 rounded-card border border-line-2 bg-surface px-[18px] text-left text-base text-muted shadow-[0_1px_2px_rgba(23,23,28,.04),0_12px_32px_-20px_rgba(23,23,28,.25)] transition-colors hover:border-accent-line"
     >
       <Search className="size-5" />
       <span className="flex-1 truncate">Buscar plans, blocos, links, coleções, tags…</span>

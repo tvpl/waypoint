@@ -322,7 +322,7 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
             role="dialog"
             aria-label={hoverNode.data.title}
             className={cn(
-              "absolute z-20 flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 shadow-pop animate-in",
+              "absolute z-20 flex flex-col gap-3 rounded-card border border-line bg-surface p-4 shadow-pop animate-in",
               hover.sheet ? "inset-x-3 bottom-3 max-h-[60%] overflow-y-auto pr-12" : "w-[300px]",
             )}
             style={hover.sheet ? undefined : { left: hover.left, top: hover.top }}
@@ -339,9 +339,9 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
         )}
 
         {detailsNode && (
-          <aside aria-label={`Detalhes: ${detailsNode.data.title}`} className="absolute bottom-4 right-4 top-4 z-20 flex w-[340px] max-w-[calc(100%-32px)] flex-col overflow-hidden rounded-[14px] border border-line bg-surface shadow-pop animate-in">
+          <aside aria-label={`Detalhes: ${detailsNode.data.title}`} className="absolute bottom-4 right-4 top-4 z-20 flex w-[340px] max-w-[calc(100%-32px)] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-pop animate-in">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-muted">Detalhes</span>
+              <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Detalhes</span>
               <Button variant="ghost" size="icon-sm" aria-label="Fechar detalhes" onClick={() => setDetails(null)} autoFocus>
                 <X />
               </Button>
@@ -353,7 +353,7 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
         )}
 
         {!stage && (
-          <div className="wp-no-print absolute bottom-6 right-6 z-10 flex items-center gap-0.5 rounded-[10px] border border-line bg-surface p-1">
+          <div className="wp-no-print absolute bottom-6 right-6 z-10 flex items-center gap-0.5 rounded-control border border-line bg-surface p-1">
             <ZoomControls compact />
           </div>
         )}
@@ -372,7 +372,7 @@ function NodeInfo({ node, res, clamp, onOpen, onDetails, inDetails }: { node: { 
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <span className={cn("font-semibold", inDetails ? "text-[17px]" : "text-[15px]")}>{d.title || res?.title || "Sem título"}</span>
+        <span className={cn("font-semibold", inDetails ? "text-title" : "text-lead")}>{d.title || res?.title || "Sem título"}</span>
         {st && (
           <Badge tone={st.tone}>
             <span className="size-1.5 rounded-full" style={{ background: st.dot }} aria-hidden />
@@ -380,7 +380,7 @@ function NodeInfo({ node, res, clamp, onOpen, onDetails, inDetails }: { node: { 
           </Badge>
         )}
       </div>
-      {d.description && <p className={cn("whitespace-pre-wrap text-[13px] leading-[19px] text-ink-2", clamp && "line-clamp-4")}>{d.description}</p>}
+      {d.description && <p className={cn("whitespace-pre-wrap text-body leading-[19px] text-ink-2", clamp && "line-clamp-4")}>{d.description}</p>}
       {!!d.tags?.length && (
         <div className="flex flex-wrap gap-1.5">
           {d.tags.map((t) => (
@@ -391,10 +391,10 @@ function NodeInfo({ node, res, clamp, onOpen, onDetails, inDetails }: { node: { 
       {res && (
         <div className="flex flex-col gap-2">
           {inDetails && (
-            <div className="flex items-center gap-2.5 rounded-[10px] border border-line p-2.5">
+            <div className="flex items-center gap-2.5 rounded-control border border-line p-2.5">
               <ResourceIcon resource={res} size={30} />
               <span className="flex min-w-0 flex-col">
-                <span className="truncate text-[13px] font-medium">{res.title}</span>
+                <span className="truncate text-body font-medium">{res.title}</span>
                 <span className="truncate text-xs text-muted">{res.subtitle}</span>
               </span>
             </div>
@@ -463,8 +463,8 @@ function PreviewModal({ res, title, onClose }: { res: ResolvedResource; title: s
           )}
           {state === "blocked" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-              <p className="text-[15px] font-semibold">Este site não permite ser exibido aqui</p>
-              <p className="max-w-sm text-[13px] text-muted">{reason ?? "O site bloqueia a exibição dentro de outras páginas."} Você pode abri-lo em uma nova aba.</p>
+              <p className="text-lead font-semibold">Este site não permite ser exibido aqui</p>
+              <p className="max-w-sm text-body text-muted">{reason ?? "O site bloqueia a exibição dentro de outras páginas."} Você pode abri-lo em uma nova aba.</p>
               <Button asChild variant="primary">
                 <a href={res.href ?? "#"} target="_blank" rel="noopener noreferrer">
                   Abrir em nova aba <ExternalLink />

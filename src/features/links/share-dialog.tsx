@@ -64,7 +64,7 @@ function ShareBody({ node, initialToken, onClose }: { node: TreeNode; initialTok
                 aria-label="Link de compartilhamento"
                 value={busy && !token ? "Gerando link…" : url}
                 onFocus={(e) => e.target.select()}
-                className="h-9 min-w-0 flex-1 rounded-[9px] border border-line-2 bg-surface-2 px-3 font-mono text-xs text-ink outline-none"
+                className="h-9 min-w-0 flex-1 rounded-control border border-line-2 bg-surface-2 px-3 font-mono text-xs text-ink outline-none"
               />
               <Button
                 variant="secondary"
@@ -112,7 +112,7 @@ function ShareBody({ node, initialToken, onClose }: { node: TreeNode; initialTok
             </button>
           </div>
         ) : (
-          <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">
+          <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-body text-ink-2">
             {visibility === "private" ? "Somente você vê esta coleção." : "Visível para os membros do workspace."} Escolha “Qualquer pessoa com o link” para gerar um link
             de leitura.
           </p>

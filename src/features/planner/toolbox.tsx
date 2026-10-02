@@ -28,7 +28,7 @@ export function Toolbox() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar elementos e recursos"
           aria-label="Buscar elementos e recursos"
-          className="w-full bg-transparent text-[13px] text-ink outline-none"
+          className="w-full bg-transparent text-body text-ink outline-none"
         />
       </label>
 
@@ -49,7 +49,7 @@ export function Toolbox() {
                     onClick={() => ed.setTool(on ? "select" : "connect")}
                     title="Conectar elementos (C)"
                     className={cn(
-                      "flex h-[68px] flex-col items-center justify-center gap-1.5 rounded-[10px] border text-xs transition-colors",
+                      "flex h-[68px] flex-col items-center justify-center gap-1.5 rounded-control border text-xs transition-colors",
                       on ? "border-accent-line bg-accent-soft text-accent-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
                     )}
                   >
@@ -67,7 +67,7 @@ export function Toolbox() {
                   onDragStart={(e) => setDragPayload(e, { type: "kind", kind: t })}
                   onClick={() => ed.addNode(t)}
                   title={`Arraste para o canvas ou clique para adicionar ${KIND_LABEL[t].toLowerCase()}`}
-                  className="flex h-[68px] cursor-grab flex-col items-center justify-center gap-1.5 rounded-[10px] border border-line bg-surface text-xs text-ink-2 transition-colors hover:bg-surface-2 active:cursor-grabbing"
+                  className="flex h-[68px] cursor-grab flex-col items-center justify-center gap-1.5 rounded-control border border-line bg-surface text-xs text-ink-2 transition-colors hover:bg-surface-2 active:cursor-grabbing"
                 >
                   <Icon className="size-5" strokeWidth={1.75} aria-hidden />
                   <span>{KIND_LABEL[t]}</span>
@@ -102,7 +102,7 @@ function ResourceSkeleton() {
     <div className="flex flex-col gap-1 px-2" aria-hidden>
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-center gap-2.5 py-1.5">
-          <span className="size-[26px] animate-pulse rounded-[7px] bg-subtle" />
+          <span className="size-[26px] animate-pulse rounded-chip bg-subtle" />
           <span className="h-3 flex-1 animate-pulse rounded bg-subtle" />
         </div>
       ))}
@@ -150,7 +150,7 @@ function Layers() {
                   onClick={(e) => (e.shiftKey ? ed.select([...ed.selectedNodes.map((n) => n.id), node.id]) : ed.select([node.id]))}
                   onDoubleClick={() => ed.focusNode(node.id)}
                   className={cn(
-                    "flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+                    "flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left text-body outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
                     sel ? "bg-accent-soft text-accent-ink" : "text-ink-2 hover:bg-surface-2",
                     node.hidden && "opacity-55",
                   )}

@@ -38,7 +38,7 @@ export function TagInput({
       <div className="relative">
         <div
           className={cn(
-            "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-[9px] border border-line-2 bg-surface px-2 py-1 transition-[border,box-shadow]",
+            "flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-control border border-line-2 bg-surface px-2 py-1 transition-[border,box-shadow]",
             focus && "border-accent ring-3 ring-accent/15",
           )}
           onClick={() => inputRef.current?.focus()}
@@ -103,7 +103,7 @@ export function TagInput({
                 setDraft("");
               }
             }}
-            className="h-7 min-w-24 flex-1 bg-transparent text-[13px] text-ink outline-none"
+            className="h-7 min-w-24 flex-1 bg-transparent text-body text-ink outline-none"
           />
         </div>
         {focus && matches.length > 0 && (
@@ -116,7 +116,7 @@ export function TagInput({
                     e.preventDefault();
                     add(m.name);
                   }}
-                  className={cn("flex h-8 w-full items-center justify-between rounded-md px-2.5 text-[13px]", i === hi ? "bg-accent-soft text-accent-ink" : "hover:bg-hover")}
+                  className={cn("flex h-8 w-full items-center justify-between rounded-md px-2.5 text-body", i === hi ? "bg-accent-soft text-accent-ink" : "hover:bg-hover")}
                 >
                   <span>#{m.name}</span>
                   <span className="text-xs text-muted">{m.count}</span>

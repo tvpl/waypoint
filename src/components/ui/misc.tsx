@@ -5,7 +5,7 @@ import { monogramColors } from "@/lib/color";
 
 export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <kbd className={cn("rounded-[5px] border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] font-normal text-muted", className)}>
+    <kbd className={cn("rounded-[5px] border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-caption font-normal text-muted", className)}>
       {children}
     </kbd>
   );
@@ -43,7 +43,7 @@ export function Badge({ tone = "neutral", children, className }: { tone?: "neutr
     amber: "bg-amber-bg text-amber-ink",
     accent: "bg-accent-soft text-accent-ink",
   };
-  return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", tones[tone], className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption font-medium", tones[tone], className)}>{children}</span>;
 }
 
 /** Favicon with a monogram fallback (also used when no favicon is known). */
@@ -101,7 +101,7 @@ export function Segmented<T extends string>({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors [&_svg]:size-3.5",
               size === "sm" ? "h-6 px-2 text-xs" : "h-7 px-2.5 text-xs",
-              on ? "bg-surface text-ink shadow-[0_1px_2px_rgba(23,23,28,.12)]" : "text-muted hover:text-ink",
+              on ? "bg-surface text-ink shadow-thumb" : "text-muted hover:text-ink",
             )}
           >
             {o.icon}
@@ -118,10 +118,25 @@ export function EmptyState({ icon, title, description, action, className }: { ic
     <div className={cn("flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-line-2 px-6 py-14 text-center", className)}>
       {icon && <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft text-accent-ink [&_svg]:size-5">{icon}</span>}
       <div className="flex max-w-sm flex-col gap-1">
-        <p className="text-[15px] font-semibold">{title}</p>
-        {description && <p className="text-[13px] leading-5 text-muted">{description}</p>}
+        <p className="text-lead font-semibold">{title}</p>
+        {description && <p className="text-body leading-5 text-muted">{description}</p>}
       </div>
       {action}
+    </div>
+  );
+}
+
+/** Loading placeholder block (shape it with width/height/rounded classes). */
+export function Skeleton({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return <span aria-hidden className={cn("wp-skeleton block", className)} style={style} />;
+}
+
+/** Wrapper announcing a loading region to assistive tech. */
+export function LoadingRegion({ label = "Carregando", className, children }: { label?: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div role="status" aria-live="polite" aria-busy="true" className={className}>
+      <span className="sr-only">{label}…</span>
+      {children}
     </div>
   );
 }

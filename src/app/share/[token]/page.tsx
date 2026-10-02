@@ -34,7 +34,7 @@ export default async function SharePage({ params, searchParams }: { params: Prom
         <span className="text-sm text-muted">Coleção compartilhada</span>
         <span className="flex-1" />
         {!user && (
-          <Link href="/signup" className="text-[13px] font-medium text-accent-ink hover:underline">
+          <Link href="/signup" className="text-body font-medium text-accent-ink hover:underline">
             Criar sua biblioteca
           </Link>
         )}

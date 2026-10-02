@@ -80,7 +80,7 @@ export function BulkBar({
       aria-label="Ações em lote"
       className="fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 items-center gap-1 rounded-2xl border border-line bg-surface p-1.5 pl-4 text-ink shadow-pop animate-in max-sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-sm:gap-0 max-sm:pl-3"
     >
-      <span className="mr-2 whitespace-nowrap text-[13px] font-medium" aria-live="polite">
+      <span className="mr-2 whitespace-nowrap text-body font-medium" aria-live="polite">
         {count}
         <span className="max-sm:sr-only"> {count === 1 ? "selecionado" : "selecionados"}</span>
       </span>
@@ -115,14 +115,14 @@ export function BulkBar({
               onChange={(e) => setTag(e.target.value)}
               placeholder="Nome da tag…"
               aria-label="Nome da tag"
-              className="h-8 w-full rounded-md border border-line-2 bg-surface px-2.5 text-[13px] outline-none focus:border-accent"
+              className="h-8 w-full rounded-md border border-line-2 bg-surface px-2.5 text-body outline-none focus:border-accent"
             />
           </form>
           {sugg.length > 0 && (
             <ul className="mt-1.5 flex flex-col">
               {sugg.map((t) => (
                 <li key={t.name}>
-                  <button type="button" onClick={() => submitTag(t.name)} className="flex h-7 w-full items-center justify-between rounded-md px-2 text-[13px] hover:bg-hover">
+                  <button type="button" onClick={() => submitTag(t.name)} className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body hover:bg-hover">
                     #{t.name}
                     <span className="text-xs text-muted">{t.count}</span>
                   </button>

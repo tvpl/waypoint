@@ -28,7 +28,7 @@ export function BottomPill() {
     <div
       role="toolbar"
       aria-label="Ferramentas do canvas"
-      className="wp-no-print absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-[0_8px_24px_-12px_rgba(23,23,28,.25)]"
+      className="wp-no-print absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-float"
     >
       {tools.map((t) => (
         <Tooltip key={t.id} content={t.label} side="top">
@@ -74,7 +74,7 @@ export function ArrangeMenu() {
       <DropdownMenuContent side="top" align="center" sideOffset={10} className="min-w-[248px]" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DropdownMenuLabel>{n > 0 ? `Organizar seleção (${n})` : "Organizar o plan"}</DropdownMenuLabel>
         <ArrangeItems Item={DropdownMenuItem} onPick={(d) => ed.autoArrange(d)} />
-        <p className="px-2.5 pb-1.5 pt-1 text-[11px] leading-4 text-muted">
+        <p className="px-2.5 pb-1.5 pt-1 text-caption leading-4 text-muted">
           {n > 0 ? "Só os elementos selecionados (e o interior de containers selecionados) são reorganizados." : "Segue as conexões; notas e itens soltos vão para o fim. Dá para desfazer."}
         </p>
       </DropdownMenuContent>
@@ -98,7 +98,7 @@ export function ArrangeItems({ Item, onPick }: { Item: ItemComp; onPick: (d: "TB
 }
 
 const barCls =
-  "wp-no-print absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 text-[13px] shadow-[0_8px_24px_-12px_rgba(23,23,28,.25)] animate-in";
+  "wp-no-print absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 text-body shadow-float animate-in";
 const barBtn = "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-1.5 text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4";
 
 /** Contextual floating toolbar: connect mode, multi-selection layout, or edge kind. */

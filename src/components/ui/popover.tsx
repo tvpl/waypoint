@@ -13,7 +13,7 @@ export function PopoverContent({ className, sideOffset = 8, ...props }: React.Co
     <P.Portal>
       <P.Content
         sideOffset={sideOffset}
-        className={cn("z-50 w-72 rounded-[14px] border border-line bg-surface p-4 text-ink shadow-pop outline-none data-[state=open]:animate-in", className)}
+        className={cn("z-50 w-72 rounded-card border border-line bg-surface p-4 text-ink shadow-pop outline-none wp-float", className)}
         {...props}
       />
     </P.Portal>
@@ -27,7 +27,7 @@ export function Tooltip({ content, children, side = "bottom" }: { content: React
     <T.Root delayDuration={350}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
-        <T.Content side={side} sideOffset={6} className="z-[60] rounded-md bg-ink px-2 py-1 text-xs font-medium text-bg shadow-pop data-[state=delayed-open]:animate-in">
+        <T.Content side={side} sideOffset={6} className="z-[60] rounded-md bg-ink px-2 py-1 text-xs font-medium text-bg shadow-pop wp-float">
           {content}
         </T.Content>
       </T.Portal>

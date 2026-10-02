@@ -59,14 +59,14 @@ export function Avatars({ people }: { people: { name: string; email: string }[] 
       {shown.map((p, i) => (
         <Tooltip key={p.email} content={`${p.name} · ${p.email}`}>
           <span
-            className={cn("inline-flex size-7 items-center justify-center rounded-full border-2 border-surface text-[11px] font-semibold", i > 0 && "-ml-2")}
+            className={cn("inline-flex size-7 items-center justify-center rounded-full border-2 border-surface text-caption font-semibold", i > 0 && "-ml-2")}
             style={{ background: AVATAR_TINTS[i % 4][0], color: AVATAR_TINTS[i % 4][1] }}
           >
             {initials(p.name)}
           </span>
         </Tooltip>
       ))}
-      {people.length > 3 && <span className="-ml-2 inline-flex size-7 items-center justify-center rounded-full border-2 border-surface bg-subtle text-[11px] font-medium text-ink-2">+{people.length - 3}</span>}
+      {people.length > 3 && <span className="-ml-2 inline-flex size-7 items-center justify-center rounded-full border-2 border-surface bg-subtle text-caption font-medium text-ink-2">+{people.length - 3}</span>}
     </div>
   );
 }
@@ -139,8 +139,8 @@ export function EditorTopbar(props: {
       aria-checked={props.mode === m}
       onClick={() => props.onMode(m)}
       className={cn(
-        "inline-flex h-[30px] items-center gap-1.5 rounded-[7px] px-3 text-[13px] font-medium transition-colors",
-        props.mode === m ? "bg-surface text-ink shadow-[0_1px_2px_rgba(23,23,28,.12)]" : "text-muted hover:text-ink",
+        "inline-flex h-[30px] items-center gap-1.5 rounded-chip px-3 text-body font-medium transition-colors",
+        props.mode === m ? "bg-surface text-ink shadow-thumb" : "text-muted hover:text-ink",
       )}
     >
       <Icon className="size-3.5" />
@@ -182,7 +182,7 @@ export function EditorTopbar(props: {
         </span>
         <SaveIndicator status={props.status} error={props.saveError} />
       </div>
-      <div role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-[9px] bg-subtle p-[3px] max-sm:hidden">
+      <div role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-control bg-subtle p-[3px] max-sm:hidden">
         {seg("edit", "Editar", Pencil)}
         {seg("preview", "Visualizar", Eye)}
       </div>

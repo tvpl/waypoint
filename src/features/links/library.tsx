@@ -496,7 +496,7 @@ export function LinksLibrary(props: LibraryProps) {
           />
           <D.Root open={drawer} onOpenChange={setDrawer}>
             <D.Portal>
-              <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-[wp-in_120ms_ease-out] md:hidden" />
+              <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out md:hidden" />
               <D.Content
                 aria-describedby={undefined}
                 onOpenAutoFocus={(e) => {
@@ -504,7 +504,7 @@ export function LinksLibrary(props: LibraryProps) {
                   e.preventDefault();
                   (e.currentTarget as HTMLElement).focus();
                 }}
-                className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col bg-surface-2 shadow-pop outline-none data-[state=open]:animate-[wp-drawer_180ms_cubic-bezier(.2,.8,.2,1)] md:hidden"
+                className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col bg-surface-2 shadow-pop outline-none data-[state=open]:animate-drawer-in data-[state=closed]:animate-drawer-out md:hidden"
                 onClickCapture={(e) => {
                   // any link inside (scope, collection, tag) navigates: close right away
                   if ((e.target as HTMLElement).closest("a[href]")) setDrawer(false);
@@ -611,7 +611,7 @@ export function LinksLibrary(props: LibraryProps) {
                     <Link
                       key={c.id}
                       href={`/links?c=${c.id}`}
-                      className="inline-flex h-8 items-center gap-2 rounded-[9px] border border-line bg-surface px-3 text-[13px] hover:bg-surface-2"
+                      className="inline-flex h-8 items-center gap-2 rounded-control border border-line bg-surface px-3 text-body hover:bg-surface-2"
                     >
                       <CollectionGlyph icon={c.icon} color={c.color} />
                       <span>{c.name}</span>
@@ -622,7 +622,7 @@ export function LinksLibrary(props: LibraryProps) {
                     <button
                       type="button"
                       onClick={() => handlers.newCollection(current)}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-dashed border-line-2 px-3 text-[13px] text-muted hover:border-ink-2 hover:text-ink"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-control border border-dashed border-line-2 px-3 text-body text-muted hover:border-ink-2 hover:text-ink"
                     >
                       <FolderPlus className="size-[15px]" aria-hidden />
                       Subcoleção
@@ -716,19 +716,19 @@ function SharedGrid({ nodes }: { nodes: TreeNode[] }) {
         <Link
           key={n.id}
           href={`/links?c=${n.id}`}
-          className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-[0_10px_30px_-12px_rgba(23,23,28,.22)]"
+          className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise"
         >
           <div className="flex items-center gap-3">
             <CollectionTile icon={n.icon} color={n.color} size={32} />
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[15px] font-semibold">{n.name}</span>
+              <span className="truncate text-lead font-semibold">{n.name}</span>
               <span className="text-xs text-muted">
                 {n.totalCount} {n.totalCount === 1 ? "link" : "links"}
               </span>
             </div>
           </div>
-          {n.description && <p className="line-clamp-2 text-[13px] leading-[19px] text-ink-2">{n.description}</p>}
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
+          {n.description && <p className="line-clamp-2 text-body leading-[19px] text-ink-2">{n.description}</p>}
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-accent-soft px-2 py-0.5 text-caption font-medium text-accent-ink">
             <Link2 className="size-3" aria-hidden />
             {VISIBILITY_LABEL[n.visibility]}
           </span>

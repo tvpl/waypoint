@@ -1,6 +1,21 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
 import { customAlphabet } from "nanoid";
+
+/**
+ * tailwind-merge only knows Tailwind's default scale: teach it the design tokens from
+ * globals.css, or e.g. `text-caption` would be taken for a color and dropped next to
+ * `text-muted`.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["micro", "caption", "body", "lead", "title", "display-sm", "display", "display-lg"],
+      radius: ["chip", "control", "card", "panel"],
+      shadow: ["rest", "thumb", "raise", "float", "pop"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

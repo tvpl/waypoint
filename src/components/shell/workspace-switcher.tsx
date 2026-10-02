@@ -4,6 +4,7 @@ import { Check, ChevronDown, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { SiteIcon } from "@/components/ui/misc";
 import { createWorkspaceAction, switchWorkspaceAction } from "./actions";
+import { ask } from "@/components/ui/ask";
 
 export function WorkspaceSwitcher({ current, workspaces }: { current: { id: string; name: string }; workspaces: { id: string; name: string; role: string }[] }) {
   const [pending, start] = useTransition();
@@ -13,7 +14,7 @@ export function WorkspaceSwitcher({ current, workspaces }: { current: { id: stri
         <button
           type="button"
           disabled={pending}
-          className="inline-flex h-[30px] items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink-2 hover:bg-surface-2"
+          className="inline-flex h-[30px] items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-body text-ink-2 hover:bg-surface-2"
         >
           <SiteIcon label={current.name} size={18} />
           <span>{current.name}</span>
@@ -31,8 +32,8 @@ export function WorkspaceSwitcher({ current, workspaces }: { current: { id: stri
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={() => {
-            const name = window.prompt("Nome do novo workspace");
+          onSelect={async () => {
+            const name = await ask.prompt({ title: "Novo workspace", label: "Nome", placeholder: "Ex.: Time de produto", confirmLabel: "Criar" });
             if (name) start(() => createWorkspaceAction(name));
           }}
         >

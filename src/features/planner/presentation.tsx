@@ -203,8 +203,8 @@ export function PresentationMode({
             <ChevronLeft />
           </BarButton>
           <div className="flex min-w-0 max-w-[min(52vw,420px)] flex-col items-center px-2 leading-tight">
-            <span className="w-full truncate text-center text-[13px] font-semibold">{step.title}</span>
-            <span className="font-mono text-[11px] text-muted">
+            <span className="w-full truncate text-center text-body font-semibold">{step.title}</span>
+            <span className="font-mono text-caption text-muted">
               {index + 1} / {steps.length}
             </span>
           </div>

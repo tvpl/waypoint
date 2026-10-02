@@ -1039,7 +1039,7 @@ function EditorShell(props: PlanEditorProps) {
                       <div className="flex max-w-sm flex-col items-center gap-2 rounded-2xl border border-dashed border-line-2 bg-surface/85 px-6 py-5 text-center backdrop-blur-sm">
                         <MousePointerClick className="size-5 text-accent-ink" aria-hidden />
                         <p className="text-sm font-semibold">Comece seu plan</p>
-                        <p className="text-[13px] leading-5 text-muted">Arraste elementos ou recursos da barra lateral, ou clique com o botão direito no canvas para adicionar aqui.</p>
+                        <p className="text-body leading-5 text-muted">Arraste elementos ou recursos da barra lateral, ou clique com o botão direito no canvas para adicionar aqui.</p>
                       </div>
                     </div>
                   )}
@@ -1071,10 +1071,10 @@ function EditorShell(props: PlanEditorProps) {
               <MonitorSmartphone className="size-6" aria-hidden />
             </span>
             <div className="flex max-w-sm flex-col gap-2">
-              <h1 id="wp-phone-title" className="font-display text-[34px] font-normal leading-[1.05]">
+              <h1 id="wp-phone-title" className="font-display text-display-sm font-normal leading-[1.05]">
                 Edição funciona melhor em telas maiores
               </h1>
-              <p className="text-[15px] leading-[22px] text-muted">O editor precisa de espaço para as ferramentas e o painel de propriedades. No celular, você pode ver, apresentar e comentar o plan.</p>
+              <p className="text-lead leading-[22px] text-muted">O editor precisa de espaço para as ferramentas e o painel de propriedades. No celular, você pode ver, apresentar e comentar o plan.</p>
             </div>
             <div className="flex w-full max-w-xs flex-col gap-2">
               <Button asChild variant="primary" size="lg" className="justify-center">
@@ -1137,7 +1137,7 @@ function Banner({ tone, icon, children }: { tone: "danger" | "amber"; icon: Reac
     <div
       role="alert"
       className={cn(
-        "flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 text-[13px]",
+        "flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 text-body",
         tone === "danger" ? "border-line bg-danger-soft text-danger" : "border-amber-line bg-amber-bg text-amber-ink",
       )}
     >

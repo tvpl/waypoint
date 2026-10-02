@@ -82,7 +82,7 @@ function isDescendant(nodes: TreeNode[], ancestorId: string, id: string): boolea
   return walk(anc.children);
 }
 
-const rowBase = "group relative flex h-[30px] items-center gap-1.5 rounded-[7px] pr-1.5 text-[13px] transition-colors";
+const rowBase = "group relative flex h-[30px] items-center gap-1.5 rounded-chip pr-1.5 text-body transition-colors";
 
 export function CollectionsPanel({
   tree,
@@ -159,7 +159,7 @@ export function CollectionsPanel({
   return (
     <aside aria-label="Coleções" className={cn("flex w-[272px] shrink-0 flex-col border-r border-line bg-surface-2", className)}>
       <div className="flex items-center justify-between px-[18px] pb-3 pt-[18px]">
-        <h2 className="text-[15px] font-semibold">Links</h2>
+        <h2 className="text-lead font-semibold">Links</h2>
         {canEdit && (
           <Tooltip content="Nova coleção">
             <Button size="icon-sm" variant="ghost" aria-label="Nova coleção" onClick={() => handlers.newCollection(null)}>
@@ -200,7 +200,7 @@ export function CollectionsPanel({
                     : undefined
                 }
                 className={cn(
-                  "flex h-[30px] items-center gap-2.5 rounded-[7px] px-2 text-[13px] [&_svg]:size-4",
+                  "flex h-[30px] items-center gap-2.5 rounded-chip px-2 text-body [&_svg]:size-4",
                   on ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-2 hover:bg-hover hover:text-ink",
                   q.scope === "unsorted" && unsortedOver && "bg-accent-soft ring-2 ring-accent",
                 )}
@@ -220,7 +220,7 @@ export function CollectionsPanel({
             <button
               type="button"
               onClick={() => handlers.checkHealth(null)}
-              className="mt-1 flex h-[30px] items-center gap-2.5 rounded-[7px] px-2 text-left text-[13px] text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
+              className="mt-1 flex h-[30px] items-center gap-2.5 rounded-chip px-2 text-left text-body text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
             >
               <ShieldCheck aria-hidden />
               <span className="flex-1">Verificar links</span>
@@ -247,7 +247,7 @@ export function CollectionsPanel({
             }}
           >
             <SectionLabel>Coleções</SectionLabel>
-            {rootOver && <span className="text-[11px] text-accent-ink">Mover para o topo</span>}
+            {rootOver && <span className="text-caption text-accent-ink">Mover para o topo</span>}
           </div>
           {tree.length === 0 ? (
             <div className="flex flex-col items-start gap-2 px-2 py-1">
@@ -314,7 +314,7 @@ export function CollectionsPanel({
       </div>
       {canEdit && (
         <div className="border-t border-line px-3.5 py-2.5">
-          <Link href="/links/import" className="flex h-[34px] items-center gap-2.5 rounded-lg px-2 text-[13px] text-ink-2 hover:bg-hover hover:text-ink">
+          <Link href="/links/import" className="flex h-[34px] items-center gap-2.5 rounded-lg px-2 text-body text-ink-2 hover:bg-hover hover:text-ink">
             <Upload className="size-4" aria-hidden />
             Importar favoritos do navegador
           </Link>
@@ -489,7 +489,7 @@ function TreeRow(props: RowProps) {
                 href={`/links?c=${node.id}`}
                 draggable={false}
                 aria-current={on ? "page" : undefined}
-                className="min-w-0 flex-1 truncate outline-none after:absolute after:inset-0 after:rounded-[7px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+                className="min-w-0 flex-1 truncate outline-none after:absolute after:inset-0 after:rounded-chip after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
                 onDoubleClick={(e) => {
                   if (!canEdit) return;
                   e.preventDefault();
@@ -550,7 +550,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (name: stri
         if (e.key === "Enter") finish(v.trim());
         if (e.key === "Escape") finish(null);
       }}
-      className="relative z-10 h-6 min-w-0 flex-1 rounded-md border border-accent bg-surface px-1.5 text-[13px] font-normal text-ink outline-none"
+      className="relative z-10 h-6 min-w-0 flex-1 rounded-md border border-accent bg-surface px-1.5 text-body font-normal text-ink outline-none"
       maxLength={120}
     />
   );

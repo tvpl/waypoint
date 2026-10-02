@@ -18,12 +18,12 @@ export const metadata = { title: "Início" };
 function SectionHeader({ title, href, linkLabel, icon }: { title: string; href?: string; linkLabel?: string; icon?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <h2 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 [&_svg]:size-3.5 [&_svg]:text-muted">
+      <h2 className="flex items-center gap-1.5 text-body font-semibold text-ink-2 [&_svg]:size-3.5 [&_svg]:text-muted">
         {icon}
         {title}
       </h2>
       {href && (
-        <Link href={href} className="text-[13px] text-accent-ink hover:underline">
+        <Link href={href} className="text-body text-accent-ink hover:underline">
           {linkLabel}
         </Link>
       )}
@@ -68,10 +68,10 @@ export default async function HomePage() {
               { href: "/links?add=1", icon: <Folder />, title: "Salve um link", text: "Cole uma URL — título, imagem e ícone vêm sozinhos." },
               { href: "/links/import", icon: <Upload />, title: "Importe seus favoritos", text: "Traga as pastas do Chrome, Edge, Firefox ou Safari." },
             ].map((c) => (
-              <Link key={c.href} href={c.href} className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-5 transition-shadow hover:shadow-pop">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] bg-accent-soft text-accent-ink [&_svg]:size-[18px]">{c.icon}</span>
-                <span className="text-[15px] font-semibold">{c.title}</span>
-                <span className="text-[13px] leading-5 text-muted">{c.text}</span>
+              <Link key={c.href} href={c.href} className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 transition-shadow hover:shadow-pop">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-control bg-accent-soft text-accent-ink [&_svg]:size-[18px]">{c.icon}</span>
+                <span className="text-lead font-semibold">{c.title}</span>
+                <span className="text-body leading-5 text-muted">{c.text}</span>
               </Link>
             ))}
           </section>
@@ -85,15 +85,15 @@ export default async function HomePage() {
                 <Link
                   key={p.id}
                   href={p.published ? `/plans/${p.id}` : `/plans/${p.id}/edit`}
-                  className="flex flex-col overflow-hidden rounded-[14px] border border-line bg-surface transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-pop"
+                  className="flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-pop"
                 >
                   <PlanThumb nodes={p.thumbnail} />
                   <div className="flex flex-col gap-1.5 px-4 py-3.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[15px] font-semibold">{p.title}</span>
+                      <span className="truncate text-lead font-semibold">{p.title}</span>
                       {p.published ? <Badge tone="success">Publicado</Badge> : <Badge tone="amber">Rascunho</Badge>}
                     </div>
-                    <span className="text-[13px] text-muted">editado {timeAgo(p.updatedAt)}</span>
+                    <span className="text-body text-muted">editado {timeAgo(p.updatedAt)}</span>
                   </div>
                 </Link>
               ))}
@@ -112,33 +112,33 @@ export default async function HomePage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-[13px] text-muted">Os links que você abrir aparecem aqui.</p>
+                <p className="text-body text-muted">Os links que você abrir aparecem aqui.</p>
               )}
             </section>
             <section className="flex flex-col gap-3.5">
               <SectionHeader title={pinnedCols.length || pinnedPl.length ? "Fixados" : "Coleções"} icon={<Pin />} href="/links" linkLabel="Organizar" />
               <div className="grid grid-cols-2 gap-3">
                 {pinnedPl.map((p) => (
-                  <Link key={p.id} href={`/plans/${p.id}`} className="flex flex-col gap-3.5 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-pop">
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] bg-accent-soft text-accent-ink">
+                  <Link key={p.id} href={`/plans/${p.id}`} className="flex flex-col gap-3.5 rounded-card border border-line bg-surface p-4 transition-shadow hover:shadow-pop">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-control bg-accent-soft text-accent-ink">
                       <Workflow className="size-[18px]" />
                     </span>
                     <span className="flex flex-col gap-0.5">
-                      <span className="truncate text-[15px] font-semibold">{p.title}</span>
-                      <span className="text-[13px] text-muted">Plan</span>
+                      <span className="truncate text-lead font-semibold">{p.title}</span>
+                      <span className="text-body text-muted">Plan</span>
                     </span>
                   </Link>
                 ))}
                 {shownCols.map((c) => {
                   const tone = c.color ? { bg: c.color, fg: "#17171C" } : monogramColors(c.name);
                   return (
-                    <Link key={c.id} href={`/links?c=${c.id}`} className="flex flex-col gap-3.5 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-pop">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-[10px]" style={{ background: tone.bg, color: tone.fg }}>
+                    <Link key={c.id} href={`/links?c=${c.id}`} className="flex flex-col gap-3.5 rounded-card border border-line bg-surface p-4 transition-shadow hover:shadow-pop">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-control" style={{ background: tone.bg, color: tone.fg }}>
                         <Folder className="size-[18px]" />
                       </span>
                       <span className="flex flex-col gap-0.5">
-                        <span className="truncate text-[15px] font-semibold">{c.name}</span>
-                        <span className="text-[13px] text-muted">{counts.get(c.id) ?? 0} links</span>
+                        <span className="truncate text-lead font-semibold">{c.name}</span>
+                        <span className="text-body text-muted">{counts.get(c.id) ?? 0} links</span>
                       </span>
                     </Link>
                   );

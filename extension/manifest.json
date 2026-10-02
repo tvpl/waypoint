@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Salvar no Waypoint",
   "short_name": "Waypoint",
-  "version": "1.0.0",
-  "description": "Salve a página atual ou qualquer link na sua Link Library do Waypoint, com coleção, tags e nota.",
+  "version": "1.1.0",
+  "description": "Salve a página atual na sua Link Library do Waypoint e tenha seu acesso rápido em cada nova aba.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -60,5 +60,8 @@
       "id": "salvar@waypoint.app",
       "strict_min_version": "128.0"
     }
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
   }
 }

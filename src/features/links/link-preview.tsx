@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Dialog as D } from "radix-ui";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Check, Copy, ExternalLink, Lock, Maximize2, PanelRight, Pencil, RefreshCw, Shield, Star, Timer, Waypoints, Workflow, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Lock, Maximize2, PanelRight, Pencil, RefreshCw, Shield, Star, Timer, Waypoints, Workflow, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/input";
 import { SiteIcon, TagChip } from "@/components/ui/misc";
@@ -16,11 +16,15 @@ import { recordOpen } from "./link-opener";
 import { checkedAgo, checkLinksNow, healthText, HealthMark, toHealthPatch } from "./health";
 import { applyRedirectAction } from "@/app/(app)/links/actions";
 import type { LinkDetail, LinkItem } from "./types";
+import { isTypingTarget } from "@/lib/dom";
 
 type Embed = { state: "checking" } | { state: "ok" } | { state: "blocked"; reason?: string };
 const LOAD_TIMEOUT_MS = 12_000;
 
 const dateFmt = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric" });
+
+/** Previous / next link of the list behind the preview (← → or the header arrows). */
+export type PreviewNav = { prev: string | null; next: string | null; index: number; total: number; go: (id: string) => void };
 
 export function LinkPreview({
   linkId,
@@ -28,15 +32,20 @@ export function LinkPreview({
   onClose,
   onEdit,
   onToggleStar,
+  nav,
 }: {
   linkId: string | null;
   initial?: LinkItem;
   onClose: () => void;
   onEdit: (link: LinkItem) => void;
   onToggleStar: (link: LinkItem) => Promise<boolean | null>;
+  nav?: PreviewNav;
 }) {
   const [mode, setMode] = React.useState<"modal" | "side">("modal");
   React.useEffect(() => setMode(getPref(PREF_PREVIEW_MODE, ["modal", "side"] as const, "modal")), []);
+  // Keep the last link on screen while the panel animates out after linkId turns null.
+  const [shown, setShown] = React.useState<{ id: string; initial?: LinkItem } | null>(linkId ? { id: linkId, initial } : null);
+  if (linkId && linkId !== shown?.id) setShown({ id: linkId, initial });
   const toggleMode = () =>
     setMode((m) => {
       const next = m === "modal" ? "side" : "modal";
@@ -47,7 +56,7 @@ export function LinkPreview({
   return (
     <D.Root open={!!linkId} onOpenChange={(o) => !o && onClose()}>
       <D.Portal>
-        <D.Overlay className={cn("fixed inset-0 z-50 data-[state=open]:animate-[wp-in_120ms_ease-out]", mode === "modal" ? "bg-scrim" : "bg-scrim/30")} />
+        <D.Overlay className={cn("fixed inset-0 z-50 data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out", mode === "modal" ? "bg-scrim" : "bg-scrim/30")} />
         <D.Content
           aria-describedby={undefined}
           onOpenAutoFocus={(e) => {
@@ -55,13 +64,25 @@ export function LinkPreview({
             (e.currentTarget as HTMLElement).focus();
           }}
           className={cn(
-            "fixed z-50 flex flex-col overflow-hidden bg-surface text-ink shadow-pop outline-none data-[state=open]:animate-in",
+            "fixed z-50 flex flex-col overflow-hidden bg-surface text-ink shadow-pop outline-none",
             mode === "modal"
-              ? "left-1/2 top-[3vh] h-[94vh] w-[calc(100vw-32px)] max-w-[1160px] -translate-x-1/2 rounded-[18px] max-md:inset-0 max-md:h-full max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:rounded-none"
-              : "bottom-0 right-0 top-0 w-[min(720px,100vw)] border-l border-line",
+              ? "left-1/2 top-[3vh] h-[94vh] w-[calc(100vw-32px)] max-w-[1160px] -translate-x-1/2 rounded-panel max-md:inset-0 max-md:h-full max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:rounded-none data-[state=open]:animate-in data-[state=closed]:animate-out"
+              : "bottom-0 right-0 top-0 w-[min(720px,100vw)] border-l border-line data-[state=open]:animate-panel-in data-[state=closed]:animate-panel-out",
           )}
         >
-          {linkId && <PreviewBody key={linkId} linkId={linkId} initial={initial} mode={mode} onToggleMode={toggleMode} onClose={onClose} onEdit={onEdit} onToggleStar={onToggleStar} />}
+          {shown && (
+            <PreviewBody
+              key={shown.id}
+              linkId={shown.id}
+              initial={shown.initial}
+              mode={mode}
+              onToggleMode={toggleMode}
+              onClose={onClose}
+              onEdit={onEdit}
+              onToggleStar={onToggleStar}
+              nav={linkId ? nav : undefined}
+            />
+          )}
         </D.Content>
       </D.Portal>
     </D.Root>
@@ -76,6 +97,7 @@ function PreviewBody({
   onClose,
   onEdit,
   onToggleStar,
+  nav,
 }: {
   linkId: string;
   initial?: LinkItem;
@@ -84,6 +106,7 @@ function PreviewBody({
   onClose: () => void;
   onEdit: (link: LinkItem) => void;
   onToggleStar: (link: LinkItem) => Promise<boolean | null>;
+  nav?: PreviewNav;
 }) {
   const [detail, setDetail] = React.useState<LinkDetail | null>(null);
   const [missing, setMissing] = React.useState(false);
@@ -94,6 +117,19 @@ function PreviewBody({
   const [starred, setStarred] = React.useState<boolean | null>(null);
   const [rev, setRev] = React.useState(0);
   const link = detail?.link ?? initial ?? null;
+
+  React.useEffect(() => {
+    if (!nav) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      const to = e.key === "ArrowLeft" ? nav.prev : e.key === "ArrowRight" ? nav.next : null;
+      if (!to) return;
+      e.preventDefault();
+      nav.go(to);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [nav]);
 
   React.useEffect(() => {
     const ctrl = new AbortController();
@@ -169,11 +205,28 @@ function PreviewBody({
       <header className="flex h-[60px] shrink-0 items-center gap-2 border-b border-line pl-4 pr-2 sm:gap-3 sm:pl-5 sm:pr-3.5">
         <SiteIcon src={iconSrc} label={link.domain || link.title} size={30} />
         <div className="flex min-w-0 flex-col">
-          <D.Title className="truncate text-[15px] font-semibold">{link.title}</D.Title>
+          <D.Title className="truncate text-lead font-semibold">{link.title}</D.Title>
           <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
         </div>
         <div className="flex-1" />
-        <Tooltip content={isStarred ? "Remover dos favoritos" : "Favoritar"}>
+        {nav && nav.total > 1 && (
+          <div className="flex items-center gap-0.5 max-sm:hidden">
+            <Tooltip content="Link anterior · ←">
+              <Button size="icon" variant="ghost" aria-label="Link anterior" disabled={!nav.prev} onClick={() => nav.prev && nav.go(nav.prev)}>
+                <ChevronLeft />
+              </Button>
+            </Tooltip>
+            <span className="min-w-[52px] text-center font-mono text-caption text-muted" aria-live="polite">
+              {nav.index + 1} / {nav.total}
+            </span>
+            <Tooltip content="Próximo link · →">
+              <Button size="icon" variant="ghost" aria-label="Próximo link" disabled={!nav.next} onClick={() => nav.next && nav.go(nav.next)}>
+                <ChevronRight />
+              </Button>
+            </Tooltip>
+          </div>
+        )}
+        <Tooltip content={isStarred ? "Remover estrela" : "Marcar com estrela"}>
           <Button
             size="icon"
             variant="ghost"
@@ -226,8 +279,8 @@ function PreviewBody({
       <div className={cn("flex min-h-0 flex-1", mode === "side" ? "flex-col overflow-y-auto" : "max-md:flex-col max-md:overflow-y-auto")}>
         <div className={cn("flex min-w-0 flex-1 flex-col gap-2.5 bg-surface-2 p-4 max-md:p-3", mode === "side" ? "min-h-[60vh]" : "max-md:min-h-[62vh]")}>
           {embed.state === "checking" && (
-            <div className="flex flex-1 items-center justify-center rounded-[10px] border border-line bg-surface">
-              <span className="inline-flex items-center gap-2 text-[13px] text-muted">
+            <div className="flex flex-1 items-center justify-center rounded-control border border-line bg-surface">
+              <span className="inline-flex items-center gap-2 text-body text-muted">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-hidden />
                 Verificando se o site pode ser exibido aqui…
               </span>
@@ -239,7 +292,7 @@ function PreviewBody({
                 <Shield className="size-3.5" aria-hidden />
                 <span>Exibido em iframe isolado (sandbox) · sem acesso à sua sessão do Waypoint</span>
               </div>
-              <div className="relative flex flex-1 overflow-hidden rounded-[10px] border border-line bg-white">
+              <div className="relative flex flex-1 overflow-hidden rounded-control border border-line bg-white">
                 <iframe
                   title={`Preview de ${link.title}`}
                   src={link.url}
@@ -259,7 +312,7 @@ function PreviewBody({
                 {slow && !loaded && (
                   <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-pop">
                     <Timer className="size-4 shrink-0 text-amber-ink" aria-hidden />
-                    <span className="flex-1 text-[13px] text-ink-2">A página está demorando para carregar. Talvez ela não permita ser exibida aqui.</span>
+                    <span className="flex-1 text-body text-ink-2">A página está demorando para carregar. Talvez ela não permita ser exibida aqui.</span>
                     <Button asChild size="sm" variant="primary">
                       <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={openTab}>
                         Abrir em nova aba
@@ -282,9 +335,9 @@ function Blocked({ link, reason }: { link: LinkItem; reason?: string }) {
   const [always, setAlways] = React.useState(false);
   React.useEffect(() => setAlways(alwaysNewTab(link.domain)), [link.domain]);
   return (
-    <div className="flex flex-1 items-center justify-center rounded-[10px] border border-dashed border-line-2 bg-surface-2 p-6">
+    <div className="flex flex-1 items-center justify-center rounded-control border border-dashed border-line-2 bg-surface-2 p-6">
       <div className="flex max-w-[420px] flex-col items-center gap-3.5 text-center">
-        <span className="inline-flex h-[52px] w-[52px] items-center justify-center rounded-[14px] bg-amber-bg text-amber-ink">
+        <span className="inline-flex h-[52px] w-[52px] items-center justify-center rounded-card bg-amber-bg text-amber-ink">
           <Lock className="size-6" aria-hidden />
         </span>
         <p className="text-lg font-semibold">Este site não permite ser exibido aqui</p>
@@ -297,13 +350,13 @@ function Blocked({ link, reason }: { link: LinkItem; reason?: string }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => recordOpen(link.id)}
-          className="mt-1 inline-flex h-10 items-center gap-2 rounded-[10px] bg-accent px-[18px] text-sm font-medium text-white hover:brightness-110"
+          className="mt-1 inline-flex h-10 items-center gap-2 rounded-control bg-accent px-[18px] text-sm font-medium text-white hover:brightness-110"
         >
           Abrir em nova aba
           <ExternalLink className="size-[15px]" aria-hidden />
         </a>
         {link.domain && (
-          <label className="flex items-center gap-2 text-[13px] text-ink-2">
+          <label className="flex items-center gap-2 text-body text-ink-2">
             <input
               type="checkbox"
               checked={always}
@@ -365,7 +418,7 @@ function HealthSection({
   return (
     <section className="flex flex-col gap-2" aria-live="polite">
       <SectionLabel>Status do link</SectionLabel>
-      <p className={cn("flex items-start gap-2 text-[13px] leading-5", tone)}>
+      <p className={cn("flex items-start gap-2 text-body leading-5", tone)}>
         <HealthMark status={link.healthStatus} className="mt-1.5" />
         <span className="min-w-0" suppressHydrationWarning>
           {healthText(link, { withTime: false })}
@@ -381,7 +434,7 @@ function HealthSection({
           href={link.healthFinalUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="break-all rounded-md bg-subtle px-2 py-1.5 font-mono text-[11px] leading-4 text-ink-2 hover:text-ink"
+          className="break-all rounded-md bg-subtle px-2 py-1.5 font-mono text-caption leading-4 text-ink-2 hover:text-ink"
         >
           {link.healthFinalUrl}
         </a>
@@ -425,10 +478,16 @@ function InfoPanel({
   const parent = path.slice(0, -1).map((p) => p.name).join(" / ");
   return (
     <aside className={cn("scrollbar-thin flex flex-col gap-5 overflow-y-auto p-5", className)} aria-label="Detalhes do link">
+      {link.notes && (
+        <section className="flex flex-col gap-2">
+          <SectionLabel>Notas</SectionLabel>
+          <p className="whitespace-pre-wrap rounded-control border border-amber-line/60 bg-amber-bg/50 px-3 py-2.5 text-body leading-5 text-amber-ink">{link.notes}</p>
+        </section>
+      )}
       {link.description && (
         <section className="flex flex-col gap-2">
           <SectionLabel>Resumo</SectionLabel>
-          <p className="text-[13px] leading-5 text-ink-2">{link.description}</p>
+          <p className="text-body leading-5 text-ink-2">{link.description}</p>
         </section>
       )}
       {link.tags.length > 0 && (
@@ -444,7 +503,7 @@ function InfoPanel({
       <section className="flex flex-col gap-2">
         <SectionLabel>Coleção</SectionLabel>
         {link.collectionId ? (
-          <Link href={`/links?c=${link.collectionId}`} className="flex items-center gap-2 rounded-md text-[13px] hover:text-accent-ink">
+          <Link href={`/links?c=${link.collectionId}`} className="flex items-center gap-2 rounded-md text-body hover:text-accent-ink">
             <CollectionGlyph />
             <span className="min-w-0 truncate">
               {parent && <span className="text-muted">{parent} / </span>}
@@ -452,7 +511,7 @@ function InfoPanel({
             </span>
           </Link>
         ) : (
-          <Link href="/links?scope=unsorted" className="text-[13px] text-muted hover:text-ink">
+          <Link href="/links?scope=unsorted" className="text-body text-muted hover:text-ink">
             Sem coleção
           </Link>
         )}
@@ -463,7 +522,7 @@ function InfoPanel({
         {!detail ? (
           <span className="h-4 w-32 animate-pulse rounded bg-subtle" aria-label="Carregando" />
         ) : detail.backlinks.length === 0 ? (
-          <p className="text-[13px] text-muted">Ainda não aparece em nenhum plan.</p>
+          <p className="text-body text-muted">Ainda não aparece em nenhum plan.</p>
         ) : (
           detail.backlinks.map((b) => (
             <Link
@@ -471,11 +530,11 @@ function InfoPanel({
               href={`/plans/${b.planId}?node=${encodeURIComponent(b.nodeId)}`}
               className="-mx-2 flex items-center gap-2.5 rounded-lg p-2 hover:bg-hover"
             >
-              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-accent-soft text-accent-ink">
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chip bg-accent-soft text-accent-ink">
                 <Workflow className="size-3.5" aria-hidden />
               </span>
               <span className="flex min-w-0 flex-col">
-                <span className="truncate text-[13px] font-medium">{b.planTitle}</span>
+                <span className="truncate text-body font-medium">{b.planTitle}</span>
                 <span className="truncate text-xs text-muted">Plan{b.nodeTitle ? ` · bloco “${b.nodeTitle}”` : ""}</span>
               </span>
             </Link>

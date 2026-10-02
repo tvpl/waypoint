@@ -1,6 +1,21 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
 import { customAlphabet } from "nanoid";
+
+/**
+ * tailwind-merge only knows Tailwind's default scale: teach it the design tokens from
+ * globals.css, or e.g. `text-caption` would be taken for a color and dropped next to
+ * `text-muted`.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["micro", "caption", "body", "lead", "title", "display-sm", "display", "display-lg"],
+      radius: ["chip", "control", "card", "panel"],
+      shadow: ["rest", "thumb", "raise", "float", "pop"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -59,4 +74,19 @@ export function timeAgo(date: Date | number | null | undefined, now = Date.now()
 
 export function formatDateTime(date: Date | number): string {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
+/** True when the user asked the OS for less motion (always false on the server). */
+export function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
+/** Animation length in ms, or 0 when the user prefers reduced motion. For JS-driven animations CSS can't reach. */
+export function motionMs(ms: number): number {
+  return prefersReducedMotion() ? 0 : ms;
+}
+
+/** `scrollIntoView` behavior that respects reduced motion. */
+export function scrollBehavior(): ScrollBehavior {
+  return prefersReducedMotion() ? "auto" : "smooth";
 }

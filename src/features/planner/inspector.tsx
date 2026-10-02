@@ -81,8 +81,8 @@ function Header({ icon, kicker, title, menu }: { icon: React.ReactNode; kicker: 
     <div className="flex items-center gap-2.5">
       {icon}
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-[11px] text-muted">{kicker}</span>
-        <span className="truncate text-[15px] font-semibold">{title}</span>
+        <span className="text-caption text-muted">{kicker}</span>
+        <span className="truncate text-lead font-semibold">{title}</span>
       </div>
       {menu}
     </div>
@@ -98,12 +98,12 @@ function F({ label, htmlFor, children, hint }: { label: string; htmlFor?: string
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
-      {hint && <p className="text-[11px] leading-4 text-muted">{hint}</p>}
+      {hint && <p className="text-caption leading-4 text-muted">{hint}</p>}
     </div>
   );
 }
 
-const smallInput = "h-[34px] rounded-lg text-[13px]";
+const smallInput = "h-[34px] rounded-lg text-body";
 
 // ------------------------------------------------------------------ node
 
@@ -141,7 +141,7 @@ function NodeInspector({ node }: { node: PlanFlowNode }) {
           title={d.title || (kind === "link" ? (ed.resourceFor(node)?.title ?? "Link") : "Sem título")}
           menu={<NodeMenu node={node} />}
         />
-        <div role="tablist" aria-label="Seções do painel" className="flex gap-[18px] border-b border-line text-[13px]">
+        <div role="tablist" aria-label="Seções do painel" className="flex gap-[18px] border-b border-line text-body">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -182,7 +182,7 @@ function ContentTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
           id={`d-${id}`}
           rows={kind === "note" ? 5 : 3}
           maxLength={5000}
-          className="min-h-[76px] rounded-lg text-[13px] leading-[18px]"
+          className="min-h-[76px] rounded-lg text-body leading-[18px]"
           value={d.description ?? ""}
           onChange={(e) => set({ description: e.target.value }, `desc:${id}`)}
         />
@@ -217,10 +217,10 @@ function AppearanceTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
         <ImageField label="Capa" value={d.image} onChange={(image) => set({ image })} hint="Aparece no lugar do ícone ou como capa em blocos altos." />
       )}
       {PARENT_KINDS.has(kind) && (
-        <label className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-[13px]">
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-body">
           <span className="flex flex-col">
             <span className="font-medium">Recolhido</span>
-            <span className="text-[11px] text-muted">Esconde os elementos internos</span>
+            <span className="text-caption text-muted">Esconde os elementos internos</span>
           </span>
           <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={!!d.collapsed} onChange={() => ed.toggleCollapsed(node.id)} />
         </label>
@@ -258,17 +258,17 @@ function PresentationField({ node }: { node: PlanFlowNode }) {
   };
   const sw = `pres-${node.id}`;
   return (
-    <div className="flex flex-col gap-2.5 rounded-lg border border-line px-3 py-2.5 text-[13px]">
+    <div className="flex flex-col gap-2.5 rounded-lg border border-line px-3 py-2.5 text-body">
       <div className="flex items-center justify-between gap-3">
         <label htmlFor={sw} className="flex cursor-pointer flex-col">
           <span className="font-medium">Incluir na apresentação</span>
-          <span className="text-[11px] text-muted">{st.included ? `Passo ${st.position} de ${st.total} (após a visão geral)` : "Fora da apresentação"}</span>
+          <span className="text-caption text-muted">{st.included ? `Passo ${st.position} de ${st.total} (após a visão geral)` : "Fora da apresentação"}</span>
         </label>
         <Switch id={sw} checked={st.included} onChange={(v) => ed.mutate((d) => setIncluded(d, node.id, v))} />
       </div>
       {st.custom && st.included && (
-        <label className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-[13px]")}>
-          <span className="text-[11px] text-muted">Ordem</span>
+        <label className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-body")}>
+          <span className="text-caption text-muted">Ordem</span>
           <input
             type="number"
             min={1}
@@ -282,7 +282,7 @@ function PresentationField({ node }: { node: PlanFlowNode }) {
           />
         </label>
       )}
-      <p className="text-[11px] leading-4 text-muted">
+      <p className="text-caption leading-4 text-muted">
         {st.custom
           ? "Ordem personalizada: só os elementos numerados aparecem, do menor para o maior. "
           : "Ordem automática: seções e containers do nível principal, depois os demais elementos em ordem de leitura. "}
@@ -309,8 +309,8 @@ function NumberField({ label, value, onChange, disabled }: { label: string; valu
     setDraft(null);
   };
   return (
-    <label className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-[13px]", disabled && "opacity-60")}>
-      <span className="font-mono text-[11px] text-muted">{label}</span>
+    <label className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-body", disabled && "opacity-60")}>
+      <span className="font-mono text-caption text-muted">{label}</span>
       <input
         type="number"
         min={20}
@@ -342,11 +342,11 @@ function ActionTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
       <div className="flex flex-col gap-2.5">
         <Label>Ao clicar</Label>
         {d.resource && res ? (
-          <div className="flex items-center gap-2.5 rounded-[10px] border border-line-2 p-2.5">
+          <div className="flex items-center gap-2.5 rounded-control border border-line-2 p-2.5">
             <ResourceIcon resource={res} size={30} />
             <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[13px] font-medium">{res.title}</span>
-              <span className="truncate text-[11px] text-muted">Recurso · {res.subtitle}</span>
+              <span className="truncate text-body font-medium">{res.title}</span>
+              <span className="truncate text-caption text-muted">Recurso · {res.subtitle}</span>
             </div>
             {res.href && (
               <Tooltip content="Abrir">
@@ -373,7 +373,7 @@ function ActionTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
       <div className="flex flex-col gap-2">
         <Label>Abrir em</Label>
         <Segmented label="Abrir em" value={openIn} onChange={(v) => set({ openIn: v })} options={OPEN_OPTIONS} className="w-full [&>button]:flex-1 [&>button]:justify-center" />
-        <p className="text-[11px] leading-4 text-muted">
+        <p className="text-caption leading-4 text-muted">
           {openIn === "new-tab" && "No modo visualização, o clique abre o recurso em uma nova aba."}
           {openIn === "modal" && "Mostra uma prévia sobre o plan (quando o site permite incorporação)."}
           {openIn === "details" && "Abre um painel com título, descrição, status, tags e o link."}
@@ -434,13 +434,13 @@ function ResourcePicker({ onPick }: { onPick: (ref: NonNullable<NodeData["resour
               Definir
             </Button>
           </div>
-          {err && <p className="text-[11px] text-danger">{err}</p>}
+          {err && <p className="text-caption text-danger">{err}</p>}
         </div>
       ) : (
         <div className="flex flex-col gap-1">
           <label className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5")}>
             <Search className="size-3.5 shrink-0 text-muted" aria-hidden />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Favoritos, coleções, plans…" aria-label="Buscar recurso" className="w-full bg-transparent text-[13px] outline-none" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Favoritos, coleções, plans…" aria-label="Buscar recurso" className="w-full bg-transparent text-body outline-none" />
             {loading && <Loader2 className="size-3.5 shrink-0 animate-spin text-muted" aria-hidden />}
           </label>
           <div className="-mx-2 flex flex-col">
@@ -502,14 +502,14 @@ function IconField({ value, onChange, allowNone }: { value?: string; onChange: (
     <F label="Ícone">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button type="button" className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-left text-[13px]")}>
+          <button type="button" className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-left text-body")}>
             {value ? <PlanIcon name={value} size={15} /> : <span className="size-[15px] rounded border border-dashed border-line-2" aria-hidden />}
             <span className="flex-1 truncate">{value ? (PLAN_ICONS[value]?.label ?? value) : "Nenhum"}</span>
             <ChevronDown className="size-3.5 text-muted" aria-hidden />
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[284px] p-3">
-          <Input autoFocus className="mb-2 h-8 text-[13px]" placeholder="Buscar ícone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ícone" />
+          <Input autoFocus className="mb-2 h-8 text-body" placeholder="Buscar ícone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ícone" />
           <div className="scrollbar-thin grid max-h-[220px] grid-cols-7 gap-1 overflow-y-auto">
             {allowNone && (
               <button type="button" aria-label="Sem ícone" onClick={() => (onChange(undefined), setOpen(false))} className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-hover">
@@ -542,7 +542,7 @@ function StatusField({ value, onChange }: { value?: NodeData["status"]; onChange
     <F label="Status">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button type="button" className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-left text-[13px]")}>
+          <button type="button" className={cn(inputClass, "flex h-[34px] items-center gap-2 rounded-lg px-2.5 text-left text-body")}>
             <span className="size-2 shrink-0 rounded-full" style={{ background: m?.dot ?? "var(--line-2)" }} aria-hidden />
             <span className="flex-1 truncate">{m?.label ?? "Nenhum"}</span>
             <ChevronDown className="size-3.5 text-muted" aria-hidden />
@@ -638,7 +638,7 @@ function ImageField({ value, onChange, label = "Imagem", hint }: { value?: strin
           <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()} disabled={busy}>
             {busy ? <Loader2 className="animate-spin" /> : <Upload />} Enviar imagem
           </Button>
-          <span className="text-[11px] text-muted">PNG, JPG, GIF, WebP · até 5 MB</span>
+          <span className="text-caption text-muted">PNG, JPG, GIF, WebP · até 5 MB</span>
         </div>
       )}
       <div className="flex gap-1.5">
@@ -659,7 +659,7 @@ function ImageField({ value, onChange, label = "Imagem", hint }: { value?: strin
           }}
         />
       </div>
-      {hint && <p className="text-[11px] leading-4 text-muted">{hint}</p>}
+      {hint && <p className="text-caption leading-4 text-muted">{hint}</p>}
       <input
         ref={fileRef}
         type="file"
@@ -701,7 +701,7 @@ function EdgeInspector({ edge }: { edge: PlanFlowEdge }) {
           <Input id={`el-${edge.id}`} className={smallInput} maxLength={200} value={d.label ?? ""} placeholder="ex.: REST, eventos · Kafka" onChange={(e) => ed.updateEdge(edge.id, { label: e.target.value }, `elabel:${edge.id}`)} />
         </F>
         <F label="Descrição" htmlFor={`ed-${edge.id}`}>
-          <Textarea id={`ed-${edge.id}`} rows={3} maxLength={2000} className="min-h-[72px] rounded-lg text-[13px]" value={d.description ?? ""} onChange={(e) => ed.updateEdge(edge.id, { description: e.target.value }, `edesc:${edge.id}`)} />
+          <Textarea id={`ed-${edge.id}`} rows={3} maxLength={2000} className="min-h-[72px] rounded-lg text-body" value={d.description ?? ""} onChange={(e) => ed.updateEdge(edge.id, { description: e.target.value }, `edesc:${edge.id}`)} />
         </F>
         <div className="flex flex-col gap-1.5">
           <Label>Tipo</Label>
@@ -713,7 +713,7 @@ function EdgeInspector({ edge }: { edge: PlanFlowEdge }) {
                 role="radio"
                 aria-checked={d.kind === k}
                 onClick={() => ed.updateEdge(edge.id, { kind: k })}
-                className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-[13px]", d.kind === k ? "border-accent bg-accent-soft/60 text-ink" : "border-line hover:bg-surface-2")}
+                className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-body", d.kind === k ? "border-accent bg-accent-soft/60 text-ink" : "border-line hover:bg-surface-2")}
               >
                 <EdgeSample kind={k} />
                 <span className="flex-1 font-medium">{EDGE_APPEARANCE[k].label}</span>
@@ -780,7 +780,7 @@ function MultiInspector() {
   return (
     <Scroll>
       <Header
-        icon={<span className="inline-flex size-[30px] items-center justify-center rounded-lg bg-accent-soft text-[13px] font-semibold text-accent-ink">{n}</span>}
+        icon={<span className="inline-flex size-[30px] items-center justify-center rounded-lg bg-accent-soft text-body font-semibold text-accent-ink">{n}</span>}
         kicker="Seleção"
         title={`${n} elementos`}
       />
@@ -844,15 +844,15 @@ function PlanInspector() {
         <Input id="plan-title" className={smallInput} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() !== m.title && ed.saveMeta({ title })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
       </F>
       <F label="Descrição" htmlFor="plan-desc" hint="Aparece no modo visualização e no link compartilhado.">
-        <Textarea id="plan-desc" rows={4} maxLength={5000} className="min-h-[92px] rounded-lg text-[13px] leading-[18px]" value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => desc !== (m.description ?? "") && ed.saveMeta({ description: desc })} />
+        <Textarea id="plan-desc" rows={4} maxLength={5000} className="min-h-[92px] rounded-lg text-body leading-[18px]" value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => desc !== (m.description ?? "") && ed.saveMeta({ description: desc })} />
       </F>
       <F label="Tags">
         <TagInput value={m.tags} onChange={(tags) => ed.saveMeta({ tags })} />
       </F>
       <div className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2.5">
         <span className="flex flex-col">
-          <span className="text-[11px] text-muted">Visibilidade</span>
-          <span className="text-[13px] font-medium">{VISIBILITY_LABEL[m.visibility] ?? m.visibility}</span>
+          <span className="text-caption text-muted">Visibilidade</span>
+          <span className="text-body font-medium">{VISIBILITY_LABEL[m.visibility] ?? m.visibility}</span>
         </span>
         <Button size="sm" variant="secondary" onClick={() => ed.openShare("share")}>
           Alterar

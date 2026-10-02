@@ -73,6 +73,16 @@ export function colorOf(color: string | null | undefined) {
   return COLLECTION_COLORS[color ?? ""] ?? COLLECTION_COLORS[DEFAULT_COLOR];
 }
 
+/**
+ * Inline style for a colored tag chip (with the `wp-tint` class, which remixes it for
+ * dark mode). Undefined for tags without a color: they keep the neutral chip.
+ */
+export function tagTint(color: string | null | undefined): React.CSSProperties | undefined {
+  if (!color || !COLLECTION_COLORS[color]) return undefined;
+  const c = COLLECTION_COLORS[color];
+  return { "--tint": c.tint, "--tint-ink": c.ink } as React.CSSProperties;
+}
+
 /** Collection icon in its color, theme-aware. */
 export function CollectionGlyph({
   icon,

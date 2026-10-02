@@ -15,15 +15,21 @@ import {
   getFavorite,
   moveCollection,
   moveFavorite,
+  reorderPinnedLinks,
+  setMarks,
   toggleMark,
+  togglePinLink,
   updateCollection,
   updateFavorite,
 } from "@/server/services/links";
+import { createSavedSearch, deleteSavedSearch, updateSavedSearch } from "@/server/services/saved-searches";
 import { tagsForFavorites } from "@/server/services/tags";
 import { markHealthy } from "@/server/services/link-health";
 import { ensureShareLink, revokeShareLink } from "@/server/services/plans";
-import { favoritesInWorkspace } from "@/features/links/server-data";
-import type { ActionResult } from "@/features/links/types";
+import { favoritesInWorkspace, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
+import type { ActionResult, LinkItem } from "@/features/links/types";
+import { findDuplicateGroups, mergeLinks, type DuplicateGroup } from "@/server/services/link-dedupe";
+import { markTriaged, suggestCollections, type CollectionSuggestion } from "@/server/services/link-triage";
 
 // ------------------------------------------------------------------ helpers
 
@@ -60,6 +66,8 @@ function assertCollection(ctx: WorkspaceContext, id: string | null | undefined) 
 function assertFavorite(ctx: WorkspaceContext, id: string) {
   const f = getFavorite(id);
   if (!f || f.workspaceId !== ctx.workspace.id) throw new UserError("Link não encontrado.");
+  // Links inside someone else's private collection don't exist for this user.
+  if (f.collectionId) assertCollection(ctx, f.collectionId);
   return f;
 }
 
@@ -77,6 +85,7 @@ const linkInput = z.object({
   collectionId: id.nullable().optional(),
   description: z.string().max(5000).nullable().optional(),
   keywords: z.string().max(1000).nullable().optional(),
+  notes: z.string().max(5000).nullable().optional(),
   favicon: imageUrl.nullable().optional(),
   coverImage: imageUrl.nullable().optional(),
   icon: imageUrl.nullable().optional(),
@@ -152,7 +161,7 @@ export async function moveLinksAction(input: z.input<typeof moveInput>): Promise
     const ctx = await editor();
     const { ids, collectionId, index } = moveInput.parse(input);
     assertCollection(ctx, collectionId);
-    const allowed = favoritesInWorkspace(ctx.workspace.id, ids);
+    const allowed = favoritesInWorkspace(ctx.workspace.id, ctx.user.id, ids);
     allowed.forEach((fid, i) => moveFavorite(fid, collectionId, index == null ? undefined : index + i));
     done();
     return { ok: true };
@@ -165,19 +174,28 @@ const bulkInput = z.discriminatedUnion("op", [
   z.object({ op: z.literal("archive"), ids: z.array(id).min(1).max(1000), archived: z.boolean() }),
   z.object({ op: z.literal("delete"), ids: z.array(id).min(1).max(1000) }),
   z.object({ op: z.literal("addTag"), ids: z.array(id).min(1).max(1000), tag: z.string().trim().min(1).max(48) }),
+  z.object({ op: z.literal("removeTag"), ids: z.array(id).min(1).max(1000), tag: z.string().trim().min(1).max(48) }),
+  z.object({ op: z.literal("star"), ids: z.array(id).min(1).max(1000), on: z.boolean() }),
+  z.object({ op: z.literal("openBehavior"), ids: z.array(id).min(1).max(1000), value: z.enum(OPEN_BEHAVIORS) }),
 ]);
 
 export async function bulkLinksAction(input: z.input<typeof bulkInput>): Promise<ActionResult<{ count: number }>> {
   try {
     const ctx = await editor();
     const data = bulkInput.parse(input);
-    const ids = favoritesInWorkspace(ctx.workspace.id, data.ids);
+    const ids = favoritesInWorkspace(ctx.workspace.id, ctx.user.id, data.ids);
     if (data.op === "archive") ids.forEach((fid) => archiveFavorite(fid, data.archived));
     if (data.op === "delete") ids.forEach((fid) => deleteFavorite(fid));
-    if (data.op === "addTag") {
+    if (data.op === "addTag" || data.op === "removeTag") {
       const current = tagsForFavorites(ids);
-      ids.forEach((fid) => updateFavorite(fid, { tags: [...(current.get(fid) ?? []), data.tag] }));
+      ids.forEach((fid) => {
+        const list = current.get(fid) ?? [];
+        if (data.op === "addTag") updateFavorite(fid, { tags: [...list, data.tag] });
+        else if (list.includes(data.tag)) updateFavorite(fid, { tags: list.filter((t) => t !== data.tag) });
+      });
     }
+    if (data.op === "star") setMarks(ctx.user.id, "favorite", ids, "star", data.on);
+    if (data.op === "openBehavior") ids.forEach((fid) => updateFavorite(fid, { openBehavior: data.value }));
     done();
     return { ok: true, data: { count: ids.length } };
   } catch (e) {
@@ -312,6 +330,148 @@ export async function regenerateShareLinkAction(collectionId: string): Promise<A
     const token = ensureShareLink("collection", collectionId, ctx.user.id);
     done();
     return { ok: true, data: { token } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ quick access (personal)
+
+/** Pins a link to the user's quick access (Início, new tab). Personal, so viewers may pin too. */
+export async function togglePinLinkAction(linkId: string): Promise<ActionResult<{ pinned: boolean }>> {
+  try {
+    const ctx = await requireWorkspace();
+    assertFavorite(ctx, id.parse(linkId));
+    const pinned = togglePinLink(ctx.user.id, linkId);
+    done();
+    return { ok: true, data: { pinned } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function reorderPinnedLinksAction(ids: string[]): Promise<ActionResult> {
+  try {
+    const ctx = await requireWorkspace();
+    reorderPinnedLinks(ctx.user.id, z.array(id).max(100).parse(ids));
+    done();
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ saved searches (personal)
+
+const savedInput = z.object({
+  name: z.string().trim().min(1, "Dê um nome à busca.").max(80),
+  query: z.string().trim().min(1, "A busca está vazia.").max(300),
+  sort: z.string().max(20).nullable().optional(),
+});
+
+export async function createSavedSearchAction(input: z.input<typeof savedInput>): Promise<ActionResult<{ id: string }>> {
+  try {
+    const ctx = await requireWorkspace();
+    const data = savedInput.parse(input);
+    const savedId = createSavedSearch({ userId: ctx.user.id, workspaceId: ctx.workspace.id, ...data });
+    revalidatePath("/links");
+    return { ok: true, data: { id: savedId } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function updateSavedSearchAction(savedId: string, patch: Partial<z.input<typeof savedInput>>): Promise<ActionResult> {
+  try {
+    const ctx = await requireWorkspace();
+    updateSavedSearch(ctx.user.id, id.parse(savedId), savedInput.partial().parse(patch));
+    revalidatePath("/links");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteSavedSearchAction(savedId: string): Promise<ActionResult> {
+  try {
+    const ctx = await requireWorkspace();
+    deleteSavedSearch(ctx.user.id, id.parse(savedId));
+    revalidatePath("/links");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ paging
+
+/** Next page of the library for the current URL (?c, ?scope, ?q…), starting at `offset`. */
+export async function loadMoreLinksAction(search: string, offset: number): Promise<ActionResult<{ links: LinkItem[]; hasMore: boolean }>> {
+  try {
+    const ctx = await requireWorkspace();
+    const params = new URLSearchParams(search.slice(0, 4000));
+    const record: Record<string, string | string[]> = {};
+    for (const key of new Set(params.keys())) {
+      const all = params.getAll(key);
+      record[key] = all.length > 1 ? all : all[0];
+    }
+    const { tree } = visibleTree(ctx.workspace.id, ctx.user.id);
+    const { filter, invalidCollection } = resolveLibraryParams(record, tree);
+    if (invalidCollection) return { ok: true, data: { links: [], hasMore: false } };
+    const start = z.number().int().min(0).max(100_000).parse(offset);
+    return { ok: true, data: loadLibraryPage(ctx.workspace.id, ctx.user.id, filter, start) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ duplicates
+
+export async function listDuplicatesAction(): Promise<ActionResult<{ groups: DuplicateGroup[] }>> {
+  try {
+    const ctx = await editor();
+    return { ok: true, data: { groups: findDuplicateGroups(ctx.workspace.id, ctx.user.id) } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+const mergeInput = z.object({ keeperId: id, otherIds: z.array(id).min(1).max(50) });
+
+/** Keeps one link of a page and archives the copies, moving tags, notes and marks to it. */
+export async function mergeLinksAction(input: z.input<typeof mergeInput>): Promise<ActionResult<{ merged: number }>> {
+  try {
+    const ctx = await editor();
+    const { keeperId, otherIds } = mergeInput.parse(input);
+    for (const fid of [keeperId, ...otherIds]) assertFavorite(ctx, fid);
+    const merged = mergeLinks(ctx.workspace.id, keeperId, otherIds);
+    done();
+    return { ok: true, data: { merged } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ------------------------------------------------------------------ inbox triage
+
+export async function suggestCollectionsAction(linkId: string): Promise<ActionResult<{ suggestions: CollectionSuggestion[] }>> {
+  try {
+    const ctx = await editor();
+    assertFavorite(ctx, id.parse(linkId));
+    return { ok: true, data: { suggestions: suggestCollections(ctx.workspace.id, ctx.user.id, linkId) } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** "Pronto": leaves the links where they are and takes them out of the inbox. */
+export async function markTriagedAction(ids: string[]): Promise<ActionResult> {
+  try {
+    const ctx = await editor();
+    const list = z.array(id).min(1).max(1000).parse(ids);
+    markTriaged(ctx.workspace.id, favoritesInWorkspace(ctx.workspace.id, ctx.user.id, list));
+    done();
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }

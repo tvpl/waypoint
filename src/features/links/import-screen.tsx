@@ -9,9 +9,10 @@ import { Input, Label, SectionLabel } from "@/components/ui/input";
 import { cn, normalizeTag } from "@/lib/utils";
 import { CollectionPicker } from "./collection-picker";
 import type { TreeNode } from "./types";
+import { useEnrichRun } from "./enrich";
 
 type Preview = { folders: number; links: number; topFolders: string[] };
-type Result = { collections: number; links: number; collectionId: string | null };
+type Result = { collections: number; links: number; skipped: number; collectionId: string | null };
 
 const BROWSERS: { name: string; steps: string }[] = [
   { name: "Chrome", steps: "Menu ⋮ → Favoritos e listas → Gerenciador de favoritos (Ctrl+Shift+O) → ⋮ no canto → Exportar favoritos." },
@@ -23,6 +24,7 @@ const BROWSERS: { name: string; steps: string }[] = [
 
 export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[]; canEdit: boolean; workspaceName: string }) {
   const router = useRouter();
+  const enrich = useEnrichRun();
   const fileRef = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<Preview | null>(null);
@@ -31,6 +33,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
   const [error, setError] = React.useState<string | null>(null);
   const [parentId, setParentId] = React.useState<string | null>(null);
   const [wrap, setWrap] = React.useState(true);
+  const [skipDuplicates, setSkipDuplicates] = React.useState(true);
   const [wrapName, setWrapName] = React.useState(() => `Favoritos importados — ${new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short" }).format(new Date())}`);
   const [tag, setTag] = React.useState("");
   const [result, setResult] = React.useState<Result | null>(null);
@@ -67,6 +70,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
       body.set("wrapName", wrapName);
     }
     if (tag.trim()) body.set("tag", tag);
+    body.set("skipDuplicates", skipDuplicates ? "1" : "0");
     const res = await fetch("/api/links/import", { method: "POST", body }).catch(() => null);
     const json = (await res?.json().catch(() => null)) as (Result & { error?: string }) | null;
     setImporting(false);
@@ -76,6 +80,8 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
     }
     setResult(json);
     router.refresh();
+    // Imports carry only title + URL: fetch icons, covers and descriptions in the background.
+    if (json.links > 0) void enrich({ collectionId: json.collectionId }, { quietWhenNothing: true });
   };
 
   const target = result?.collectionId ? `/links?c=${result.collectionId}` : "/links";
@@ -84,11 +90,11 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
     <main className="scrollbar-thin min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[960px] flex-col gap-8 px-6 py-8 lg:px-10">
         <div className="flex flex-col gap-2">
-          <Link href="/links" className="inline-flex items-center gap-1.5 self-start text-[13px] text-muted hover:text-ink">
+          <Link href="/links" className="inline-flex items-center gap-1.5 self-start text-body text-muted hover:text-ink">
             <ArrowLeft className="size-3.5" aria-hidden />
             Links
           </Link>
-          <h1 className="font-display text-[40px] font-normal leading-[1.05]">Importar e exportar</h1>
+          <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">Importar e exportar</h1>
           <p className="max-w-[640px] text-sm text-muted">
             Traga os favoritos do navegador com todas as pastas — elas viram coleções no Waypoint. Ou baixe sua biblioteca para guardar uma cópia ou levar para outro lugar.
           </p>
@@ -98,14 +104,14 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
           <section aria-labelledby="imp-h" className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6">
             <div className="flex items-center gap-2">
               <Upload className="size-4 text-accent-ink" aria-hidden />
-              <h2 id="imp-h" className="text-[15px] font-semibold">
+              <h2 id="imp-h" className="text-lead font-semibold">
                 Importar favoritos do navegador
               </h2>
             </div>
 
             {result ? (
               <div className="flex flex-col items-start gap-3 rounded-xl border border-line bg-success-bg/60 p-5">
-                <span className="inline-flex items-center gap-2 text-[15px] font-semibold text-success-ink">
+                <span className="inline-flex items-center gap-2 text-lead font-semibold text-success-ink">
                   <CheckCircle2 className="size-5" aria-hidden />
                   Importação concluída
                 </span>
@@ -113,6 +119,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
                   {result.links} {result.links === 1 ? "link importado" : "links importados"} em {result.collections}{" "}
                   {result.collections === 1 ? "nova coleção" : "novas coleções"}
                   {wrap ? ` (mais a coleção “${wrapName}”)` : ""}.
+                  {result.skipped > 0 && ` ${result.skipped} ${result.skipped === 1 ? "página já existia e foi pulada" : "páginas já existiam e foram puladas"}.`}
                 </p>
                 <div className="flex gap-2">
                   <Button asChild variant="primary">
@@ -155,7 +162,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
                   <span className="text-xs text-muted">Formato Netscape Bookmarks (.html) — Chrome, Edge, Firefox, Safari, Brave, Arc</span>
                 </button>
                 <input ref={fileRef} type="file" accept=".html,.htm,text/html" className="hidden" onChange={(e) => choose(e.target.files?.[0])} />
-                {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
+                {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-body text-danger">{error}</p>}
 
                 {preview && (
                   <div className="flex flex-col gap-5">
@@ -179,18 +186,23 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                      <label className="flex items-center gap-2 text-body text-ink-2">
                         <input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} className="m-0 accent-[var(--accent)]" />
                         Agrupar tudo em uma nova coleção
                       </label>
                       {wrap && <Input aria-label="Nome da nova coleção" value={wrapName} onChange={(e) => setWrapName(e.target.value)} className="h-[38px] max-w-md" />}
+                      <label className="flex items-center gap-2 text-body text-ink-2">
+                        <input type="checkbox" checked={skipDuplicates} onChange={(e) => setSkipDuplicates(e.target.checked)} className="m-0 accent-[var(--accent)]" />
+                        Pular páginas que já estão na biblioteca
+                        <span className="text-xs text-muted">(mesmo com www., http/https ou utm_ diferentes)</span>
+                      </label>
                     </div>
                     <div className="flex items-center gap-3">
                       <Button variant="primary" onClick={runImport} disabled={importing || preview.links === 0}>
                         {importing ? <Loader2 className="animate-spin" /> : <Upload />}
                         Importar {preview.links} {preview.links === 1 ? "link" : "links"}
                       </Button>
-                      <span className="text-xs text-muted">Links duplicados não são mesclados — revise depois em “Todos”.</span>
+                      <span className="text-xs text-muted">Ícones, capas e descrições são buscados logo depois, em segundo plano.</span>
                     </div>
                   </div>
                 )}
@@ -198,10 +210,10 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
             )}
 
             <details className="group rounded-xl border border-line bg-surface-2 px-4 py-3">
-              <summary className="cursor-pointer text-[13px] font-medium text-ink-2 marker:text-muted">Como exportar os favoritos do seu navegador</summary>
+              <summary className="cursor-pointer text-body font-medium text-ink-2 marker:text-muted">Como exportar os favoritos do seu navegador</summary>
               <dl className="mt-3 flex flex-col gap-2.5">
                 {BROWSERS.map((b) => (
-                  <div key={b.name} className="grid grid-cols-[120px_1fr] gap-3 text-[13px]">
+                  <div key={b.name} className="grid grid-cols-[120px_1fr] gap-3 text-body">
                     <dt className="font-medium">{b.name}</dt>
                     <dd className="text-ink-2">{b.steps}</dd>
                   </div>
@@ -214,7 +226,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
         <section aria-labelledby="exp-h" className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6">
           <div className="flex items-center gap-2">
             <Download className="size-4 text-accent-ink" aria-hidden />
-            <h2 id="exp-h" className="text-[15px] font-semibold">
+            <h2 id="exp-h" className="text-lead font-semibold">
               Exportar biblioteca
             </h2>
           </div>
@@ -229,8 +241,8 @@ function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; la
   return (
     <span className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3.5 py-2 [&_svg]:size-4 [&_svg]:text-muted">
       {icon}
-      <span className="text-[15px] font-semibold tabular-nums">{value.toLocaleString("pt-BR")}</span>
-      <span className="text-[13px] text-muted">{label}</span>
+      <span className="text-lead font-semibold tabular-nums">{value.toLocaleString("pt-BR")}</span>
+      <span className="text-body text-muted">{label}</span>
     </span>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { PREF_VIEW_COOKIE } from "./view-cookie";
 /** Per-viewer UI preferences kept in localStorage (always guarded). */
 
 const read = (key: string): string | null => {
@@ -32,6 +33,13 @@ export function getJson<T>(key: string, fallback: T): T {
 export const setJson = (key: string, value: unknown) => write(key, JSON.stringify(value));
 
 export const PREF_VIEW = "wp-links-view";
+
+/** The library view lives in a cookie so the server renders it directly (no flash of the default). */
+export function setViewCookie(view: string) {
+  try {
+    document.cookie = `${PREF_VIEW_COOKIE}=${encodeURIComponent(view)}; path=/; max-age=31536000; samesite=lax`;
+  } catch {}
+}
 export const PREF_SUMMARY = "wp-links-summary";
 export const PREF_EXPANDED = "wp-links-expanded";
 export const PREF_PREVIEW_MODE = "wp-links-preview-mode";

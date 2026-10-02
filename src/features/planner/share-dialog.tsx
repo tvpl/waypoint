@@ -24,6 +24,7 @@ import {
   type ShareState,
 } from "./actions";
 import { duplicatePlanAction } from "@/app/(app)/plans/actions";
+import { ask } from "@/components/ui/ask";
 
 const VIS: { value: Visibility; label: string; hint: (ws: string) => string; icon: typeof Lock }[] = [
   { value: "private", label: "Privado", hint: () => "Só você e as pessoas convidadas", icon: Lock },
@@ -147,7 +148,12 @@ export function ShareDialog({
   };
 
   const restore = async (versionId: string, v: number) => {
-    if (!window.confirm(`Restaurar a v${v} no rascunho? O rascunho atual será substituído (a versão publicada não muda).`)) return;
+    const ok = await ask.confirm({
+      title: `Restaurar a v${v}?`,
+      description: "O rascunho atual será substituído por esta versão. A versão publicada não muda.",
+      confirmLabel: "Restaurar",
+    });
+    if (!ok) return;
     setBusy(`restore:${versionId}`);
     const r = await restoreVersionAction(planId, versionId);
     setBusy(null);
@@ -182,7 +188,7 @@ export function ShareDialog({
               {state.unpublished || published == null ? (
                 <div className="flex flex-wrap items-center gap-3.5 rounded-xl border border-amber-line bg-amber-bg px-4 py-3.5 text-amber-ink">
                   <TriangleAlert className="size-[18px] shrink-0" aria-hidden />
-                  <p className="min-w-[200px] flex-1 text-[13px] leading-[18px]">
+                  <p className="min-w-[200px] flex-1 text-body leading-[18px]">
                     {published == null ? (
                       <>
                         <b className="font-semibold">Ainda não publicado.</b> Publique para que viewers e links compartilhados vejam este plan.
@@ -200,7 +206,7 @@ export function ShareDialog({
               ) : (
                 <div className="flex flex-wrap items-center gap-3.5 rounded-xl border border-line bg-success-bg px-4 py-3.5 text-success-ink">
                   <Check className="size-[18px] shrink-0" aria-hidden />
-                  <p className="min-w-[200px] flex-1 text-[13px] leading-[18px]">
+                  <p className="min-w-[200px] flex-1 text-body leading-[18px]">
                     <b className="font-semibold">Tudo publicado.</b> A v{published} é o que as pessoas veem.
                   </p>
                   {isOwner && (
@@ -220,7 +226,7 @@ export function ShareDialog({
                       <label
                         key={o.value}
                         className={cn(
-                          "flex items-center gap-3 rounded-[10px] border px-3 py-2.5",
+                          "flex items-center gap-3 rounded-control border px-3 py-2.5",
                           on ? "border-accent bg-accent-soft/50" : "border-line bg-surface",
                           isOwner ? "cursor-pointer hover:bg-surface-2" : "cursor-not-allowed opacity-75",
                         )}
@@ -228,7 +234,7 @@ export function ShareDialog({
                         <input type="radio" name="visibility" className="m-0 accent-[var(--accent)]" checked={on} disabled={!isOwner} onChange={() => changeVisibility(o.value)} />
                         <o.icon className={cn("size-4 shrink-0", on ? "text-accent-ink" : "text-muted")} aria-hidden />
                         <span className="flex flex-col">
-                          <span className="text-[13px] font-medium">{o.label}</span>
+                          <span className="text-body font-medium">{o.label}</span>
                           <span className="text-xs text-muted">{o.hint(workspaceName)}</span>
                         </span>
                       </label>
@@ -244,7 +250,7 @@ export function ShareDialog({
               <section className="flex flex-col gap-2.5">
                 <SectionLabel>Link publicado</SectionLabel>
                 <div className="flex gap-2">
-                  <span className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-[9px] border border-line-2 bg-surface-2 px-3 font-mono text-xs text-ink-2">
+                  <span className="flex h-9 min-w-0 flex-1 items-center overflow-hidden rounded-control border border-line-2 bg-surface-2 px-3 font-mono text-xs text-ink-2">
                     <span className="truncate" title={link}>
                       {link.replace(/^https?:\/\//, "")}
                     </span>
@@ -279,7 +285,7 @@ export function ShareDialog({
                   <li className="flex items-center gap-3 border-b border-line py-2.5">
                     <span className="size-2 shrink-0 rounded-full bg-[#C98A00]" aria-hidden />
                     <span className="flex flex-1 flex-col">
-                      <span className="text-[13px] font-semibold">Rascunho atual</span>
+                      <span className="text-body font-semibold">Rascunho atual</span>
                       <span className="text-xs text-muted">{state.unpublished || published == null ? "alterações não publicadas" : `igual à v${published}`}</span>
                     </span>
                   </li>
@@ -290,7 +296,7 @@ export function ShareDialog({
                       <li key={v.id} className="flex items-center gap-3 border-b border-line py-2.5 last:border-b-0">
                         <span className={cn("size-2 shrink-0 rounded-full", isPub ? "bg-[#1F8A4C]" : "bg-line-2")} aria-hidden />
                         <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="flex items-center gap-2 text-[13px] font-semibold">
+                          <span className="flex items-center gap-2 text-body font-semibold">
                             v{v.version}
                             {isPub && <Badge tone="success">Publicada</Badge>}
                           </span>
@@ -360,7 +366,7 @@ function People({ state, planId, isOwner, onChange }: { state: ShareState; planI
       <SectionLabel>Pessoas</SectionLabel>
       {isOwner && (
         <form onSubmit={invite} className="flex flex-col gap-1.5">
-          <div className="flex h-9 items-center gap-2 rounded-[9px] border border-line-2 pl-3 pr-1 focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
+          <div className="flex h-9 items-center gap-2 rounded-control border border-line-2 pl-3 pr-1 focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
             <Plus className="size-[15px] shrink-0 text-muted" aria-hidden />
             <input
               type="email"
@@ -371,13 +377,13 @@ function People({ state, planId, isOwner, onChange }: { state: ShareState; planI
               }}
               placeholder="Convidar por e-mail"
               aria-label="E-mail para convidar"
-              className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+              className="min-w-0 flex-1 bg-transparent text-body outline-none"
             />
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
               aria-label="Papel"
-              className="h-7 rounded-md bg-transparent px-1 text-[13px] text-ink-2 outline-none hover:bg-hover"
+              className="h-7 rounded-md bg-transparent px-1 text-body text-ink-2 outline-none hover:bg-hover"
             >
               <option value="editor">Editor</option>
               <option value="viewer">Viewer</option>
@@ -407,7 +413,7 @@ function People({ state, planId, isOwner, onChange }: { state: ShareState; planI
               isOwner ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button type="button" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[13px] text-ink-2 hover:bg-hover" aria-label={`Papel de ${m.name}`}>
+                    <button type="button" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-body text-ink-2 hover:bg-hover" aria-label={`Papel de ${m.name}`}>
                       {ROLE_LABEL[m.role]} <ChevronDown className="size-3.5" />
                     </button>
                   </DropdownMenuTrigger>
@@ -454,14 +460,14 @@ function PersonRow({ name, sub, role, control }: { name: string; sub: string; ro
   const [bg, fg] = TINTS[h % TINTS.length];
   return (
     <li className="flex items-center gap-2.5 py-1.5">
-      <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-full text-[11px] font-semibold" style={{ background: bg, color: fg }} aria-hidden>
+      <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-full text-caption font-semibold" style={{ background: bg, color: fg }} aria-hidden>
         {ini || "?"}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] font-medium">{name}</span>
+        <span className="truncate text-body font-medium">{name}</span>
         <span className="truncate text-xs text-muted">{sub}</span>
       </span>
-      {control ?? <span className="px-1.5 text-[13px] text-ink-2">{ROLE_LABEL[role]}</span>}
+      {control ?? <span className="px-1.5 text-body text-ink-2">{ROLE_LABEL[role]}</span>}
     </li>
   );
 }

@@ -103,7 +103,7 @@ export function ApiTokens({ initial, workspaceName, role }: { initial: TokenRow[
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-accent-ink" aria-hidden />
             <div className="flex flex-col gap-0.5">
               <p className="text-sm font-semibold text-accent-ink">Copie o token “{created.name}” agora</p>
-              <p className="text-[13px] leading-5 text-ink-2">Por segurança, ele não será exibido de novo. Se perder, revogue e crie outro.</p>
+              <p className="text-body leading-5 text-ink-2">Por segurança, ele não será exibido de novo. Se perder, revogue e crie outro.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -112,7 +112,7 @@ export function ApiTokens({ initial, workspaceName, role }: { initial: TokenRow[
               aria-label="Novo token de API"
               value={created.token}
               onFocus={(e) => e.target.select()}
-              className="h-9 min-w-0 flex-1 rounded-[9px] border border-line-2 bg-surface px-3 font-mono text-[13px] text-ink outline-none focus:border-accent"
+              className="h-9 min-w-0 flex-1 rounded-control border border-line-2 bg-surface px-3 font-mono text-body text-ink outline-none transition-[border,box-shadow] focus:border-accent focus:ring-3 focus:ring-accent/15"
             />
             <Button variant={copied ? "secondary" : "primary"} onClick={copy}>
               {copied ? <Check /> : <Copy />}
@@ -126,7 +126,7 @@ export function ApiTokens({ initial, workspaceName, role }: { initial: TokenRow[
       )}
 
       {tokens.length === 0 ? (
-        <p className="max-w-xl rounded-xl border border-dashed border-line-2 px-4 py-5 text-[13px] leading-5 text-muted">
+        <p className="max-w-xl rounded-xl border border-dashed border-line-2 px-4 py-5 text-body leading-5 text-muted">
           Nenhum token ainda. Crie um para conectar a extensão <span className="text-ink-2">Salvar no Waypoint</span> ou outras integrações à API.
         </p>
       ) : (
@@ -154,7 +154,7 @@ export function ApiTokens({ initial, workspaceName, role }: { initial: TokenRow[
           ))}
         </ul>
       )}
-      <p className="text-[13px] leading-5 text-muted">
+      <p className="text-body leading-5 text-muted">
         Use com a extensão de navegador <span className="text-ink-2">Salvar no Waypoint</span> (pasta <code className="font-mono text-xs">extension/</code>) ou chame a
         API REST em <code className="font-mono text-xs">/api/v1</code> com o cabeçalho <code className="font-mono text-xs">Authorization: Bearer wp_…</code>.
       </p>

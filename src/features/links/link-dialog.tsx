@@ -6,7 +6,7 @@ import { AlertTriangle, Check, ChevronRight, ExternalLink, Eye, Link2, Loader2, 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input, Label, Textarea } from "@/components/ui/input";
-import { SiteIcon } from "@/components/ui/misc";
+import { Kbd, SiteIcon } from "@/components/ui/misc";
 import { cn, domainOf } from "@/lib/utils";
 import { monogramColors } from "@/lib/color";
 import { createLinkAction, updateLinkAction } from "@/app/(app)/links/actions";
@@ -45,11 +45,11 @@ function RadioCards<T extends string>({
             <label
               key={o.value}
               className={cn(
-                "flex cursor-pointer flex-col gap-1.5 rounded-[10px] border px-3 py-2.5 transition-colors max-sm:flex-row max-sm:items-baseline max-sm:gap-2 max-sm:py-2 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
+                "flex cursor-pointer flex-col gap-1.5 rounded-control border px-3 py-2.5 transition-colors max-sm:flex-row max-sm:items-baseline max-sm:gap-2 max-sm:py-2 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
                 on ? "border-accent bg-accent-soft" : "border-line-2 bg-surface hover:bg-surface-2",
               )}
             >
-              <span className={cn("flex items-center gap-2 text-[13px] font-medium [&_svg]:size-[15px]", on ? "text-accent-ink" : "text-ink")}>
+              <span className={cn("flex items-center gap-2 text-body font-medium [&_svg]:size-[15px]", on ? "text-accent-ink" : "text-ink")}>
                 <input type="radio" name={name} checked={on} onChange={() => onChange(o.value)} className="m-0 accent-[var(--accent)]" />
                 {o.icon}
                 <span>{o.label}</span>
@@ -115,6 +115,7 @@ function LinkForm({
   const [summaryBehavior, setSummaryBehavior] = React.useState<SummaryBehavior>(editing?.summaryBehavior ?? "always");
   const [description, setDescription] = React.useState(editing?.description ?? "");
   const [keywords, setKeywords] = React.useState(editing?.keywords ?? "");
+  const [notes, setNotes] = React.useState(editing?.notes ?? "");
   const [coverImage, setCoverImage] = React.useState(editing?.coverImage ?? "");
   const [icon, setIcon] = React.useState(editing?.icon ?? "");
   const [favicon, setFavicon] = React.useState(editing?.favicon ?? "");
@@ -180,6 +181,7 @@ function LinkForm({
       summaryBehavior,
       description: description.trim() || null,
       keywords: keywords.trim() || null,
+      notes: notes.trim() || null,
       coverImage: coverImage.trim() || null,
       icon: icon.trim() || null,
       favicon: favicon.trim() || null,
@@ -220,7 +222,7 @@ function LinkForm({
       <DialogBody className="gap-4 pt-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="link-url">URL</Label>
-          <div className="flex h-11 items-center gap-2.5 rounded-[10px] border-2 border-line-2 bg-surface px-3 focus-within:border-accent">
+          <div className="flex h-11 items-center gap-2.5 rounded-control border-2 border-line-2 bg-surface px-3 focus-within:border-accent">
             <Link2 className="size-4 shrink-0 text-accent-ink" aria-hidden />
             <input
               id="link-url"
@@ -230,7 +232,7 @@ function LinkForm({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Cole ou digite um endereço — https://…"
-              className="h-full min-w-0 flex-1 bg-transparent font-mono text-[13px] text-ink outline-none"
+              className="h-full min-w-0 flex-1 bg-transparent font-mono text-body text-ink outline-none"
               autoComplete="off"
               spellCheck={false}
             />
@@ -283,7 +285,7 @@ function LinkForm({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={previewImage} alt="" referrerPolicy="no-referrer" loading="lazy" className="-m-2 h-[88px] w-[148px] max-w-none object-cover" />
               ) : (
-                <span className="font-mono text-[10px]" style={{ color: tint.fg }}>
+                <span className="font-mono text-micro" style={{ color: tint.fg }}>
                   sem imagem
                 </span>
               )}
@@ -293,8 +295,8 @@ function LinkForm({
                 <SiteIcon src={icon || favicon || null} label={domain || "?"} size={18} />
                 <span className="truncate font-mono text-xs text-muted">{found?.siteName || domain}</span>
               </span>
-              <span className="line-clamp-1 text-[15px] font-semibold">{previewTitle || domain}</span>
-              {previewDesc && <span className="line-clamp-2 text-[13px] leading-[18px] text-ink-2">{previewDesc}</span>}
+              <span className="line-clamp-1 text-lead font-semibold">{previewTitle || domain}</span>
+              {previewDesc && <span className="line-clamp-2 text-body leading-[18px] text-ink-2">{previewDesc}</span>}
             </div>
           </div>
         )}
@@ -324,6 +326,13 @@ function LinkForm({
           <TagInput id="link-tags" value={tagList} onChange={setTagList} suggestions={tags} />
         </div>
 
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="link-notes">
+            Notas <span className="font-normal text-muted">— por que salvou, o que lembrar (entram na busca)</span>
+          </Label>
+          <Textarea id="link-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: ler a parte de Server Components antes da reunião" className="min-h-[60px] resize-y" />
+        </div>
+
         <RadioCards
           name="openBehavior"
           label="Ao abrir"
@@ -351,7 +360,7 @@ function LinkForm({
           type="button"
           aria-expanded={more}
           onClick={() => setMore((m) => !m)}
-          className="inline-flex items-center gap-1.5 self-start rounded-md text-[13px] text-ink-2 hover:text-ink"
+          className="inline-flex items-center gap-1.5 self-start rounded-md text-body text-ink-2 hover:text-ink"
         >
           <ChevronRight className={cn("size-3.5 transition-transform", more && "rotate-90")} aria-hidden />
           Mais opções — ícone, imagem de capa, palavras-chave, descrição
@@ -401,7 +410,7 @@ function LinkForm({
         <Button type="submit" variant="primary" disabled={saving || !url.trim()}>
           {saving && <Loader2 className="animate-spin" />}
           {editing ? "Salvar alterações" : "Salvar link"}
-          <span className="font-mono text-[11px] opacity-80">⌘↵</span>
+          <Kbd className="border-0 bg-transparent p-0 text-inherit opacity-80">⌘↵</Kbd>
         </Button>
       </DialogFooter>
     </form>

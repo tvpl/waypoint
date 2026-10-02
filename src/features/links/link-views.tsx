@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { ViewTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -12,6 +13,8 @@ import {
   MoreHorizontal,
   PanelRight,
   Pencil,
+  Pin,
+  PinOff,
   ShieldCheck,
   Star,
   Trash2,
@@ -21,19 +24,70 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { SiteIcon } from "@/components/ui/misc";
 import { cn, timeAgo } from "@/lib/utils";
 import { recordOpen, useLinkOpener } from "./link-opener";
-import { useLibrary } from "./library-context";
+import { useLibrary, useSelected, useSelectionMode } from "./library-context";
 import { Cover } from "./cover";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { HealthDot, shortUrl } from "./health";
-import type { LinkItem, ViewMode } from "./types";
+import type { LinkItem, SortMode, ViewMode } from "./types";
+import { normalizeText } from "@/domain/link-query";
+import { useFlip } from "@/lib/use-flip";
+import { tagTint } from "./collection-style";
 
 // ------------------------------------------------------------------ shared bits
+
+/** Marks search terms inside `text`, ignoring case and accents. */
+export function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  const parts = React.useMemo(() => {
+    if (!terms.length || !text) return null;
+    // Normalized copy plus, for each normalized char, the index of its source char.
+    let norm = "";
+    const src: number[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const n = normalizeText(text[i]);
+      for (const ch of n) {
+        norm += ch;
+        src.push(i);
+      }
+    }
+    const ranges: [number, number][] = [];
+    for (const t of terms) {
+      let from = 0;
+      let at: number;
+      while (t && (at = norm.indexOf(t, from)) >= 0) {
+        ranges.push([src[at], src[at + t.length - 1] + 1]);
+        from = at + t.length;
+      }
+    }
+    if (!ranges.length) return null;
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [];
+    for (const r of ranges) {
+      const last = merged.at(-1);
+      if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+      else merged.push([...r]);
+    }
+    const out: React.ReactNode[] = [];
+    let pos = 0;
+    merged.forEach(([a, b], i) => {
+      if (a > pos) out.push(text.slice(pos, a));
+      out.push(
+        <mark key={i} className="rounded-[3px] bg-amber-bg px-px text-inherit">
+          {text.slice(a, b)}
+        </mark>,
+      );
+      pos = b;
+    });
+    if (pos < text.length) out.push(text.slice(pos));
+    return out;
+  }, [text, terms]);
+  return <>{parts ?? text}</>;
+}
 
 function useLinkHandlers(link: LinkItem) {
   const lib = useLibrary();
   const opener = useLinkOpener();
   const onClick = (e: React.MouseEvent) => {
-    if (lib.selectionMode || e.shiftKey) {
+    if (lib.canEdit && (lib.selection.get().size > 0 || e.shiftKey)) {
       e.preventDefault();
       lib.toggleSelect(link.id, { range: e.shiftKey });
       return;
@@ -44,6 +98,100 @@ function useLinkHandlers(link: LinkItem) {
   return { onClick, onAuxClick, opener, lib };
 }
 
+const SWIPE_TRIGGER = 76;
+
+/**
+ * Touch gestures: long-press selects (editors), and on rows a horizontal swipe stars
+ * (→) or archives (←). Mouse and pen input are left alone.
+ */
+function useTouchGestures(link: LinkItem, { swipe = false }: { swipe?: boolean } = {}) {
+  const lib = useLibrary();
+  const [dx, setDx] = React.useState(0);
+  const st = React.useRef<{ x: number; y: number; mode: "idle" | "swipe" | "scroll"; fired: boolean; timer: number | null } | null>(null);
+  const clear = () => {
+    if (st.current?.timer) window.clearTimeout(st.current.timer);
+    if (st.current) st.current.timer = null;
+  };
+  const props = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      st.current = { x: e.clientX, y: e.clientY, mode: "idle", fired: false, timer: null };
+      if (lib.canEdit) {
+        st.current.timer = window.setTimeout(() => {
+          if (!st.current || st.current.mode !== "idle") return;
+          st.current.fired = true;
+          lib.toggleSelect(link.id);
+          navigator.vibrate?.(12);
+        }, 450);
+      }
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const s = st.current;
+      if (!s || e.pointerType !== "touch") return;
+      const mx = e.clientX - s.x;
+      const my = e.clientY - s.y;
+      if (Math.hypot(mx, my) > 8) clear();
+      if (s.mode === "idle" && Math.abs(my) > 10) s.mode = "scroll";
+      if (swipe && s.mode === "idle" && Math.abs(mx) > 12 && Math.abs(mx) > Math.abs(my) * 1.5) {
+        s.mode = "swipe";
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
+      if (s.mode === "swipe") setDx(Math.max(-120, Math.min(120, mx)));
+    },
+    onPointerUp: () => {
+      clear();
+      const s = st.current;
+      if (s?.mode === "swipe") {
+        if (dx >= SWIPE_TRIGGER) void lib.star(link);
+        else if (dx <= -SWIPE_TRIGGER && lib.canEdit) lib.archive([link.id], !link.archived);
+        s.fired = true; // swallow the click that follows
+      }
+      setDx(0);
+    },
+    onPointerCancel: () => {
+      clear();
+      st.current = null;
+      setDx(0);
+    },
+    onClickCapture: (e: React.MouseEvent) => {
+      if (st.current?.fired) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      st.current = null;
+    },
+    onContextMenu: (e: React.MouseEvent) => {
+      // the long-press already selected: no native link menu on top
+      if (st.current?.fired) e.preventDefault();
+    },
+    style: (swipe ? { touchAction: "pan-y", "--swipe": `${dx}px` } : {}) as React.CSSProperties,
+  };
+  return { props, dx };
+}
+
+/** What a swipe will do, shown behind a row while it's dragged sideways. */
+function SwipeUnderlay({ dx, link, canArchive }: { dx: number; link: LinkItem; canArchive: boolean }) {
+  if (!dx) return null;
+  const right = dx > 0;
+  const armed = Math.abs(dx) >= SWIPE_TRIGGER;
+  if (!right && !canArchive) return null;
+  return (
+    <span
+      aria-hidden
+      data-underlay
+      className={cn(
+        "pointer-events-none absolute inset-0 flex items-center rounded-[inherit] px-5 transition-colors [&_svg]:size-5",
+        right ? "justify-start" : "justify-end",
+        right ? (armed ? "bg-amber-bg text-amber-ink" : "bg-subtle text-muted") : armed ? "bg-danger-soft text-danger" : "bg-subtle text-muted",
+      )}
+    >
+      {right ? <Star className={cn(armed && "fill-current")} /> : link.archived ? <ArchiveRestore /> : <Archive />}
+    </span>
+  );
+}
+
+const coarsePointer = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+
 /** Drag source + reorder drop target for a link element. */
 function useLinkDnd(link: LinkItem, axis: "x" | "y") {
   const lib = useLibrary();
@@ -51,9 +199,11 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
   const [dragging, setDragging] = React.useState(false);
   if (!lib.canEdit) return { props: {}, pos: null, dragging: false };
   const props = {
-    draggable: true,
+    // HTML5 drag fights long-press on touch screens; there, Move… does the job.
+    draggable: !coarsePointer(),
     onDragStart: (e: React.DragEvent) => {
-      const ids = lib.selected.has(link.id) ? [...lib.selected] : [link.id];
+      const sel = lib.selection.get();
+      const ids = sel.has(link.id) ? [...sel] : [link.id];
       startDrag(e, { kind: "links", ids }, { url: link.url });
       setDragging(true);
     },
@@ -82,7 +232,10 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
 
 function Checkbox({ link, className }: { link: LinkItem; className?: string }) {
   const lib = useLibrary();
-  const on = lib.selected.has(link.id);
+  const on = useSelected(link.id);
+  const selectionMode = useSelectionMode();
+  // Selection only exists to run bulk edits, which viewers can't do.
+  if (!lib.canEdit) return null;
   return (
     <input
       type="checkbox"
@@ -95,7 +248,7 @@ function Checkbox({ link, className }: { link: LinkItem; className?: string }) {
       }}
       className={cn(
         "relative z-10 m-0 h-4 w-4 cursor-pointer accent-[var(--accent)] transition-opacity",
-        on || lib.selectionMode ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+        on || selectionMode ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
         className,
       )}
     />
@@ -132,7 +285,11 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => lib.star(link)}>
           <Star />
-          {link.starred ? "Remover dos favoritos" : "Favoritar"}
+          {link.starred ? "Remover estrela" : "Marcar com estrela"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => lib.pin(link)}>
+          {link.pinned ? <PinOff /> : <Pin />}
+          {link.pinned ? "Tirar do acesso rápido" : "Fixar no acesso rápido"}
         </DropdownMenuItem>
         {lib.canEdit && (
           <>
@@ -142,7 +299,7 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
                 <Waypoints />
                 <span className="flex min-w-0 flex-col">
                   <span>Atualizar para a nova URL</span>
-                  <span className="max-w-[220px] truncate font-mono text-[11px] text-muted">{shortUrl(link.healthFinalUrl, 40)}</span>
+                  <span className="max-w-[220px] truncate font-mono text-caption text-muted">{shortUrl(link.healthFinalUrl, 40)}</span>
                 </span>
               </DropdownMenuItem>
             )}
@@ -176,14 +333,16 @@ export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; tri
 }
 
 const floatBtn =
-  "inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 text-ink shadow-[0_1px_3px_rgba(23,23,28,.15)] backdrop-blur hover:bg-surface [&_svg]:size-[15px]";
+  "inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 text-ink shadow-thumb backdrop-blur hover:bg-surface [&_svg]:size-[15px]";
 
 function Summary({ link, className }: { link: LinkItem; className?: string }) {
   const lib = useLibrary();
   const mode = lib.summaryFor(link);
   if (mode === "hidden" || !link.description) return null;
   return (
-    <p className={cn(className, mode === "hover" && "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100")}>{link.description}</p>
+    <p className={cn(className, mode === "hover" && "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100")}>
+      <Highlight text={link.description} terms={lib.highlight} />
+    </p>
   );
 }
 
@@ -199,7 +358,11 @@ function Tags({ link, max }: { link: LinkItem; max: number }) {
           type="button"
           onClick={() => lib.filterTag(t)}
           title={`Filtrar por #${t}`}
-          className="relative z-10 shrink-0 rounded-full bg-subtle px-2 py-0.5 text-xs text-ink-2 hover:bg-hover hover:text-ink"
+          style={tagTint(lib.tagColor(t))}
+          className={cn(
+            "relative z-10 shrink-0 rounded-full px-2 py-0.5 text-xs",
+            lib.tagColor(t) ? "wp-tint font-medium hover:brightness-95" : "bg-subtle text-ink-2 hover:bg-hover hover:text-ink",
+          )}
         >
           #{t}
         </button>
@@ -229,12 +392,16 @@ function StarButton({ link, className }: { link: LinkItem; className?: string })
 function LinkCard({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, opener, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "x");
-  const selected = lib.selected.has(link.id);
+  const touch = useTouchGestures(link);
+  const selected = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   return (
     <article
+      data-flip={link.id}
       {...dnd.props}
+      {...touch.props}
       className={cn(
-        "group relative flex flex-col overflow-visible rounded-[14px] border bg-surface transition-[box-shadow,transform,opacity] hover:-translate-y-px hover:shadow-[0_10px_30px_-12px_rgba(23,23,28,.22)] dark:hover:shadow-[0_10px_30px_-12px_rgba(0,0,0,.7)]",
+        "group relative flex flex-col overflow-visible rounded-card border bg-surface transition-[box-shadow,transform,opacity] [-webkit-touch-callout:none] hover:-translate-y-px hover:shadow-raise",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
@@ -253,16 +420,17 @@ function LinkCard({ link }: { link: LinkItem }) {
             draggable={false}
             onClick={onClick}
             onAuxClick={onAuxClick}
-            className="min-w-0 truncate text-[15px] font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-[14px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+            data-link-primary={link.id}
+            className="min-w-0 truncate text-lead font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
-            {link.title}
+            <Highlight text={link.title} terms={lib.highlight} />
           </a>
         </div>
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
           <HealthDot link={link} />
         </span>
-        <Summary link={link} className="line-clamp-2 text-[13px] leading-[19px] text-ink-2" />
+        <Summary link={link} className="line-clamp-2 text-body leading-[19px] text-ink-2" />
         {link.tags.length > 0 && (
           <div className="mt-0.5 flex flex-wrap gap-1.5">
             <Tags link={link} max={4} />
@@ -273,7 +441,7 @@ function LinkCard({ link }: { link: LinkItem }) {
         <Checkbox link={link} className="h-[18px] w-[18px]" />
       </div>
       {link.starred && (
-        <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex pointer-coarse:hidden h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-[0_1px_3px_rgba(23,23,28,.15)] transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
+        <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex pointer-coarse:hidden h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-thumb transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
           <Star className="size-[15px] fill-amber-ink text-amber-ink" aria-label="Favorito" />
         </span>
       )}
@@ -314,19 +482,25 @@ const rowIconBtn = "inline-flex h-7 w-7 items-center justify-center rounded-md t
 function CompactRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, opener, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
-  const selected = lib.selected.has(link.id);
+  const touch = useTouchGestures(link, { swipe: true });
+  const selected = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   return (
     <div
+      data-flip={link.id}
       {...dnd.props}
+      {...touch.props}
       className={cn(
-        "group relative flex items-center gap-3 rounded-[10px] border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2",
+        "group relative flex items-center gap-3 rounded-control border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2",
+        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]", touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
     >
+      <SwipeUnderlay dx={touch.dx} link={link} canArchive={lib.canEdit} />
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[6px]" : "-bottom-[6px]")} />}
       <span className="relative inline-flex">
-        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", "group-hover:opacity-30")} />
+        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
         <span className="absolute inset-0 flex items-center justify-center">
           <Checkbox link={link} />
         </span>
@@ -340,14 +514,15 @@ function CompactRow({ link }: { link: LinkItem }) {
             draggable={false}
             onClick={onClick}
             onAuxClick={onAuxClick}
-            className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-[10px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+            data-link-primary={link.id}
+            className="truncate text-sm font-medium text-ink outline-none after:absolute after:inset-0 after:rounded-control after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
-            {link.title}
+            <Highlight text={link.title} terms={lib.highlight} />
           </a>
           <HealthDot link={link} />
         </span>
         <Summary link={link} className="truncate text-xs text-muted" />
-        {lib.summaryFor(link) === "hidden" || !link.description ? <span className="truncate font-mono text-[11px] text-muted">{link.domain}</span> : null}
+        {lib.summaryFor(link) === "hidden" || !link.description ? <span className="truncate font-mono text-caption text-muted">{link.domain}</span> : null}
       </div>
       <div className="hidden shrink-0 gap-1.5 xl:flex">
         <Tags link={link} max={2} />
@@ -383,27 +558,36 @@ function CompactRow({ link }: { link: LinkItem }) {
 
 // ------------------------------------------------------------------ list
 
+/** Sorts based on this user's opens show "last opened" in the date column instead of "added". */
+const byOpen = (s: SortMode) => s === "visited" || s === "opened" || s === "foryou";
+
 const listCols = "grid grid-cols-[minmax(0,1fr)_108px] gap-3 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_130px] md:gap-4";
 
 function ListRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
-  const selected = lib.selected.has(link.id);
+  const touch = useTouchGestures(link, { swipe: true });
+  const selected = useSelected(link.id);
+  const selectionMode = useSelectionMode();
   return (
     <div
       role="row"
+      data-flip={link.id}
       {...dnd.props}
+      {...touch.props}
       className={cn(
         listCols,
-        "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-[13px] last:border-b-0 hover:bg-surface-2 md:px-4",
+        "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-body last:border-b-0 hover:bg-surface-2 md:px-4",
+        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]", touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
         selected && "bg-accent-soft/60 hover:bg-accent-soft/80",
         dnd.dragging && "opacity-50",
       )}
     >
+      <SwipeUnderlay dx={touch.dx} link={link} canArchive={lib.canEdit} />
       {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[2px]" : "-bottom-[2px]")} />}
       <span role="cell" className="flex min-w-0 items-center gap-3">
         <span className="relative inline-flex">
-          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || lib.selectionMode) && "opacity-0", "group-hover:opacity-30")} />
+          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
           <span className="absolute inset-0 flex items-center justify-center">
             <Checkbox link={link} />
           </span>
@@ -417,9 +601,10 @@ function ListRow({ link }: { link: LinkItem }) {
               draggable={false}
               onClick={onClick}
               onAuxClick={onAuxClick}
+              data-link-primary={link.id}
               className="truncate font-medium text-ink outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-accent"
             >
-              {link.title}
+              <Highlight text={link.title} terms={lib.highlight} />
             </a>
             <span className="hidden shrink truncate font-mono text-xs text-muted lg:inline">{link.domain}</span>
             <HealthDot link={link} className="self-center" />
@@ -441,7 +626,9 @@ function ListRow({ link }: { link: LinkItem }) {
         <Tags link={link} max={3} />
       </span>
       <span role="cell" className="flex items-center justify-between gap-2 text-muted">
-        <span suppressHydrationWarning className="whitespace-nowrap">{timeAgo(link.updatedAt)}</span>
+        <span suppressHydrationWarning className="whitespace-nowrap">
+          {byOpen(lib.sort) ? (link.myLastOpenedAt ? timeAgo(link.myLastOpenedAt) : "nunca") : timeAgo(link.createdAt)}
+        </span>
         <span className="relative z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100">
           <LinkMenu
             link={link}
@@ -459,7 +646,7 @@ function ListRow({ link }: { link: LinkItem }) {
 
 function ListView({ links }: { links: LinkItem[] }) {
   const lib = useLibrary();
-  const head = (label: string, sort?: "title" | "recent") =>
+  const head = (label: string, sort?: "title" | "recent" | "visited") =>
     sort ? (
       <button
         type="button"
@@ -479,7 +666,7 @@ function ListView({ links }: { links: LinkItem[] }) {
         <span role="columnheader">{head("Nome", "title")}</span>
         <span role="columnheader" className="max-md:hidden">Coleção</span>
         <span role="columnheader" className="max-md:hidden">Tags</span>
-        <span role="columnheader">{head("Atualizado", "recent")}</span>
+        <span role="columnheader">{byOpen(lib.sort) ? head("Aberto", "visited") : head("Adicionado", "recent")}</span>
       </div>
       {links.map((l) => (
         <ListRow key={l.id} link={l} />
@@ -489,21 +676,41 @@ function ListView({ links }: { links: LinkItem[] }) {
 }
 
 export function LinkViews({ links, view }: { links: LinkItem[]; view: ViewMode }) {
-  if (view === "list") return <ListView links={links} />;
-  if (view === "compact") {
-    return (
-      <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
-        {links.map((l) => (
-          <CompactRow key={l.id} link={l} />
-        ))}
-      </div>
-    );
-  }
+  const ref = React.useRef<HTMLDivElement>(null);
+  useFlip(ref, links, view);
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
-      {links.map((l) => (
-        <LinkCard key={l.id} link={l} />
-      ))}
+    // Switching views crossfades (the toggle navigates inside a transition).
+    <ViewTransition key={view} enter="wp-vt-fade" exit="wp-vt-fade" default="none">
+      <div ref={ref}>
+        {view === "list" ? (
+          <ListView links={links} />
+        ) : view === "compact" ? (
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
+            {links.map((l, i) => (
+              <Stagger key={l.id} i={i}>
+                <CompactRow link={l} />
+              </Stagger>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
+            {links.map((l, i) => (
+              <Stagger key={l.id} i={i}>
+                <LinkCard link={l} />
+              </Stagger>
+            ))}
+          </div>
+        )}
+      </div>
+    </ViewTransition>
+  );
+}
+
+/** Items rise in, a beat apart, the first time they mount (first rows only). */
+function Stagger({ i, children }: { i: number; children: React.ReactElement<{ className?: string }> }) {
+  return (
+    <div className="flex animate-stagger flex-col [&>*]:flex-1" style={{ animationDelay: `${Math.min(i, 14) * 22}ms` }}>
+      {children}
     </div>
   );
 }

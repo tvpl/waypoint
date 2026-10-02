@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import { after } from "next/server";
+import { sweepStaleLinks } from "@/server/services/link-health";
 import { redirect } from "next/navigation";
 import { canEditWorkspace, requireWorkspace } from "@/server/services/workspaces";
-import { collectionPath, listFavorites, listMarks } from "@/server/services/links";
+import { collectionPath, listMarks } from "@/server/services/links";
 import { listTags } from "@/server/services/tags";
 import { shareTokenFor } from "@/server/services/permissions";
-import { findNode, flatNodes, isPinned, libraryCounts, toLinkItem, visibleTree } from "@/features/links/server-data";
+import { flatNodes, isPinned, libraryCounts, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
 import { LinksLibrary } from "@/features/links/library";
-import { SCOPES, SORT_MODES, VIEW_MODES, type CurrentCollection, type Scope, type SortMode, type ViewMode } from "@/features/links/types";
+import { listSavedSearches } from "@/server/services/saved-searches";
+import { PREF_VIEW_COOKIE } from "@/features/links/view-cookie";
+import { SORT_MODES, VIEW_MODES, type CurrentCollection, type SavedSearchItem, type SortMode, type ViewMode } from "@/features/links/types";
 
 export const metadata: Metadata = { title: "Links" };
 
@@ -15,53 +20,28 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export default async function LinksPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await requireWorkspace();
   const sp = await searchParams;
-  const one = (k: string) => {
-    const v = sp[k];
-    return (Array.isArray(v) ? v[0] : v) ?? null;
-  };
-  const many = (k: string) => {
-    const v = sp[k];
-    return (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
-  };
-
   const wsId = ctx.workspace.id;
   const userId = ctx.user.id;
   const { tree, hidden } = visibleTree(wsId, userId);
+  const { one, node, scope, q, activeTags, filtering, sort, viewParam, filter, invalidCollection } = resolveLibraryParams(sp, tree);
+  if (invalidCollection) redirect("/links");
+  // Re-check the stalest links in the background so "Quebrados" stays current.
+  after(() => sweepStaleLinks(wsId).catch(() => null));
 
-  const cId = one("c");
-  const node = cId ? findNode(tree, cId) : undefined;
-  if (cId && !node) redirect("/links");
-
-  const rawScope = one("scope");
-  const scope: Scope = !node && rawScope && (SCOPES as string[]).includes(rawScope) ? (rawScope as Scope) : "all";
-  const q = (one("q") ?? "").slice(0, 200);
-  const activeTags = [...new Set(many("tag").map((t) => t.slice(0, 48)))];
-  const filtering = !!q.trim() || activeTags.length > 0;
-  const rawSort = one("sort");
-  const manualAllowed = !!node || scope === "unsorted";
-  const defaultSort: SortMode = scope === "recent" ? "opened" : manualAllowed ? "manual" : "recent";
-  const sort: SortMode =
-    rawSort && (SORT_MODES as string[]).includes(rawSort) && (rawSort !== "manual" || manualAllowed) ? (rawSort as SortMode) : defaultSort;
-  const rawView = one("view");
-  const viewParam = rawView && (VIEW_MODES as string[]).includes(rawView) ? (rawView as ViewMode) : null;
+  const saved: SavedSearchItem[] = listSavedSearches(userId, wsId).map((s) => ({
+    id: s.id,
+    name: s.name,
+    query: s.query,
+    sort: s.sort && (SORT_MODES as string[]).includes(s.sort) ? (s.sort as SortMode) : null,
+  }));
+  const savedSearch = saved.find((s) => s.id === one("saved")) ?? null;
+  const cookieView = (await cookies()).get(PREF_VIEW_COOKIE)?.value;
+  const storedView = cookieView && (VIEW_MODES as string[]).includes(cookieView) ? (cookieView as ViewMode) : null;
 
   const allNodes = flatNodes(tree);
   const sharedCollections = allNodes.filter((n) => n.visibility === "link" || n.visibility === "public");
 
-  const links =
-    scope === "shared" && !node
-      ? []
-      : listFavorites(wsId, userId, {
-          collectionId: node?.id,
-          deep: node ? filtering : undefined,
-          scope: node ? undefined : scope === "shared" ? "all" : scope,
-          tags: activeTags,
-          q,
-          sort,
-          limit: 1000,
-        })
-          .filter((f) => !f.collectionId || !hidden.has(f.collectionId))
-          .map(toLinkItem);
+  const page = scope === "shared" && !node ? { links: [], hasMore: false } : loadLibraryPage(wsId, userId, filter, 0);
 
   const current: CurrentCollection | null = node
     ? {
@@ -72,9 +52,9 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
       }
     : null;
 
-  const tags = listTags(wsId)
+  const tags = listTags(wsId, userId)
     .filter((t) => t.links > 0)
-    .map((t) => ({ name: t.name, count: t.links }))
+    .map((t) => ({ name: t.name, count: t.links, color: t.color }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   const pinned = listMarks(userId, "pin")
@@ -86,7 +66,11 @@ export default async function LinksPage({ searchParams }: { searchParams: Search
       tree={tree}
       current={current}
       scope={scope}
-      links={links}
+      links={page.links}
+      hasMore={page.hasMore}
+      storedView={storedView}
+      saved={saved}
+      savedSearch={savedSearch}
       sharedCollections={sharedCollections}
       tags={tags}
       counts={libraryCounts(wsId, userId, hidden, sharedCollections.length)}

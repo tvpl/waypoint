@@ -38,7 +38,7 @@ export function PublicCollectionView({
       <div className="mx-auto flex max-w-[1240px] flex-col gap-8 px-5 py-10 sm:px-8">
         <header className="flex flex-col gap-3">
           {path.length > 1 && (
-            <nav aria-label="Caminho" className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
+            <nav aria-label="Caminho" className="flex flex-wrap items-center gap-1.5 text-body text-muted">
               {path.map((p, i) => (
                 <React.Fragment key={p.id}>
                   {i > 0 && <ChevronRight className="size-3" aria-hidden />}
@@ -58,7 +58,7 @@ export function PublicCollectionView({
           <div className="flex items-start gap-4">
             <CollectionTile icon={collection.icon} color={collection.color} size={44} />
             <div className="flex min-w-0 flex-col gap-1.5">
-              <h1 className="font-display text-[40px] font-normal leading-[1.05]">{collection.name}</h1>
+              <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">{collection.name}</h1>
               {collection.description && <p className="max-w-[720px] text-sm leading-6 text-muted">{collection.description}</p>}
               <p className="text-xs text-muted">
                 {links.length} {links.length === 1 ? "link" : "links"}
@@ -69,7 +69,7 @@ export function PublicCollectionView({
           {children.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-1">
               {children.map((c) => (
-                <a key={c.id} href={href(c.id)} className="inline-flex h-8 items-center gap-2 rounded-[9px] border border-line bg-surface px-3 text-[13px] hover:bg-surface-2">
+                <a key={c.id} href={href(c.id)} className="inline-flex h-8 items-center gap-2 rounded-control border border-line bg-surface px-3 text-body hover:bg-surface-2">
                   <CollectionGlyph icon={c.icon} color={c.color} />
                   {c.name}
                   <span className="text-xs text-muted">{c.totalCount}</span>
@@ -88,7 +88,7 @@ export function PublicCollectionView({
           if (!items.length) return null;
           return (
             <section key={node.id} aria-labelledby={`pc-${node.id}`} className="flex flex-col gap-3">
-              <h2 id={`pc-${node.id}`} className="flex items-center gap-2 text-[15px] font-semibold">
+              <h2 id={`pc-${node.id}`} className="flex items-center gap-2 text-lead font-semibold">
                 <CollectionGlyph icon={node.icon} color={node.color} />
                 <a href={href(node.id)} className="hover:text-accent-ink">
                   {trail.length > 0 && <span className="font-normal text-muted">{trail.join(" / ")} / </span>}
@@ -114,11 +114,11 @@ function PublicGrid({ links }: { links: PublicLink[] }) {
       {links.map((l) => (
         <article
           key={l.id}
-          className="group relative flex flex-col overflow-hidden rounded-[14px] border border-line bg-surface transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-[0_10px_30px_-12px_rgba(23,23,28,.22)]"
+          className="group relative flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise"
         >
           <div className="relative h-[112px] overflow-hidden">
             <Cover link={l} />
-            <span className="absolute right-2.5 top-2.5 inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 text-ink opacity-0 shadow-[0_1px_3px_rgba(23,23,28,.15)] transition-opacity group-hover:opacity-100">
+            <span className="absolute right-2.5 top-2.5 inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 text-ink opacity-0 shadow-thumb transition-opacity group-hover:opacity-100">
               <ExternalLink className="size-[15px]" aria-hidden />
             </span>
           </div>
@@ -129,7 +129,7 @@ function PublicGrid({ links }: { links: PublicLink[] }) {
                 href={l.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="min-w-0 truncate text-[15px] font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+                className="min-w-0 truncate text-lead font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
               >
                 {l.title}
               </a>
@@ -138,7 +138,7 @@ function PublicGrid({ links }: { links: PublicLink[] }) {
             {l.description && l.summaryBehavior !== "hidden" && (
               <p
                 className={cn(
-                  "line-clamp-2 text-[13px] leading-[19px] text-ink-2",
+                  "line-clamp-2 text-body leading-[19px] text-ink-2",
                   l.summaryBehavior === "hover" && "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
                 )}
               >

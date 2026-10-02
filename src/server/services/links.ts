@@ -3,7 +3,9 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from "d
 import { getDb, schema } from "../db";
 import type { OpenBehavior, SummaryBehavior, Visibility } from "../db/schema";
 import { domainOf, newId } from "@/lib/utils";
-import { indexEntity, removeEntity } from "./search";
+import { canonicalUrl, stripTracking } from "@/lib/url";
+import { indexEntity, removeEntity, toFtsQuery } from "./search";
+import { normalizeText, parseLinkQuery, type LinkQuery } from "@/domain/link-query";
 import { ensureTags, setFavoriteTags, tagsForFavorites } from "./tags";
 import { UserError } from "./workspaces";
 
@@ -42,6 +44,36 @@ export function getCollectionTree(workspaceId: string): CollectionNode[] {
   const total = (n: CollectionNode): number => (n.totalCount = n.linkCount + n.children.reduce((s, c) => s + total(c), 0));
   roots.forEach(total);
   return roots;
+}
+
+/**
+ * Subquery with the ids of collections `userId` can't see: other people's private
+ * collections and everything nested below them (mirrors collectionAccess for members).
+ * An empty `userId` (anonymous) hides every private collection.
+ */
+function hiddenCollectionsSql(workspaceId: string, userId: string): SQL {
+  return sql`(with recursive hidden_cols(id) as (
+      select hc.id from collections hc
+        where hc.workspace_id = ${workspaceId} and hc.visibility = 'private' and hc.created_by is not ${userId}
+      union
+      select hc2.id from collections hc2 join hidden_cols on hc2.parent_id = hidden_cols.id
+    ) select id from hidden_cols)`;
+}
+
+/** Ids of collections hidden from `userId` (see hiddenCollectionsSql). */
+export function hiddenCollectionIds(workspaceId: string, userId: string): Set<string> {
+  const rows = getDb().all<{ id: string }>(sql`select id from ${hiddenCollectionsSql(workspaceId, userId)}`);
+  return new Set(rows.map((r) => r.id));
+}
+
+/** Condition on `favorites`: the link is not inside a collection hidden from `userId`. */
+export function favoriteVisibleTo(workspaceId: string, userId: string): SQL {
+  return sql`(${schema.favorites.collectionId} is null or ${schema.favorites.collectionId} not in ${hiddenCollectionsSql(workspaceId, userId)})`;
+}
+
+/** Condition on `collections`: the collection is not hidden from `userId`. */
+export function collectionVisibleTo(workspaceId: string, userId: string): SQL {
+  return sql`${schema.collections.id} not in ${hiddenCollectionsSql(workspaceId, userId)}`;
 }
 
 export function flattenTree(nodes: CollectionNode[], depth = 0): (CollectionNode & { depth: number })[] {
@@ -221,6 +253,9 @@ export type FavoriteInput = {
   openBehavior?: OpenBehavior;
   summaryBehavior?: SummaryBehavior;
   tags?: string[];
+  notes?: string | null;
+  /** Quick capture: lands in the inbox for triage (only when no collection is given). */
+  inbox?: boolean;
 };
 
 export function normalizeUrl(raw: string): string {
@@ -228,7 +263,8 @@ export function normalizeUrl(raw: string): string {
   const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`;
   const u = new URL(withScheme);
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new UserError("Apenas links http(s) são suportados.");
-  return u.toString();
+  // utm_*, fbclid… identify a campaign, not the page.
+  return stripTracking(u.toString());
 }
 
 export function createFavorite(workspaceId: string, userId: string, input: FavoriteInput) {
@@ -255,6 +291,10 @@ export function createFavorite(workspaceId: string, userId: string, input: Favor
         icon: input.icon ?? null,
         openBehavior: input.openBehavior ?? "new_tab",
         summaryBehavior: input.summaryBehavior ?? "always",
+        notes: input.notes?.trim() || null,
+        inboxAt: input.inbox && !input.collectionId ? new Date() : null,
+        // Created with metadata already looked up (dialog, API): nothing left to enrich.
+        enrichedAt: input.favicon || input.coverImage || input.description ? new Date() : null,
         sortOrder: nextSort(
           schema.favorites,
           and(
@@ -281,10 +321,15 @@ export function updateFavorite(id: string, patch: Partial<FavoriteInput>) {
     if (set.url !== fav.url) Object.assign(set, { healthStatus: "unknown", healthCode: null, healthFinalUrl: null, healthCheckedAt: null });
   }
   if (patch.title !== undefined) set.title = patch.title.trim() || fav.domain;
-  for (const k of ["description", "keywords", "favicon", "coverImage", "icon"] as const) {
+  for (const k of ["description", "keywords", "favicon", "coverImage", "icon", "notes"] as const) {
     if (patch[k] !== undefined) set[k] = typeof patch[k] === "string" ? patch[k]!.trim() || null : null;
   }
-  if (patch.collectionId !== undefined) set.collectionId = patch.collectionId;
+  if (patch.collectionId !== undefined) {
+    set.collectionId = patch.collectionId;
+    // Filing a link into a collection takes it out of the inbox.
+    if (patch.collectionId) set.inboxAt = null;
+  }
+  if (patch.inbox !== undefined) set.inboxAt = patch.inbox ? (fav.inboxAt ?? new Date()) : null;
   if (patch.openBehavior) set.openBehavior = patch.openBehavior;
   if (patch.summaryBehavior) set.summaryBehavior = patch.summaryBehavior;
   const db = getDb();
@@ -323,7 +368,7 @@ export function moveFavorite(id: string, collectionId: string | null, index?: nu
     siblings.splice(at, 0, id);
     siblings.forEach((fid, i) => {
       tx.update(schema.favorites)
-        .set(fid === id ? { collectionId, sortOrder: i, updatedAt: new Date() } : { sortOrder: i })
+        .set(fid === id ? { collectionId, sortOrder: i, updatedAt: new Date(), ...(collectionId ? { inboxAt: null } : {}) } : { sortOrder: i })
         .where(eq(schema.favorites.id, fid))
         .run();
     });
@@ -357,6 +402,11 @@ export function recordOpen(id: string, userId: string) {
   touchRecent(userId, "favorite", id);
 }
 
+/** Rebuilds the search entries of these links (e.g. after a tag rename). */
+export function reindexFavorites(ids: string[]) {
+  for (const id of ids) indexFavorite(id);
+}
+
 function indexFavorite(id: string) {
   const f = getFavorite(id);
   if (!f) return;
@@ -368,27 +418,101 @@ function indexFavorite(id: string) {
     id,
     parentId: f.collectionId,
     title: f.title,
-    body: [f.description, f.keywords, f.domain, f.url].filter(Boolean).join(" \n"),
+    body: [f.description, f.notes, f.keywords, f.domain, f.url].filter(Boolean).join(" \n"),
     tags: tags.join(" "),
   });
 }
 
-export type FavoriteView = FavoriteRow & { tags: string[]; starred: boolean; collectionName: string | null };
+/** SQL conditions for a parsed library query (see domain/link-query.ts). Joins `recents` for this user. */
+function queryConditions(workspaceId: string, userId: string, q: LinkQuery): SQL[] {
+  const f = schema.favorites;
+  const conds: SQL[] = [];
+  for (const term of q.terms) {
+    // Full-text (word prefixes, accent-insensitive) OR substring, so "flow" still finds "ReactFlow".
+    const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const fts = toFtsQuery(term);
+    const ftsCond = fts
+      ? sql`${f.id} in (select entity_id from search_index where search_index match ${fts} and entity_type = 'favorite' and workspace_id = ${workspaceId})`
+      : sql`0`;
+    conds.push(sql`(${ftsCond}
+      or lower(${f.title}) like ${like} escape '\\'
+      or lower(coalesce(${f.description}, '')) like ${like} escape '\\'
+      or lower(${f.url}) like ${like} escape '\\'
+      or lower(coalesce(${f.keywords}, '')) like ${like} escape '\\'
+      or exists (select 1 from collections qc where qc.id = ${f.collectionId} and lower(qc.name) like ${like} escape '\\')
+      or exists (select 1 from favorite_tags ft join tags tg on tg.id = ft.tag_id where ft.favorite_id = ${f.id} and tg.name like ${like} escape '\\'))`);
+  }
+  const hasTag = (t: string) => sql`exists (select 1 from favorite_tags ft join tags tg on tg.id = ft.tag_id where ft.favorite_id = ${f.id} and lower(tg.name) = ${t})`;
+  for (const t of q.tags) conds.push(hasTag(t));
+  for (const t of q.notTags) conds.push(sql`not ${hasTag(t)}`);
+  const onSite = (s: string) => sql`(replace(lower(${f.domain}), 'www.', '') = ${s} or lower(${f.domain}) like ${`%.${s}`})`;
+  if (q.sites.length) conds.push(sql`(${sql.join(q.sites.map(onSite), sql` or `)})`);
+  for (const s of q.notSites) conds.push(sql`not ${onSite(s)}`);
+  if (q.collections.length) {
+    const cols = getDb()
+      .select({ id: schema.collections.id, name: schema.collections.name })
+      .from(schema.collections)
+      .where(eq(schema.collections.workspaceId, workspaceId))
+      .all();
+    for (const name of q.collections) {
+      const ids = cols.filter((c) => normalizeText(c.name) === name).flatMap((c) => descendantIds(c.id));
+      conds.push(ids.length ? inArray(f.collectionId, ids) : sql`0`);
+    }
+  }
+  const marked = (mark: "star" | "pin") =>
+    sql`exists (select 1 from user_marks m where m.user_id = ${userId} and m.entity_type = 'favorite' and m.entity_id = ${f.id} and m.mark = ${mark})`;
+  for (const v of q.is) {
+    if (v === "starred") conds.push(marked("star"));
+    else if (v === "pinned") conds.push(marked("pin"));
+    else if (v === "broken") conds.push(inArray(f.healthStatus, ["broken", "unreachable"]));
+    else if (v === "unsorted") conds.push(isNull(f.collectionId));
+    else if (v === "opened") conds.push(isNotNull(schema.recents.openedAt));
+    else if (v === "unopened") conds.push(isNull(schema.recents.openedAt));
+  }
+  if (q.addedDays != null) conds.push(sql`${f.createdAt} >= ${Date.now() - q.addedDays * 86_400_000}`);
+  return conds;
+}
+
+export type FavoriteView = FavoriteRow & {
+  tags: string[];
+  starred: boolean;
+  /** Pinned to this user's quick access. */
+  pinned: boolean;
+  collectionName: string | null;
+  /** This user's own opens (the favorite's openCount/lastOpenedAt are workspace-wide). */
+  myOpenCount: number;
+  myLastOpenedAt: Date | null;
+};
+
+export type FavoriteSort = "manual" | "recent" | "title" | "opened" | "visited" | "foryou";
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Frecency of a link for one user: opens weighted by how recently the last one happened,
+ * count / (1 + weeks²) — a week-old link counts half, a month-old one about a twentieth.
+ * Links never opened score 0.
+ */
+function frecencySql(now = Date.now()): SQL {
+  const weeks = sql`((${now} - ${schema.recents.openedAt}) * 1.0 / ${WEEK_MS})`;
+  return sql`coalesce(${schema.recents.openCount} * 1.0 / (1 + ${weeks} * ${weeks}), 0)`;
+}
 
 export type FavoriteFilter = {
   collectionId?: string | null;
   /** include links of nested collections */
   deep?: boolean;
-  scope?: "all" | "recent" | "starred" | "unsorted" | "archived" | "broken";
+  scope?: "all" | "recent" | "starred" | "unsorted" | "archived" | "broken" | "inbox";
   tags?: string[];
   q?: string;
-  sort?: "manual" | "recent" | "title" | "opened";
+  sort?: FavoriteSort;
   limit?: number;
+  offset?: number;
 };
 
 export function listFavorites(workspaceId: string, userId: string, f: FavoriteFilter = {}): FavoriteView[] {
   const db = getDb();
-  const conds: (SQL | undefined)[] = [eq(schema.favorites.workspaceId, workspaceId)];
+  const conds: (SQL | undefined)[] = [eq(schema.favorites.workspaceId, workspaceId), favoriteVisibleTo(workspaceId, userId)];
   conds.push(f.scope === "archived" ? isNotNull(schema.favorites.archivedAt) : isNull(schema.favorites.archivedAt));
   if (f.collectionId) {
     conds.push(
@@ -398,7 +522,8 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
     );
   }
   if (f.scope === "unsorted") conds.push(isNull(schema.favorites.collectionId));
-  if (f.scope === "recent") conds.push(isNotNull(schema.favorites.lastOpenedAt));
+  if (f.scope === "inbox") conds.push(isNotNull(schema.favorites.inboxAt));
+  if (f.scope === "recent") conds.push(isNotNull(schema.recents.openedAt));
   if (f.scope === "broken") conds.push(inArray(schema.favorites.healthStatus, ["broken", "unreachable"]));
   if (f.scope === "starred") {
     conds.push(
@@ -412,50 +537,64 @@ export function listFavorites(workspaceId: string, userId: string, f: FavoriteFi
       );
     }
   }
-  if (f.q?.trim()) {
-    const like = `%${f.q.trim().toLowerCase().replace(/[%_]/g, "")}%`;
-    conds.push(
-      sql`(lower(${schema.favorites.title}) like ${like} or lower(coalesce(${schema.favorites.description}, '')) like ${like} or lower(${schema.favorites.url}) like ${like} or lower(coalesce(${schema.favorites.keywords}, '')) like ${like} or exists (select 1 from favorite_tags ft join tags tg on tg.id = ft.tag_id where ft.favorite_id = ${schema.favorites.id} and tg.name like ${like}))`,
-    );
-  }
-  const sort = f.sort ?? (f.scope === "recent" ? "opened" : f.collectionId ? "manual" : "recent");
-  const order =
+  if (f.q?.trim()) conds.push(...queryConditions(workspaceId, userId, parseLinkQuery(f.q)));
+  const sort = f.sort ?? (f.scope === "recent" ? "visited" : f.collectionId ? "manual" : "recent");
+  // The inbox is a queue: oldest capture first.
+  const inboxOrder = f.scope === "inbox" && !f.sort;
+  const byCreated = desc(schema.favorites.createdAt);
+  const order: SQL[] =
     sort === "manual"
-      ? [asc(schema.favorites.sortOrder), desc(schema.favorites.createdAt)]
+      ? [asc(schema.favorites.sortOrder), byCreated]
       : sort === "title"
         ? [asc(sql`lower(${schema.favorites.title})`)]
         : sort === "opened"
-          ? [desc(schema.favorites.lastOpenedAt)]
-          : [desc(schema.favorites.createdAt)];
+          ? [sql`coalesce(${schema.recents.openCount}, 0) desc`, sql`${schema.recents.openedAt} desc nulls last`, byCreated]
+          : sort === "visited"
+            ? [sql`${schema.recents.openedAt} desc nulls last`, byCreated]
+            : sort === "foryou"
+              ? [sql`${frecencySql()} desc`, byCreated]
+              : inboxOrder
+                ? [asc(schema.favorites.inboxAt)]
+                : [byCreated];
 
   const rows = db
-    .select({ fav: schema.favorites, collectionName: schema.collections.name })
+    .select({
+      fav: schema.favorites,
+      collectionName: schema.collections.name,
+      myOpenCount: schema.recents.openCount,
+      myLastOpenedAt: schema.recents.openedAt,
+    })
     .from(schema.favorites)
     .leftJoin(schema.collections, eq(schema.collections.id, schema.favorites.collectionId))
+    .leftJoin(
+      schema.recents,
+      and(eq(schema.recents.userId, userId), eq(schema.recents.entityType, "favorite"), eq(schema.recents.entityId, schema.favorites.id)),
+    )
     .where(and(...conds))
     .orderBy(...order)
     .limit(f.limit ?? 500)
+    .offset(f.offset ?? 0)
     .all();
   const ids = rows.map((r) => r.fav.id);
   const tagMap = tagsForFavorites(ids);
-  const stars = new Set(
-    ids.length
-      ? db
-          .select({ id: schema.userMarks.entityId })
-          .from(schema.userMarks)
-          .where(
-            and(
-              eq(schema.userMarks.userId, userId),
-              eq(schema.userMarks.entityType, "favorite"),
-              eq(schema.userMarks.mark, "star"),
-              inArray(schema.userMarks.entityId, ids),
-            ),
-          )
-          .all()
-          .map((r) => r.id)
-      : [],
-  );
-  return rows.map((r) => ({ ...r.fav, tags: tagMap.get(r.fav.id) ?? [], starred: stars.has(r.fav.id), collectionName: r.collectionName }));
+  const marks = ids.length
+    ? db
+        .select({ id: schema.userMarks.entityId, mark: schema.userMarks.mark })
+        .from(schema.userMarks)
+        .where(and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, "favorite"), inArray(schema.userMarks.entityId, ids)))
+        .all()
+    : [];
+  const stars = new Set(marks.filter((m) => m.mark === "star").map((m) => m.id));
+  const pins = new Set(marks.filter((m) => m.mark === "pin").map((m) => m.id));
+  return rows.map((r) => ({
+    ...r.fav,
+    tags: tagMap.get(r.fav.id) ?? [],
+    starred: stars.has(r.fav.id),
+    pinned: pins.has(r.fav.id),
+    collectionName: r.collectionName,
+    myOpenCount: r.myOpenCount ?? 0,
+    myLastOpenedAt: r.myLastOpenedAt ?? null,
+  }));
 }
 
 export function countFavorites(workspaceId: string) {
@@ -484,6 +623,19 @@ export function toggleMark(userId: string, entityType: "plan" | "collection" | "
   return !exists;
 }
 
+/** Sets (or clears) a personal mark on many items at once. */
+export function setMarks(userId: string, entityType: "plan" | "collection" | "favorite", ids: string[], mark: "pin" | "star", on: boolean) {
+  const db = getDb();
+  if (!ids.length) return;
+  if (!on) {
+    db.delete(schema.userMarks)
+      .where(and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, entityType), inArray(schema.userMarks.entityId, ids), eq(schema.userMarks.mark, mark)))
+      .run();
+    return;
+  }
+  for (const entityId of ids) db.insert(schema.userMarks).values({ userId, entityType, entityId, mark }).onConflictDoNothing().run();
+}
+
 export function listMarks(userId: string, mark: "pin" | "star") {
   return getDb()
     .select()
@@ -500,7 +652,7 @@ export function touchRecent(userId: string, entityType: "plan" | "collection" | 
     .values({ userId, entityType, entityId, openedAt })
     .onConflictDoUpdate({
       target: [schema.recents.userId, schema.recents.entityType, schema.recents.entityId],
-      set: { openedAt },
+      set: { openedAt, openCount: sql`${schema.recents.openCount} + 1` },
     })
     .run();
 }
@@ -517,6 +669,7 @@ export function pinnedCollections(userId: string, workspaceId: string) {
         eq(schema.userMarks.mark, "pin"),
         eq(schema.collections.workspaceId, workspaceId),
         isNull(schema.collections.archivedAt),
+        collectionVisibleTo(workspaceId, userId),
       ),
     )
     .orderBy(asc(schema.userMarks.createdAt))
@@ -535,6 +688,7 @@ export function recentFavorites(userId: string, workspaceId: string, limit = 6) 
         eq(schema.recents.entityType, "favorite"),
         eq(schema.favorites.workspaceId, workspaceId),
         isNull(schema.favorites.archivedAt),
+        favoriteVisibleTo(workspaceId, userId),
       ),
     )
     .orderBy(desc(schema.recents.openedAt))
@@ -547,7 +701,7 @@ export function recentFavorites(userId: string, workspaceId: string, limit = 6) 
   const added = getDb()
     .select()
     .from(schema.favorites)
-    .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt)))
+    .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt), favoriteVisibleTo(workspaceId, userId)))
     .orderBy(desc(schema.favorites.createdAt))
     .limit(limit * 2)
     .all()
@@ -561,12 +715,31 @@ export function recentFavorites(userId: string, workspaceId: string, limit = 6) 
 export type ImportFolder = { name: string; children: ImportFolder[]; links: { title: string; url: string; addedAt?: number }[] };
 
 /** Creates collections/favorites from a parsed bookmark tree. Returns counts. */
-export function importTree(workspaceId: string, userId: string, root: ImportFolder, parentId: string | null, tags: string[] = []) {
+export function importTree(
+  workspaceId: string,
+  userId: string,
+  root: ImportFolder,
+  parentId: string | null,
+  tags: string[] = [],
+  opts: { skipDuplicates?: boolean } = {},
+) {
   let collections = 0;
   let links = 0;
+  let skipped = 0;
   const db = getDb();
   const tagIds = ensureTags(db, workspaceId, tags);
   const insertedIds: string[] = [];
+  // Pages already in the workspace (or earlier in this file), by canonical URL.
+  const seen = new Set(
+    opts.skipDuplicates
+      ? db
+          .select({ url: schema.favorites.url })
+          .from(schema.favorites)
+          .where(eq(schema.favorites.workspaceId, workspaceId))
+          .all()
+          .map((r) => canonicalUrl(r.url))
+      : [],
+  );
   const walk = (folder: ImportFolder, parent: string | null) => {
     for (const [i, l] of folder.links.entries()) {
       let url: string;
@@ -574,6 +747,14 @@ export function importTree(workspaceId: string, userId: string, root: ImportFold
         url = normalizeUrl(l.url);
       } catch {
         continue;
+      }
+      if (opts.skipDuplicates) {
+        const key = canonicalUrl(url);
+        if (seen.has(key)) {
+          skipped++;
+          continue;
+        }
+        seen.add(key);
       }
       const id = newId();
       db.insert(schema.favorites)
@@ -605,5 +786,88 @@ export function importTree(workspaceId: string, userId: string, root: ImportFold
   };
   db.transaction(() => walk(root, parentId));
   for (const id of insertedIds) indexFavorite(id);
-  return { collections, links };
+  return { collections, links, skipped };
+}
+
+// ================================================================== quick access (speed dial)
+
+export type QuickLink = FavoriteRow & { pinned: boolean; score: number };
+
+/**
+ * A user's quick-access links: their pinned links in manual order, then the most
+ * "frecent" ones (opened often and lately) to fill the remaining slots.
+ */
+export function quickAccess(userId: string, workspaceId: string, limit = 12, opts: { padWithRecent?: boolean } = {}): QuickLink[] {
+  const db = getDb();
+  const visible = and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt), favoriteVisibleTo(workspaceId, userId));
+  const pinned = db
+    .select({ fav: schema.favorites })
+    .from(schema.userMarks)
+    .innerJoin(schema.favorites, eq(schema.favorites.id, schema.userMarks.entityId))
+    .where(and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, "favorite"), eq(schema.userMarks.mark, "pin"), visible))
+    .orderBy(sql`${schema.userMarks.position} asc nulls last`, asc(schema.userMarks.createdAt))
+    .limit(limit)
+    .all()
+    .map((r) => ({ ...r.fav, pinned: true, score: 0 }));
+  if (pinned.length >= limit) return pinned;
+  const seen = new Set(pinned.map((p) => p.id));
+  const now = Date.now();
+  const frecent = db
+    .select({ fav: schema.favorites, score: frecencySql(now) })
+    .from(schema.recents)
+    .innerJoin(schema.favorites, eq(schema.favorites.id, schema.recents.entityId))
+    .where(and(eq(schema.recents.userId, userId), eq(schema.recents.entityType, "favorite"), visible))
+    .orderBy(sql`${frecencySql(now)} desc`)
+    .limit(limit * 2)
+    .all()
+    .filter((r) => !seen.has(r.fav.id))
+    .map((r) => ({ ...r.fav, pinned: false, score: Number(r.score) }));
+  const out = [...pinned, ...frecent].slice(0, limit);
+  if (!opts.padWithRecent || out.length >= Math.min(limit, 6)) return out;
+  // A fresh library has no history yet: show the newest links so the dial isn't empty.
+  const taken = new Set(out.map((o) => o.id));
+  const newest = db
+    .select()
+    .from(schema.favorites)
+    .where(visible)
+    .orderBy(desc(schema.favorites.createdAt))
+    .limit(limit * 2)
+    .all()
+    .filter((f) => !taken.has(f.id))
+    .map((f) => ({ ...f, pinned: false, score: 0 }));
+  return [...out, ...newest].slice(0, Math.min(limit, 6));
+}
+
+/** Pins or unpins a link to the user's quick access (new pins go last). */
+export function togglePinLink(userId: string, favoriteId: string): boolean {
+  const db = getDb();
+  const pinned = toggleMark(userId, "favorite", favoriteId, "pin");
+  if (pinned) {
+    const max = db
+      .select({ n: sql<number | null>`max(${schema.userMarks.position})` })
+      .from(schema.userMarks)
+      .where(and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, "favorite"), eq(schema.userMarks.mark, "pin")))
+      .get()?.n;
+    db.update(schema.userMarks)
+      .set({ position: (max ?? -1) + 1 })
+      .where(
+        and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, "favorite"), eq(schema.userMarks.entityId, favoriteId), eq(schema.userMarks.mark, "pin")),
+      )
+      .run();
+  }
+  return pinned;
+}
+
+/** Saves the manual order of a user's pinned links (ids not pinned are ignored). */
+export function reorderPinnedLinks(userId: string, ids: string[]) {
+  const db = getDb();
+  db.transaction((tx) => {
+    ids.forEach((id, i) =>
+      tx
+        .update(schema.userMarks)
+        .set({ position: i })
+        .where(and(eq(schema.userMarks.userId, userId), eq(schema.userMarks.entityType, "favorite"), eq(schema.userMarks.entityId, id), eq(schema.userMarks.mark, "pin")))
+        .run(),
+    );
+  });
 }

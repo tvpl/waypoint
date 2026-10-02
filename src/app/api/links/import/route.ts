@@ -24,6 +24,7 @@ function count(f: ImportFolder): { folders: number; links: number } {
  *   parentId  target collection (empty = root)
  *   wrap      "1" → create a new collection named `wrapName` to hold the import
  *   tag       optional tag applied to every imported link
+ *   skipDuplicates "0" → also import pages already in the library (default: skip them)
  * Uses a route handler (not a server action) so large exports aren't capped by the action body limit.
  */
 export async function POST(req: Request) {
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     parentId = createCollection({ workspaceId: ctx.workspace.id, userId: ctx.user.id, name, parentId, icon: "star", color: "blue" });
   }
   const tag = normalizeTag(String(form!.get("tag") ?? ""));
-  const result = importTree(ctx.workspace.id, ctx.user.id, tree, parentId, tag ? [tag] : []);
+  const result = importTree(ctx.workspace.id, ctx.user.id, tree, parentId, tag ? [tag] : [], { skipDuplicates: form!.get("skipDuplicates") !== "0" });
   revalidatePath("/links");
   revalidatePath("/");
   return NextResponse.json({ ok: true, ...result, collectionId: parentId });

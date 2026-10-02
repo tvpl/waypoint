@@ -53,6 +53,8 @@ export type HealthSelector = {
   /** Collections the caller can't see (private collections of others). */
   hiddenCollections?: Set<string>;
   limit?: number;
+  /** Only links checked longer ago than this (default HEALTH_TTL_MS). */
+  staleAfterMs?: number;
 };
 
 export type HealthSummary = {
@@ -73,7 +75,7 @@ function selectorConds(workspaceId: string, sel: HealthSelector, now: number): S
   if (sel.collectionId) conds.push(inArray(f.collectionId, descendantIds(sel.collectionId)));
   const hidden = [...(sel.hiddenCollections ?? [])];
   if (hidden.length) conds.push(or(isNull(f.collectionId), sql`${f.collectionId} not in (${sql.join(hidden.map((h) => sql`${h}`), sql`, `)})`)!);
-  const cutoff = sel.force ? (sel.startedAt ?? now) : now - HEALTH_TTL_MS;
+  const cutoff = sel.force ? (sel.startedAt ?? now) : now - (sel.staleAfterMs ?? HEALTH_TTL_MS);
   conds.push(or(isNull(f.healthCheckedAt), lt(f.healthCheckedAt, new Date(cutoff)))!);
   return conds;
 }
@@ -174,4 +176,45 @@ function hostOf(url: string) {
   } catch {
     return url;
   }
+}
+
+// ------------------------------------------------------------------ background sweep
+
+/** Links not checked for this long are re-checked in the background. */
+export const SWEEP_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const SWEEP_EVERY_MS = 60 * 60 * 1000;
+const SWEEP_BATCH = 12;
+const lastSweep = new Map<string, number>();
+
+/**
+ * Keeps link health fresh without a scheduler: when someone opens the library or Início,
+ * a small batch of the stalest links (>7 days) is checked after the response is sent
+ * (Next's `after`). At most once an hour per workspace and process.
+ */
+export async function sweepStaleLinks(workspaceId: string): Promise<HealthSummary | null> {
+  const now = Date.now();
+  if (now - (lastSweep.get(workspaceId) ?? 0) < SWEEP_EVERY_MS) return null;
+  lastSweep.set(workspaceId, now);
+  return checkFavorites(workspaceId, { staleAfterMs: SWEEP_STALE_MS, limit: SWEEP_BATCH }, { deadlineMs: 20_000 });
+}
+
+/** Links that started failing in the last week (for the "pede atenção" signal). */
+export function recentlyBroken(workspaceId: string, hiddenCollections: Set<string>): number {
+  const f = schema.favorites;
+  const hidden = [...hiddenCollections];
+  return (
+    getDb()
+      .select({ n: sql<number>`count(*)` })
+      .from(f)
+      .where(
+        and(
+          eq(f.workspaceId, workspaceId),
+          isNull(f.archivedAt),
+          inArray(f.healthStatus, ["broken", "unreachable"]),
+          sql`${f.healthCheckedAt} > ${Date.now() - SWEEP_STALE_MS}`,
+          hidden.length ? or(isNull(f.collectionId), sql`${f.collectionId} not in (${sql.join(hidden.map((h) => sql`${h}`), sql`, `)})`) : undefined,
+        ),
+      )
+      .get()?.n ?? 0
+  );
 }

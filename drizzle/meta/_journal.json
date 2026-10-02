@@ -22,6 +22,27 @@
       "when": 1790881408637,
       "tag": "0002_health_tokens_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790932148943,
+      "tag": "0003_recents_open_count",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790932969326,
+      "tag": "0004_quick_access_saved_searches",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790933609370,
+      "tag": "0005_link_notes_inbox_enrich",
+      "breakpoints": true
     }
   ]
 }

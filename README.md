@@ -4,10 +4,10 @@ O lugar onde você organiza e encontra as coisas.
 
 Waypoint tem dois módulos que compartilham workspace, tags, busca e compartilhamento:
 
-- **Visual Planner** — um canvas para desenhar soluções macro (blocos, containers, notas, link cards, seções, imagens e conexões). Cada plan tem um **modo edição** com ferramentas e um **modo visualização** limpo, que parece uma página pronta. Rascunhos são salvos automaticamente; a publicação gera versões imutáveis que podem ser compartilhadas sem que edições em andamento quebrem o que outras pessoas veem.
+- **Visual Planner** — um canvas para desenhar soluções macro (blocos, containers, notas, cartões de link, seções, imagens e conexões). Cada plan tem um **modo edição** com ferramentas e um **modo visualização** limpo, que parece uma página pronta. Rascunhos são salvos automaticamente; a publicação gera versões imutáveis que podem ser compartilhadas sem que edições em andamento quebrem o que outras pessoas veem.
 - **Link Library** — um substituto completo para os favoritos do navegador: coleções aninhadas, tags, capas, descrições, três modos de visualização (cards, compacto e lista), filtros, preview interno ou nova aba, e importação/exportação no formato de favoritos dos navegadores.
 
-Além do essencial, o Planner tem **layout automático** (vertical ou horizontal, também só para a seleção), **modo apresentação** (passo a passo por seções, em tela cheia, com teclado ou gesto no celular; `?present=1` abre direto) e **comentários** por plan ou por bloco, com respostas, @menções e resolução. A Link Library verifica **links quebrados** e redirecionamentos, e uma **extensão de navegador** salva a página atual direto numa coleção.
+Além do essencial, o Planner tem **layout automático** (vertical ou horizontal, também só para a seleção), **modo apresentação** (passo a passo por seções, em tela cheia, com teclado ou gesto no celular; `?present=1` abre direto) e **comentários** por plan ou por bloco, com respostas, @menções e resolução. Um plan novo pode partir de **modelos prontos** (roadmap, arquitetura, quadro de status, registro de decisão, retrospectiva); colar ou soltar uma URL no canvas cria um cartão de link já com título, descrição e capa; há **guias de alinhamento** ao arrastar (Alt desliga), **minimapa** (M) e o canvas reabre onde você parou. A Link Library verifica **links quebrados** e redirecionamentos, e uma **extensão de navegador** salva a página atual direto numa coleção.
 
 Qualquer bloco de um plan pode apontar para um **Resource**: uma URL, outro plan, um favorito, uma coleção, um arquivo ou uma página interna. É isso que transforma o desenho em uma porta de entrada para todo o contexto de um projeto.
 
@@ -99,7 +99,10 @@ A verificação (`src/server/services/link-health.ts`) usa `HEAD` com fallback p
 | `GET` | `/api/v1/collections` | coleções visíveis em ordem de árvore, com `path` (“Development / Frontend”) |
 | `GET` | `/api/v1/tags` | nomes das tags, mais usadas primeiro |
 | `GET` | `/api/v1/links/lookup?url=` | `{ link }` já salvo para a URL, ou `{ link: null }` |
-| `POST` | `/api/v1/links` | cria um link (`url`, `title?`, `description?`, `collectionId?`, `tags?`, `openBehavior?`); título, descrição, favicon e capa ausentes são buscados na página. Resposta `201 { link }` com `appUrl` (`/links?open=<id>`) |
+| `GET` | `/api/v1/links?q=&limit=` | links que combinam com a busca (mesma linguagem da biblioteca: `tag:`, `site:`, `in:`, `is:`…), os mais relevantes para você primeiro |
+| `POST` | `/api/v1/links` | cria um link (`url`, `title?`, `description?`, `notes?`, `collectionId?`, `tags?`, `openBehavior?`); título, descrição, favicon e capa ausentes são buscados na página. Sem `collectionId`, o link vai para a **Caixa de entrada**. Resposta `201 { link }` com `appUrl` (`/links?open=<id>`) |
+| `POST` | `/api/v1/links/:id/open` | registra que você abriu o link (alimenta “Para você” e o acesso rápido) |
+| `GET` | `/api/v1/home` | acesso rápido, links recentes, plans recentes e contadores (caixa de entrada, quebrados) — usado pela nova aba da extensão |
 
 ```bash
 curl -H "Authorization: Bearer $WAYPOINT_TOKEN" https://waypoint.example.com/api/v1/me

@@ -5,6 +5,7 @@ import {
   Archive,
   ChevronRight,
   Clock,
+  FolderMinus,
   FolderPlus,
   Inbox,
   LayoutGrid,
@@ -15,6 +16,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  ScanSearch,
   Share2,
   ShieldCheck,
   Star,
@@ -40,10 +42,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
-import { CollectionGlyph } from "./collection-style";
+import { CollectionGlyph, tagTint } from "./collection-style";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { getJson, PREF_EXPANDED, setJson } from "./prefs";
-import type { LibraryCounts, Scope, TagCount, TreeNode } from "./types";
+import { savedSearchHref, type LibraryCounts, type SavedSearchItem, type Scope, type TagCount, type TreeNode } from "./types";
 
 export type PanelHandlers = {
   newCollection: (parent: TreeNode | null) => void;
@@ -58,6 +60,8 @@ export type PanelHandlers = {
   tagHref: (tag: string) => string;
   /** Checks the links of a collection (with subcollections) or of the whole library (null). */
   checkHealth: (node: TreeNode | null) => void;
+  renameSaved: (s: SavedSearchItem) => void;
+  deleteSaved: (s: SavedSearchItem) => void;
 };
 
 function parentMap(nodes: TreeNode[], parent: string | null = null, out = new Map<string, string | null>()) {
@@ -82,7 +86,7 @@ function isDescendant(nodes: TreeNode[], ancestorId: string, id: string): boolea
   return walk(anc.children);
 }
 
-const rowBase = "group relative flex h-[30px] items-center gap-1.5 rounded-[7px] pr-1.5 text-[13px] transition-colors";
+const rowBase = "group relative flex h-[30px] items-center gap-1.5 rounded-chip pr-1.5 text-body transition-colors";
 
 export function CollectionsPanel({
   tree,
@@ -95,10 +99,14 @@ export function CollectionsPanel({
   canEdit,
   handlers,
   className,
+  saved,
+  savedId,
 }: {
   className?: string;
   tree: TreeNode[];
   currentId: string | null;
+  saved: SavedSearchItem[];
+  savedId: string | null;
   scope: Scope;
   counts: LibraryCounts;
   tags: TagCount[];
@@ -148,9 +156,10 @@ export function CollectionsPanel({
 
   const quick: { scope: Scope; label: string; icon: React.ReactNode; count?: number; href: string }[] = [
     { scope: "all", label: "Todos", icon: <LayoutGrid />, count: counts.all, href: "/links" },
+    { scope: "inbox", label: "Caixa de entrada", icon: <Inbox />, count: counts.inbox || undefined, href: "/links?scope=inbox" },
     { scope: "recent", label: "Recentes", icon: <Clock />, href: "/links?scope=recent" },
-    { scope: "starred", label: "Favoritos", icon: <Star />, count: counts.starred, href: "/links?scope=starred" },
-    { scope: "unsorted", label: "Sem coleção", icon: <Inbox />, count: counts.unsorted, href: "/links?scope=unsorted" },
+    { scope: "starred", label: "Com estrela", icon: <Star />, count: counts.starred, href: "/links?scope=starred" },
+    { scope: "unsorted", label: "Sem coleção", icon: <FolderMinus />, count: counts.unsorted, href: "/links?scope=unsorted" },
     { scope: "broken", label: "Quebrados", icon: <Unlink />, count: counts.broken || undefined, href: "/links?scope=broken" },
     { scope: "shared", label: "Compartilhados", icon: <Users />, count: counts.shared || undefined, href: "/links?scope=shared" },
     { scope: "archived", label: "Arquivados", icon: <Archive />, count: counts.archived || undefined, href: "/links?scope=archived" },
@@ -159,7 +168,7 @@ export function CollectionsPanel({
   return (
     <aside aria-label="Coleções" className={cn("flex w-[272px] shrink-0 flex-col border-r border-line bg-surface-2", className)}>
       <div className="flex items-center justify-between px-[18px] pb-3 pt-[18px]">
-        <h2 className="text-[15px] font-semibold">Links</h2>
+        <h2 className="text-lead font-semibold">Links</h2>
         {canEdit && (
           <Tooltip content="Nova coleção">
             <Button size="icon-sm" variant="ghost" aria-label="Nova coleção" onClick={() => handlers.newCollection(null)}>
@@ -171,7 +180,7 @@ export function CollectionsPanel({
       <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3.5 pb-4">
         <nav aria-label="Filtros rápidos" className="flex flex-col gap-px">
           {quick.map((q) => {
-            const on = !currentId && scope === q.scope;
+            const on = !currentId && !savedId && scope === q.scope;
             const droppable = q.scope === "unsorted" && canEdit;
             return (
               <Link
@@ -200,7 +209,7 @@ export function CollectionsPanel({
                     : undefined
                 }
                 className={cn(
-                  "flex h-[30px] items-center gap-2.5 rounded-[7px] px-2 text-[13px] [&_svg]:size-4",
+                  "flex h-[30px] items-center gap-2.5 rounded-chip px-2 text-body [&_svg]:size-4",
                   on ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-2 hover:bg-hover hover:text-ink",
                   q.scope === "unsorted" && unsortedOver && "bg-accent-soft ring-2 ring-accent",
                 )}
@@ -208,7 +217,12 @@ export function CollectionsPanel({
                 {q.icon}
                 <span className="flex-1">{q.label}</span>
                 {q.count != null && (
-                  <span className={cn("text-xs font-normal", q.scope === "broken" ? "font-medium text-danger" : "text-muted")}>
+                  <span
+                    className={cn(
+                      "text-xs font-normal",
+                      q.scope === "broken" ? "font-medium text-danger" : q.scope === "inbox" ? "rounded-full bg-accent px-1.5 font-semibold text-white" : "text-muted",
+                    )}
+                  >
                     {q.scope === "broken" && <span className="sr-only">: </span>}
                     {q.count}
                   </span>
@@ -220,13 +234,60 @@ export function CollectionsPanel({
             <button
               type="button"
               onClick={() => handlers.checkHealth(null)}
-              className="mt-1 flex h-[30px] items-center gap-2.5 rounded-[7px] px-2 text-left text-[13px] text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
+              className="mt-1 flex h-[30px] items-center gap-2.5 rounded-chip px-2 text-left text-body text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
             >
               <ShieldCheck aria-hidden />
               <span className="flex-1">Verificar links</span>
             </button>
           )}
         </nav>
+
+        {saved.length > 0 && (
+          <nav aria-label="Buscas salvas" className="flex flex-col gap-1.5">
+            <SectionLabel className="px-2">Buscas salvas</SectionLabel>
+            <ul className="flex flex-col gap-px">
+              {saved.map((s) => {
+                const on = s.id === savedId;
+                return (
+                  <li key={s.id} className="group relative">
+                    <Link
+                      href={savedSearchHref(s)}
+                      aria-current={on ? "page" : undefined}
+                      title={s.query}
+                      className={cn(
+                        "flex h-[30px] items-center gap-2.5 rounded-chip px-2 pr-8 text-body [&_svg]:size-4",
+                        on ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink-2 hover:bg-hover hover:text-ink",
+                      )}
+                    >
+                      <ScanSearch aria-hidden />
+                      <span className="flex-1 truncate">{s.name}</span>
+                    </Link>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Ações da busca ${s.name}`}
+                          className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-0 hover:bg-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 [&_svg]:size-4"
+                        >
+                          <MoreHorizontal />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onSelect={() => handlers.renameSaved(s)}>
+                          <Pencil /> Renomear
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem danger onSelect={() => handlers.deleteSaved(s)}>
+                          <Trash2 /> Excluir busca
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <div
@@ -247,7 +308,7 @@ export function CollectionsPanel({
             }}
           >
             <SectionLabel>Coleções</SectionLabel>
-            {rootOver && <span className="text-[11px] text-accent-ink">Mover para o topo</span>}
+            {rootOver && <span className="text-caption text-accent-ink">Mover para o topo</span>}
           </div>
           {tree.length === 0 ? (
             <div className="flex flex-col items-start gap-2 px-2 py-1">
@@ -260,7 +321,12 @@ export function CollectionsPanel({
               )}
             </div>
           ) : (
-            <ul role="tree" aria-label="Coleções" className="flex flex-col gap-px">
+            <ul
+              role="tree"
+              aria-label="Coleções"
+              className="flex flex-col gap-px"
+              onKeyDown={(e) => treeKey(e, toggle, canEdit ? (id) => setRenaming(id) : undefined)}
+            >
               {tree.map((n) => (
                 <TreeRow
                   key={n.id}
@@ -294,9 +360,14 @@ export function CollectionsPanel({
                     href={handlers.tagHref(t.name)}
                     aria-pressed={on}
                     title={`${t.count} ${t.count === 1 ? "link" : "links"}`}
+                    style={on ? undefined : tagTint(t.color)}
                     className={cn(
                       "rounded-full px-2 py-0.5 text-xs",
-                      on ? "border border-accent-line bg-accent-soft font-medium text-accent-ink" : "bg-subtle text-ink-2 hover:bg-hover hover:text-ink",
+                      on
+                        ? "border border-accent-line bg-accent-soft font-medium text-accent-ink"
+                        : t.color
+                          ? "wp-tint font-medium hover:brightness-95"
+                          : "bg-subtle text-ink-2 hover:bg-hover hover:text-ink",
                     )}
                   >
                     #{t.name}
@@ -314,7 +385,7 @@ export function CollectionsPanel({
       </div>
       {canEdit && (
         <div className="border-t border-line px-3.5 py-2.5">
-          <Link href="/links/import" className="flex h-[34px] items-center gap-2.5 rounded-lg px-2 text-[13px] text-ink-2 hover:bg-hover hover:text-ink">
+          <Link href="/links/import" className="flex h-[34px] items-center gap-2.5 rounded-lg px-2 text-body text-ink-2 hover:bg-hover hover:text-ink">
             <Upload className="size-4" aria-hidden />
             Importar favoritos do navegador
           </Link>
@@ -489,7 +560,10 @@ function TreeRow(props: RowProps) {
                 href={`/links?c=${node.id}`}
                 draggable={false}
                 aria-current={on ? "page" : undefined}
-                className="min-w-0 flex-1 truncate outline-none after:absolute after:inset-0 after:rounded-[7px] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+                data-tree-id={node.id}
+                data-tree-parent={node.parentId ?? ""}
+                data-tree-state={hasChildren ? (open ? "open" : "closed") : "leaf"}
+                className="min-w-0 flex-1 truncate outline-none after:absolute after:inset-0 after:rounded-chip after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
                 onDoubleClick={(e) => {
                   if (!canEdit) return;
                   e.preventDefault();
@@ -550,8 +624,49 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (name: stri
         if (e.key === "Enter") finish(v.trim());
         if (e.key === "Escape") finish(null);
       }}
-      className="relative z-10 h-6 min-w-0 flex-1 rounded-md border border-accent bg-surface px-1.5 text-[13px] font-normal text-ink outline-none"
+      className="relative z-10 h-6 min-w-0 flex-1 rounded-md border border-accent bg-surface px-1.5 text-body font-normal text-ink outline-none"
       maxLength={120}
     />
   );
+}
+
+/** Arrow-key navigation of the collections tree (WAI-ARIA tree pattern, over the row links). */
+function treeKey(e: React.KeyboardEvent<HTMLUListElement>, toggle: (id: string, open?: boolean) => void, rename?: (id: string) => void) {
+  const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tree-id]");
+  if (!el || e.altKey || e.metaKey || e.ctrlKey) return;
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>("[data-tree-id]"));
+  const i = items.indexOf(el);
+  const id = el.dataset.treeId!;
+  const state = el.dataset.treeState;
+  const focus = (t?: HTMLElement | null) => {
+    if (!t) return;
+    e.preventDefault();
+    t.focus();
+  };
+  switch (e.key) {
+    case "ArrowDown":
+      return focus(items[i + 1]);
+    case "ArrowUp":
+      return focus(items[i - 1]);
+    case "Home":
+      return focus(items[0]);
+    case "End":
+      return focus(items.at(-1));
+    case "ArrowRight":
+      e.preventDefault();
+      if (state === "closed") toggle(id, true);
+      else if (state === "open") items[i + 1]?.focus();
+      return;
+    case "ArrowLeft":
+      e.preventDefault();
+      if (state === "open") toggle(id, false);
+      else items.find((t) => t.dataset.treeId === el.dataset.treeParent)?.focus();
+      return;
+    case "F2":
+      if (rename) {
+        e.preventDefault();
+        rename(id);
+      }
+      return;
+  }
 }

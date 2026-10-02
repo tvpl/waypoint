@@ -72,7 +72,7 @@ export function ViewBody({
       <aside className="scrollbar-thin hidden shrink-0 flex-col gap-7 overflow-y-auto pb-8 pl-12 pr-8 pt-10 lg:flex lg:w-[380px]">
         <div className="flex flex-col gap-3.5">
           <h1 className="font-display text-[46px] font-normal leading-[1.02] tracking-[-.01em] text-balance">{plan.title}</h1>
-          {plan.description && <p className="whitespace-pre-line text-[15px] leading-[23px] text-ink-2 text-pretty">{plan.description}</p>}
+          {plan.description && <p className="whitespace-pre-line text-lead leading-[23px] text-ink-2 text-pretty">{plan.description}</p>}
           {plan.tags.length > 0 && <Tags tags={plan.tags} />}
         </div>
         {refs.length > 0 && <References refs={refs} />}
@@ -154,7 +154,7 @@ function CompactInfo({ plan, refs, kinds }: { plan: ViewPlanMeta; refs: Resolved
             {plan.description}
           </p>
           {(clamped || expanded) && (
-            <button type="button" className="text-[13px] font-medium text-accent-ink" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+            <button type="button" className="text-body font-medium text-accent-ink" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
               {expanded ? "menos" : "mais"}
             </button>
           )}
@@ -188,7 +188,7 @@ function RefLink({ res }: { res: ResolvedResource }) {
     <>
       <ResourceIcon resource={res} size={28} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] font-medium">{res.title}</span>
+        <span className="truncate text-body font-medium">{res.title}</span>
         <span className="truncate text-xs text-muted">{res.subtitle}</span>
       </span>
       {res.href && <ArrowUpRight className="size-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />}
@@ -296,7 +296,7 @@ export function PlanViewPage({
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-surface-2 text-ink">
       <header className="wp-no-print flex h-14 shrink-0 items-center gap-2 px-3 sm:gap-3 sm:px-5">
-        <Link href={homeHref} aria-label="Waypoint — início" className="inline-flex shrink-0 rounded-[10px]">
+        <Link href={homeHref} aria-label="Waypoint — início" className="inline-flex shrink-0 rounded-control">
           <Logo />
         </Link>
         {workspaceName && (
@@ -420,7 +420,7 @@ function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; ca
 
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div role="status" className="wp-no-print mx-3 mb-1 flex items-center gap-2.5 rounded-xl border border-amber-line bg-amber-bg px-4 py-2.5 text-[13px] text-amber-ink sm:mx-5">
+    <div role="status" className="wp-no-print mx-3 mb-1 flex items-center gap-2.5 rounded-xl border border-amber-line bg-amber-bg px-4 py-2.5 text-body text-amber-ink sm:mx-5">
       <Info className="size-4 shrink-0" aria-hidden />
       <p>{children}</p>
     </div>

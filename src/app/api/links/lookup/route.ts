@@ -13,6 +13,6 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json({ duplicate: null });
   }
-  const hit = findByUrl(ctx.workspace.id, url);
+  const hit = findByUrl(ctx.workspace.id, ctx.user.id, url);
   return NextResponse.json({ duplicate: hit ? { id: hit.id, title: hit.title, archived: hit.archivedAt != null } : null });
 }

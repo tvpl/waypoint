@@ -4,12 +4,12 @@ export type { LinkHealth, OpenBehavior, SummaryBehavior, Visibility };
 
 export type ViewMode = "cards" | "compact" | "list";
 export type SummaryMode = "default" | SummaryBehavior;
-export type Scope = "all" | "recent" | "starred" | "unsorted" | "broken" | "archived" | "shared";
-export type SortMode = "manual" | "recent" | "title" | "opened";
+export type Scope = "all" | "inbox" | "recent" | "starred" | "unsorted" | "broken" | "archived" | "shared";
+export type SortMode = "manual" | "recent" | "title" | "opened" | "visited" | "foryou";
 
 export const VIEW_MODES: ViewMode[] = ["cards", "compact", "list"];
-export const SCOPES: Scope[] = ["all", "recent", "starred", "unsorted", "broken", "archived", "shared"];
-export const SORT_MODES: SortMode[] = ["manual", "recent", "title", "opened"];
+export const SCOPES: Scope[] = ["all", "inbox", "recent", "starred", "unsorted", "broken", "archived", "shared"];
+export const SORT_MODES: SortMode[] = ["manual", "foryou", "recent", "visited", "opened", "title"];
 
 /** Client-safe collection tree node (dates stripped). */
 export type TreeNode = {
@@ -34,6 +34,10 @@ export type LinkItem = {
   domain: string;
   description: string | null;
   keywords: string | null;
+  /** Personal notes (separate from the page description). */
+  notes: string | null;
+  /** Waiting in the inbox for triage. */
+  inbox: boolean;
   favicon: string | null;
   coverImage: string | null;
   icon: string | null;
@@ -43,8 +47,14 @@ export type LinkItem = {
   collectionName: string | null;
   tags: string[];
   starred: boolean;
+  /** Pinned to this user's quick access. */
+  pinned: boolean;
+  /** Workspace-wide opens. */
   openCount: number;
   lastOpenedAt: number | null;
+  /** This user's own opens. */
+  myOpenCount: number;
+  myLastOpenedAt: number | null;
   createdAt: number;
   updatedAt: number;
   archived: boolean;
@@ -61,9 +71,9 @@ export type CurrentCollection = TreeNode & {
   path: { id: string; name: string }[];
 };
 
-export type TagCount = { name: string; count: number };
+export type TagCount = { name: string; count: number; color?: string | null };
 
-export type LibraryCounts = { all: number; starred: number; unsorted: number; archived: number; recent: number; shared: number; broken: number };
+export type LibraryCounts = { all: number; inbox: number; starred: number; unsorted: number; archived: number; recent: number; shared: number; broken: number };
 
 export type Backlink = { planId: string; planTitle: string; nodeId: string; nodeTitle: string | null };
 
@@ -83,3 +93,13 @@ export const VISIBILITY_LABEL: Record<Visibility, string> = {
   link: "Qualquer pessoa com o link",
   public: "Público",
 };
+
+/** A saved library search ("smart collection"), personal. */
+export type SavedSearchItem = { id: string; name: string; query: string; sort: SortMode | null };
+
+/** Builds the library URL of a saved search. */
+export function savedSearchHref(s: SavedSearchItem): string {
+  const p = new URLSearchParams({ q: s.query, saved: s.id });
+  if (s.sort) p.set("sort", s.sort);
+  return `/links?${p}`;
+}

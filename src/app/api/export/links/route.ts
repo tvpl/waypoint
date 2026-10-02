@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (!["json", "csv", "html"].includes(format)) return NextResponse.json({ error: "Formato inválido." }, { status: 400 });
   const cId = req.nextUrl.searchParams.get("c");
 
-  const { tree, hidden } = visibleTree(ctx.workspace.id, ctx.user.id);
+  const { tree } = visibleTree(ctx.workspace.id, ctx.user.id);
   let nodes = tree;
   let rootName = ctx.workspace.name;
   if (cId) {
@@ -27,9 +27,7 @@ export async function GET(req: NextRequest) {
     nodes = node.children;
     rootName = node.name;
   }
-  const favs = listFavorites(ctx.workspace.id, ctx.user.id, { collectionId: cId ?? undefined, deep: true, sort: "manual", limit: 100_000 }).filter(
-    (f) => !f.collectionId || !hidden.has(f.collectionId),
-  );
+  const favs = listFavorites(ctx.workspace.id, ctx.user.id, { collectionId: cId ?? undefined, deep: true, sort: "manual", limit: 100_000 });
   const links = favs.map((f) => ({
     title: f.title,
     url: f.url,

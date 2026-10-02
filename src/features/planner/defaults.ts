@@ -16,7 +16,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   block: "Bloco",
   container: "Container",
   note: "Nota",
-  link: "Link card",
+  link: "Cartão de link",
   section: "Seção",
   image: "Imagem",
   text: "Texto",

@@ -4,23 +4,36 @@ import { Check, ChevronDown, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { SiteIcon } from "@/components/ui/misc";
 import { createWorkspaceAction, switchWorkspaceAction } from "./actions";
+import { ask } from "@/components/ui/ask";
 
-export function WorkspaceSwitcher({ current, workspaces }: { current: { id: string; name: string }; workspaces: { id: string; name: string; role: string }[] }) {
+export function WorkspaceSwitcher({
+  current,
+  workspaces,
+  trigger,
+  side,
+}: {
+  current: { id: string; name: string };
+  workspaces: { id: string; name: string; role: string }[];
+  /** Custom trigger (rendered asChild); defaults to a pill with the workspace name. */
+  trigger?: React.ReactElement;
+  side?: "right" | "bottom";
+}) {
   const [pending, start] = useTransition();
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          disabled={pending}
-          className="inline-flex h-[30px] items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink-2 hover:bg-surface-2"
-        >
-          <SiteIcon label={current.name} size={18} />
-          <span>{current.name}</span>
-          <ChevronDown className="size-3.5" />
-        </button>
+      <DropdownMenuTrigger asChild disabled={pending}>
+        {trigger ?? (
+          <button
+            type="button"
+            className="inline-flex h-[30px] items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-body text-ink-2 hover:bg-surface-2"
+          >
+            <SiteIcon label={current.name} size={18} />
+            <span>{current.name}</span>
+            <ChevronDown className="size-3.5" />
+          </button>
+        )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" side={side}>
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
         {workspaces.map((w) => (
           <DropdownMenuItem key={w.id} onSelect={() => start(() => switchWorkspaceAction(w.id))}>
@@ -31,8 +44,8 @@ export function WorkspaceSwitcher({ current, workspaces }: { current: { id: stri
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={() => {
-            const name = window.prompt("Nome do novo workspace");
+          onSelect={async () => {
+            const name = await ask.prompt({ title: "Novo workspace", label: "Nome", placeholder: "Ex.: Time de produto", confirmLabel: "Criar" });
             if (name) start(() => createWorkspaceAction(name));
           }}
         >

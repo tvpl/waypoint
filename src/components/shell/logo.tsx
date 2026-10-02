@@ -1,7 +1,7 @@
 export function Logo({ size = 34 }: { size?: number }) {
   return (
     <span
-      className="inline-flex items-center justify-center rounded-[10px] bg-ink text-bg"
+      className="inline-flex items-center justify-center rounded-control bg-ink text-bg"
       style={{ width: size, height: size }}
       aria-hidden
     >

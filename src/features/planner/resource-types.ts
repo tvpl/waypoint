@@ -11,6 +11,8 @@ export type ResolvedResource = {
   external: boolean;
   favicon?: string | null;
   description?: string | null;
+  /** Cover / og:image (link cards show it when tall enough). */
+  image?: string | null;
 };
 
 export type ResourceSearchItem = { ref: ResourceRef; resource: ResolvedResource };

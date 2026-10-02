@@ -3,10 +3,11 @@ import { useEffect, useState, useTransition } from "react";
 import { Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Field, Input, inputClass } from "@/components/ui/input";
+import { Field, Input, selectClass } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
-import { applyTheme, getThemePref, type ThemePref } from "@/lib/theme";
+import { applyTheme, useThemePref, type ThemePref } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { ask } from "@/components/ui/ask";
 import {
   addMemberAction,
   changePasswordAction,
@@ -34,8 +35,8 @@ export function Card({ title, description, children, id }: { title: string; desc
   return (
     <section id={id} className="grid scroll-mt-6 gap-6 border-t border-line py-8 md:grid-cols-[240px_1fr]">
       <div className="flex flex-col gap-1">
-        <h2 className="text-[15px] font-semibold">{title}</h2>
-        {description && <p className="text-[13px] leading-5 text-muted">{description}</p>}
+        <h2 className="text-lead font-semibold">{title}</h2>
+        {description && <p className="text-body leading-5 text-muted">{description}</p>}
       </div>
       <div className="flex min-w-0 flex-col gap-4">{children}</div>
     </section>
@@ -82,17 +83,13 @@ export function ProfileForm({ name, email }: { name: string; email: string }) {
 }
 
 export function ThemePicker() {
-  const [pref, setPref] = useState<ThemePref>("system");
-  useEffect(() => setPref(getThemePref()), []);
+  const pref = useThemePref();
   return (
     <Segmented
       className="self-start"
       label="Tema"
       value={pref}
-      onChange={(v) => {
-        applyTheme(v);
-        setPref(v);
-      }}
+      onChange={(v: ThemePref) => applyTheme(v)}
       options={[
         { value: "light", label: "Claro", icon: <Sun /> },
         { value: "dark", label: "Escuro", icon: <Moon /> },
@@ -144,7 +141,7 @@ export function WorkspaceForm({ name, members, isOwner, meId }: { name: string; 
                     value={m.role}
                     disabled={pending}
                     onChange={(e) => run(() => setMemberRoleAction(m.userId, e.target.value))}
-                    className={cn(inputClass, "h-8 w-auto pr-8 text-[13px]")}
+                    className={cn(selectClass, "h-8 w-auto text-body")}
                   >
                     {Object.entries(ROLE_LABEL).map(([k, v]) => (
                       <option key={k} value={k}>
@@ -157,13 +154,21 @@ export function WorkspaceForm({ name, members, isOwner, meId }: { name: string; 
                     size="icon"
                     aria-label={`Remover ${m.name}`}
                     disabled={pending}
-                    onClick={() => window.confirm(`Remover ${m.name} do workspace?`) && run(() => removeMemberAction(m.userId))}
+                    onClick={async () => {
+                      const ok = await ask.confirm({
+                        title: `Remover ${m.name}?`,
+                        description: "A pessoa perde o acesso a este workspace na hora, incluindo tokens de API criados aqui.",
+                        confirmLabel: "Remover",
+                        danger: true,
+                      });
+                      if (ok) run(() => removeMemberAction(m.userId));
+                    }}
                   >
                     <Trash2 />
                   </Button>
                 </>
               ) : (
-                <span className="text-[13px] text-muted">{ROLE_LABEL[m.role]}</span>
+                <span className="text-body text-muted">{ROLE_LABEL[m.role]}</span>
               )}
             </div>
           ))}
@@ -180,7 +185,7 @@ export function WorkspaceForm({ name, members, isOwner, meId }: { name: string; 
           <Field label="Convidar por e-mail" htmlFor="w-invite" className="min-w-[220px] flex-1" hint="A pessoa precisa ter uma conta no Waypoint.">
             <Input id="w-invite" type="email" placeholder="nome@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
-          <select aria-label="Papel" value={role} onChange={(e) => setRole(e.target.value as Member["role"])} className={cn(inputClass, "mb-[22px] w-auto pr-8")}>
+          <select aria-label="Papel" value={role} onChange={(e) => setRole(e.target.value as Member["role"])} className={cn(selectClass, "mb-[22px] w-auto")}>
             <option value="viewer">Viewer</option>
             <option value="editor">Editor</option>
             <option value="owner">Owner</option>

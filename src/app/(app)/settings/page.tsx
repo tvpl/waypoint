@@ -15,8 +15,8 @@ export default async function SettingsPage() {
     <main className="scrollbar-thin flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[960px] flex-col px-6 pb-16 pt-10 sm:px-10">
         <div className="flex flex-col gap-2 pb-8">
-          <h1 className="font-display text-[44px] leading-none">Configurações</h1>
-          <p className="text-[15px] text-muted">Conta, aparência, workspace e seus dados.</p>
+          <h1 className="font-display text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">Configurações</h1>
+          <p className="text-lead text-muted">Conta, aparência, workspace e seus dados.</p>
         </div>
         <Card title="Perfil" description="Como você aparece para as pessoas do workspace.">
           <ProfileForm name={ctx.user.name} email={ctx.user.email} />
@@ -57,7 +57,7 @@ export default async function SettingsPage() {
               </Link>
             </Button>
           </div>
-          <p className="text-[13px] text-muted">Plans podem ser exportados em JSON, PNG, SVG ou PDF pelo menu de cada plan.</p>
+          <p className="text-body text-muted">Plans podem ser exportados em JSON, PNG, SVG ou PDF pelo menu de cada plan.</p>
         </Card>
       </div>
     </main>

@@ -11,18 +11,27 @@ import {
   applyRedirectAction,
   archiveCollectionAction,
   bulkLinksAction,
+  createSavedSearchAction,
   deleteCollectionAction,
+  deleteSavedSearchAction,
+  loadMoreLinksAction,
+  markTriagedAction,
   moveCollectionAction,
   moveLinksAction,
   toggleStarAction,
   togglePinCollectionAction,
+  togglePinLinkAction,
   updateCollectionAction,
+  updateSavedSearchAction,
 } from "@/app/(app)/links/actions";
+import { ask } from "@/components/ui/ask";
+import { prefersReducedMotion } from "@/lib/utils";
+import { highlightTerms, isEmptyQuery, matchesLinkQuery, parseLinkQuery } from "@/domain/link-query";
 import { CollectionsPanel, type PanelHandlers } from "./collections-panel";
 import { LibraryHeader } from "./library-header";
 import { Toolbar } from "./toolbar";
 import { LinkViews } from "./link-views";
-import { LibraryContext, type LibraryApi } from "./library-context";
+import { createSelectionStore, LibraryContext, type LibraryApi } from "./library-context";
 import { LinkOpenerProvider } from "./link-opener";
 import { LinkPreview } from "./link-preview";
 import { LinkDialog, type LinkDialogState } from "./link-dialog";
@@ -32,15 +41,18 @@ import { BulkBar, MoveDialog } from "./bulk-bar";
 import { ConfirmDialog, type ConfirmRequest } from "./confirm-dialog";
 import { CollectionGlyph, CollectionTile } from "./collection-style";
 import { getDrag } from "./dnd";
-import { getPref, PREF_SUMMARY, PREF_VIEW, setPref } from "./prefs";
+import { getPref, PREF_SUMMARY, PREF_VIEW, setPref, setViewCookie } from "./prefs";
 import { flatNodesClient } from "./tree-utils";
 import { checkLinksNow, healthText, shortUrl, useHealthRun } from "./health";
+import { useEnrichRun } from "./enrich";
 import {
+  SORT_MODES,
   VIEW_MODES,
   VISIBILITY_LABEL,
   type CurrentCollection,
   type LibraryCounts,
   type LinkItem,
+  type SavedSearchItem,
   type Scope,
   type SortMode,
   type SummaryMode,
@@ -48,12 +60,22 @@ import {
   type TreeNode,
   type ViewMode,
 } from "./types";
+import { overlayOpen } from "@/lib/dom";
+import { DuplicatesDialog } from "./duplicates-dialog";
+import { TriageDialog } from "./triage-dialog";
 
 export type LibraryProps = {
   tree: TreeNode[];
   current: CurrentCollection | null;
   scope: Scope;
   links: LinkItem[];
+  /** More links exist after `links` (loaded on scroll). */
+  hasMore: boolean;
+  /** View remembered for this browser (cookie), so the server renders it without a flash. */
+  storedView: ViewMode | null;
+  saved: SavedSearchItem[];
+  /** The saved search being viewed (?saved=). */
+  savedSearch: SavedSearchItem | null;
   sharedCollections: TreeNode[];
   tags: TagCount[];
   counts: LibraryCounts;
@@ -72,7 +94,8 @@ export type LibraryProps = {
 
 const SCOPE_COPY: Record<Scope, { title: string; subtitle: string }> = {
   all: { title: "Todos os links", subtitle: "Tudo o que você salvou neste workspace." },
-  recent: { title: "Recentes", subtitle: "Links que você abriu por último." },
+  inbox: { title: "Caixa de entrada", subtitle: "O que você salvou pela extensão ou pela API e ainda não organizou. Use Triar para decidir rápido." },
+  recent: { title: "Recentes", subtitle: "Links que você abriu, do mais recente ao mais antigo." },
   starred: { title: "Favoritos", subtitle: "Os links que você marcou com estrela." },
   unsorted: { title: "Sem coleção", subtitle: "Links que ainda não estão em nenhuma coleção." },
   broken: { title: "Links quebrados", subtitle: "Links que não responderam na última verificação. Corrija a URL, arquive ou exclua." },
@@ -83,6 +106,7 @@ const SCOPE_COPY: Record<Scope, { title: string; subtitle: string }> = {
 type Op =
   | { type: "patch"; ids: string[]; patch: Partial<LinkItem> }
   | { type: "addTag"; ids: string[]; tag: string }
+  | { type: "removeTag"; ids: string[]; tag: string }
   | { type: "remove"; ids: string[] }
   | { type: "order"; ids: string[] };
 
@@ -90,6 +114,7 @@ function reduce(state: LinkItem[], op: Op): LinkItem[] {
   if (op.type === "remove") return state.filter((l) => !op.ids.includes(l.id));
   if (op.type === "patch") return state.map((l) => (op.ids.includes(l.id) ? { ...l, ...op.patch } : l));
   if (op.type === "addTag") return state.map((l) => (op.ids.includes(l.id) && !l.tags.includes(op.tag) ? { ...l, tags: [...l.tags, op.tag] } : l));
+  if (op.type === "removeTag") return state.map((l) => (op.ids.includes(l.id) ? { ...l, tags: l.tags.filter((t) => t !== op.tag) } : l));
   const byId = new Map(state.map((l) => [l.id, l]));
   return op.ids.map((id) => byId.get(id)!).filter(Boolean);
 }
@@ -98,7 +123,7 @@ const isTyping = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 };
-const anyDialogOpen = () => !!document.querySelector('[role="dialog"], [role="menu"], [role="alertdialog"]');
+const anyDialogOpen = overlayOpen;
 const extractUrl = (text: string) => {
   const t = text.trim();
   if (!t || /\s/.test(t)) return null;
@@ -108,31 +133,72 @@ const extractUrl = (text: string) => {
 };
 
 export function LinksLibrary(props: LibraryProps) {
-  const { tree, current, scope, links, sharedCollections, tags, counts, canEdit, q, activeTags, sort, viewParam, openId, filtering } = props;
+  const { tree, current, scope, links, sharedCollections, tags, counts, canEdit, q, activeTags, sort, viewParam, openId, filtering, saved, savedSearch } = props;
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, startTransition] = React.useTransition();
-  const [items, apply] = React.useOptimistic(links, reduce);
   const filterRef = React.useRef<HTMLInputElement>(null);
+
+  // ---------------------------------------------------------------- paging
+  // Further pages append to the server's first page; a new first page (navigation) resets them.
+  const [more, setMore] = React.useState<{ base: LinkItem[]; links: LinkItem[]; hasMore: boolean }>({ base: links, links: [], hasMore: props.hasMore });
+  if (more.base !== links) setMore({ base: links, links: [], hasMore: props.hasMore });
+  const loaded = React.useMemo(() => (more.links.length ? [...links, ...more.links] : links), [links, more.links]);
+  const [items, apply] = React.useOptimistic(loaded, reduce);
+  const loadingMore = React.useRef(false);
+  const loadMore = React.useCallback(() => {
+    if (loadingMore.current || !more.hasMore) return;
+    loadingMore.current = true;
+    const base = more.base;
+    loadMoreLinksAction(sp.toString(), base.length + more.links.length)
+      .then((r) => {
+        if (!r.ok) return void toast.error(r.error);
+        setMore((m) => (m.base === base ? { base, links: [...m.links, ...r.data!.links], hasMore: r.data!.hasMore } : m));
+      })
+      .finally(() => (loadingMore.current = false));
+  }, [more, sp]);
+
+  // ---------------------------------------------------------------- instant filter
+  // While the debounced URL update is in flight, filter what's loaded right away.
+  const [liveQ, setLiveQ] = React.useState(q);
+  const parsedLive = React.useMemo(() => parseLinkQuery(liveQ), [liveQ]);
+  const visible = React.useMemo(() => {
+    if (liveQ.trim() === q.trim() || isEmptyQuery(parsedLive)) return items;
+    return items.filter((l) => matchesLinkQuery(l, parsedLive));
+  }, [items, liveQ, q, parsedLive]);
+  const highlight = React.useMemo(() => highlightTerms(parsedLive), [parsedLive]);
+  const tagColors = React.useMemo(() => new Map(tags.filter((t) => t.color).map((t) => [t.name, t.color!])), [tags]);
 
   const [linkDialog, setLinkDialog] = React.useState<LinkDialogState>(null);
   const [colDialog, setColDialog] = React.useState<CollectionDialogState>(null);
   const [shareNode, setShareNode] = React.useState<TreeNode | null>(null);
   const [moveIds, setMoveIds] = React.useState<string[] | null>(null);
   const [confirm, setConfirm] = React.useState<ConfirmRequest | null>(null);
-  const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
+  const [selection] = React.useState(createSelectionStore);
+  const selected = React.useSyncExternalStore(selection.subscribe, selection.get, selection.get);
+  const setSelected = selection.set;
   const lastSelected = React.useRef<string | null>(null);
-  const [storedView, setStoredView] = React.useState<ViewMode | null>(null);
+  const [storedView, setStoredView] = React.useState<ViewMode | null>(props.storedView);
   const [summary, setSummary] = React.useState<SummaryMode>("default");
   const [externalOver, setExternalOver] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
+  const [dupesOpen, setDupesOpen] = React.useState(false);
+  const [triageOpen, setTriageOpen] = React.useState(false);
   const spKey = sp.toString();
   // the phone drawer closes whenever the library navigates
   React.useEffect(() => setDrawer(false), [spKey]);
 
   React.useEffect(() => {
-    setStoredView(getPref(PREF_VIEW, VIEW_MODES, "cards"));
     setSummary(getPref<SummaryMode>(PREF_SUMMARY, ["default", "always", "hover", "hidden"], "default"));
+    // One-time move of the view preference from localStorage to the cookie the server reads.
+    if (!props.storedView) {
+      const legacy = getPref<ViewMode | "">(PREF_VIEW, [...VIEW_MODES, ""], "");
+      if (legacy) {
+        setViewCookie(legacy);
+        setStoredView(legacy);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const view: ViewMode = viewParam ?? (current ? current.defaultView : (storedView ?? "cards"));
@@ -174,7 +240,11 @@ export function LinksLibrary(props: LibraryProps) {
     },
     [sp, activeTags],
   );
-  const onQuery = React.useCallback((v: string) => navigate({ q: v.trim() || null }), [navigate]);
+  const onQuery = React.useCallback(
+    // Editing the text leaves the saved search (its name would no longer describe the results).
+    (v: string) => navigate({ q: v.trim() || null, ...(savedSearch && v.trim() !== savedSearch.query ? { saved: null } : {}) }),
+    [navigate, savedSearch],
+  );
 
   // URL-driven dialogs (command palette: ?add=1&url=…, ?newCollection=1).
   React.useEffect(() => {
@@ -203,9 +273,12 @@ export function LinksLibrary(props: LibraryProps) {
   );
 
   // ---------------------------------------------------------------- keyboard & paste
+  // Latest values for the window-level key handler (it's registered once).
+  const keyCtx = React.useRef({ visible: [] as LinkItem[], api: null as LibraryApi | null });
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || anyDialogOpen()) return;
+      if (handleListKey(e, keyCtx.current.visible, keyCtx.current.api)) return;
       if (e.key === "/") {
         e.preventDefault();
         filterRef.current?.focus();
@@ -255,6 +328,7 @@ export function LinksLibrary(props: LibraryProps) {
   );
 
   const runHealth = useHealthRun();
+  const enrich = useEnrichRun();
   const checkLinks = React.useCallback(
     (ids: string[]) => {
       if (!canEdit || !ids.length) return;
@@ -287,7 +361,8 @@ export function LinksLibrary(props: LibraryProps) {
   const moveLinks = React.useCallback(
     (ids: string[], collectionId: string | null) => {
       if (!ids.length) return;
-      const leaves = (current && collectionId !== current.id) || (!current && scope === "unsorted" && collectionId !== null);
+      const leaves =
+        (current && collectionId !== current.id) || (!current && (scope === "unsorted" || scope === "inbox") && collectionId !== null);
       const n = ids.length;
       run(
         leaves ? { type: "remove", ids } : { type: "patch", ids, patch: { collectionId, collectionName: collectionId ? nameOf(collectionId) : null } },
@@ -317,26 +392,36 @@ export function LinksLibrary(props: LibraryProps) {
     [run],
   );
 
+  // Delete without a confirmation step: the links are archived right away and only
+  // deleted when the "Desfazer" toast goes away (closing the tab leaves them archived).
   const remove = React.useCallback(
     (ids: string[]) => {
       const n = ids.length;
-      setConfirm({
-        title: n === 1 ? "Excluir link?" : `Excluir ${n} links?`,
-        description: (
-          <>
-            {n === 1 ? "O link será excluído" : "Os links serão excluídos"} permanentemente. Blocos de plans que apontam para {n === 1 ? "ele" : "eles"} deixam de
-            encontrá-{n === 1 ? "lo" : "los"} na biblioteca. Se quiser apenas tirar da frente, prefira <strong>Arquivar</strong>.
-          </>
-        ),
-        confirmLabel: "Excluir",
-        danger: true,
-        run: async () => {
-          await run({ type: "remove", ids }, () => bulkLinksAction({ op: "delete", ids }), n === 1 ? "Link excluído" : `${n} links excluídos`);
-          setSelected(new Set());
+      let undone = false;
+      let finalized = false;
+      const wasArchived = archivedScope;
+      run({ type: "remove", ids }, () => (wasArchived ? Promise.resolve({ ok: true }) : bulkLinksAction({ op: "archive", ids, archived: true })));
+      setSelected(new Set());
+      const finalize = () => {
+        if (undone || finalized) return;
+        finalized = true;
+        bulkLinksAction({ op: "delete", ids }).then((r) => !r.ok && toast.error(r.error));
+      };
+      toast(n === 1 ? "Link excluído" : `${n} links excluídos`, {
+        duration: 7000,
+        description: "Blocos de plans que apontavam para eles deixam de encontrá-los.",
+        action: {
+          label: "Desfazer",
+          onClick: () => {
+            undone = true;
+            (wasArchived ? Promise.resolve({ ok: true as const }) : bulkLinksAction({ op: "archive", ids, archived: false })).then(() => router.refresh());
+          },
         },
+        onAutoClose: finalize,
+        onDismiss: finalize,
       });
     },
-    [run],
+    [run, archivedScope, setSelected, router],
   );
 
   const star = React.useCallback(
@@ -360,7 +445,7 @@ export function LinksLibrary(props: LibraryProps) {
       setSelected((prev) => {
         const next = new Set(prev);
         if (opts?.range && lastSelected.current) {
-          const ids = items.map((l) => l.id);
+          const ids = visible.map((l) => l.id);
           const a = ids.indexOf(lastSelected.current);
           const b = ids.indexOf(id);
           if (a >= 0 && b >= 0) {
@@ -375,7 +460,18 @@ export function LinksLibrary(props: LibraryProps) {
         return next;
       });
     },
-    [items],
+    [visible, setSelected],
+  );
+
+  const pin = React.useCallback(
+    (link: LinkItem) =>
+      startTransition(async () => {
+        apply({ type: "patch", ids: [link.id], patch: { pinned: !link.pinned } });
+        const res = await togglePinLinkAction(link.id);
+        if (!res.ok) toast.error(res.error);
+        else toast.success(res.data?.pinned ? "Fixado no acesso rápido da Início" : "Removido do acesso rápido");
+      }),
+    [apply],
   );
 
   const dropOnLink = React.useCallback(
@@ -391,12 +487,14 @@ export function LinksLibrary(props: LibraryProps) {
     [items, run, current],
   );
 
-  const api: LibraryApi = {
+  const api: LibraryApi = React.useMemo(() => ({
     canEdit,
     archivedScope,
-    selected,
-    selectionMode: selected.size > 0,
+    selection,
     toggleSelect,
+    pin,
+    highlight,
+    tagColor: (t) => tagColors.get(t) ?? null,
     summaryFor: (l) => (summary === "default" ? l.summaryBehavior : summary),
     reorderable,
     dropOnLink,
@@ -421,7 +519,9 @@ export function LinksLibrary(props: LibraryProps) {
         `URL atualizada para ${shortUrl(url)}`,
       );
     },
-  };
+  }), [canEdit, archivedScope, selection, toggleSelect, pin, highlight, tagColors, summary, reorderable, dropOnLink, star, archive, remove, activeTags, toggleTag, navigate, sort, checkLinks, current, scope, run]);
+
+  keyCtx.current = { visible, api };
 
   // ---------------------------------------------------------------- collection operations
   const isInCurrent = (node: TreeNode) => {
@@ -468,14 +568,71 @@ export function LinksLibrary(props: LibraryProps) {
     moveLinks,
     tagHref,
     checkHealth: (node) => runHealth({ collectionId: node?.id ?? null, name: node?.name }),
+    renameSaved: async (s) => {
+      const name = await ask.prompt({ title: "Renomear busca", label: "Nome", initial: s.name, confirmLabel: "Renomear" });
+      if (name && name !== s.name) run(null, () => updateSavedSearchAction(s.id, { name }));
+    },
+    deleteSaved: async (s) => {
+      const ok = await ask.confirm({ title: `Excluir “${s.name}”?`, description: "Só a busca salva é excluída — os links continuam onde estão.", confirmLabel: "Excluir", danger: true });
+      if (!ok) return;
+      const was = savedSearch?.id === s.id;
+      run(null, () => deleteSavedSearchAction(s.id), () => {
+        toast.success("Busca excluída");
+        if (was) navigate({ saved: null });
+      });
+    },
+  };
+
+  const saveSearch = async () => {
+    const query = (filterRef.current?.value ?? q).trim();
+    if (!query) return;
+    const name = await ask.prompt({
+      title: "Salvar busca",
+      description: "Ela aparece na barra lateral e se atualiza sozinha com os links que combinarem.",
+      label: "Nome",
+      initial: query.replace(/\b[a-z]+:/g, "").replace(/["#]/g, "").trim().slice(0, 40) || "Minha busca",
+      confirmLabel: "Salvar",
+    });
+    if (!name) return;
+    const res = await createSavedSearchAction({ name, query, sort: sp.get("sort") });
+    if (!res.ok) return void toast.error(res.error);
+    toast.success(`“${name}” salva na barra lateral`);
+    navigate({ q: query, saved: res.data!.id });
+  };
+
+  const updateSaved = () => {
+    if (!savedSearch) return;
+    const query = (filterRef.current?.value ?? q).trim();
+    run(null, () => updateSavedSearchAction(savedSearch.id, { query, sort: sp.get("sort") }), "Busca salva atualizada");
   };
 
   const currentNode = current;
-  const copy = SCOPE_COPY[scope];
+  const copy = savedSearch
+    ? { title: savedSearch.name, subtitle: `Busca salva · ${savedSearch.query}` }
+    : SCOPE_COPY[scope];
+  const pinnedSet = React.useMemo(() => new Set(props.pinned), [props.pinned]);
+  const previewNav = React.useMemo(() => {
+    const at = openId ? visible.findIndex((l) => l.id === openId) : -1;
+    if (at < 0) return undefined;
+    return {
+      prev: visible[at - 1]?.id ?? null,
+      next: visible[at + 1]?.id ?? null,
+      index: at,
+      total: visible.length,
+      go: (id: string) => navigate({ open: id }),
+    };
+  }, [openId, visible, navigate]);
+  const childrenOf = React.useCallback((id: string | null) => (id ? (flat.find((n) => n.id === id)?.children ?? []) : tree), [flat, tree]);
+  const collectionNames = React.useMemo(() => flat.map((n) => n.name), [flat]);
+  const domains = React.useMemo(() => {
+    const count = new Map<string, number>();
+    for (const l of links) if (l.domain) count.set(l.domain, (count.get(l.domain) ?? 0) + 1);
+    return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([d]) => d.replace(/^www\./, ""));
+  }, [links]);
 
   // ---------------------------------------------------------------- render
-  const sortOptions: SortMode[] = current || scope === "unsorted" ? ["manual", "recent", "title", "opened"] : ["recent", "title", "opened"];
-  const empty = scope === "shared" && !current ? sharedCollections.length === 0 : items.length === 0;
+  const sortOptions: SortMode[] = SORT_MODES.filter((s) => s !== "manual" || !!current || scope === "unsorted");
+  const empty = scope === "shared" && !current ? sharedCollections.length === 0 : visible.length === 0;
 
   return (
     <LibraryContext.Provider value={api}>
@@ -489,13 +646,15 @@ export function LinksLibrary(props: LibraryProps) {
             counts={counts}
             tags={tags}
             activeTags={activeTags}
-            pinned={new Set(props.pinned)}
+            pinned={pinnedSet}
             canEdit={canEdit}
             handlers={handlers}
+            saved={saved}
+            savedId={savedSearch?.id ?? null}
           />
           <D.Root open={drawer} onOpenChange={setDrawer}>
             <D.Portal>
-              <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-[wp-in_120ms_ease-out] md:hidden" />
+              <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out md:hidden" />
               <D.Content
                 aria-describedby={undefined}
                 onOpenAutoFocus={(e) => {
@@ -503,7 +662,7 @@ export function LinksLibrary(props: LibraryProps) {
                   e.preventDefault();
                   (e.currentTarget as HTMLElement).focus();
                 }}
-                className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col bg-surface-2 shadow-pop outline-none data-[state=open]:animate-[wp-drawer_180ms_cubic-bezier(.2,.8,.2,1)] md:hidden"
+                className="fixed inset-y-0 left-0 z-50 flex w-[min(300px,86vw)] flex-col bg-surface-2 shadow-pop outline-none data-[state=open]:animate-drawer-in data-[state=closed]:animate-drawer-out md:hidden"
                 onClickCapture={(e) => {
                   // any link inside (scope, collection, tag) navigates: close right away
                   if ((e.target as HTMLElement).closest("a[href]")) setDrawer(false);
@@ -518,8 +677,10 @@ export function LinksLibrary(props: LibraryProps) {
                   counts={counts}
                   tags={tags}
                   activeTags={activeTags}
-                  pinned={new Set(props.pinned)}
+                  pinned={pinnedSet}
                   canEdit={canEdit}
+                  saved={saved}
+                  savedId={savedSearch?.id ?? null}
                   handlers={{
                     ...handlers,
                     newCollection: (p) => (setDrawer(false), handlers.newCollection(p)),
@@ -573,6 +734,9 @@ export function LinksLibrary(props: LibraryProps) {
                 onArchive={() => current && handlers.archive(current)}
                 onDelete={() => current && handlers.remove(current)}
                 onCheckHealth={() => handlers.checkHealth(current)}
+                onEnrich={() => enrich({ collectionId: current?.id ?? null, name: current?.name })}
+                childrenOf={childrenOf}
+                onDuplicates={() => setDupesOpen(true)}
                 onOpenCollections={() => setDrawer(true)}
                 onAdd={() => openAdd()}
               />
@@ -581,10 +745,14 @@ export function LinksLibrary(props: LibraryProps) {
                 <Toolbar
                   q={q}
                   onQuery={onQuery}
+                  onLiveQuery={setLiveQ}
                   filterRef={filterRef}
-                  placeholder={current ? "Filtrar nesta coleção…" : "Filtrar links…"}
+                  placeholder={current ? "Filtrar nesta coleção… (tag:, site:, is:)" : "Filtrar links… (tag:, site:, in:, is:)"}
                   activeTags={activeTags}
                   tags={tags}
+                  collections={collectionNames}
+                  domains={domains}
+                  onSaveSearch={savedSearch && savedSearch.query === q.trim() ? undefined : saveSearch}
                   onToggleTag={toggleTag}
                   sort={sort}
                   sortOptions={sortOptions}
@@ -596,11 +764,46 @@ export function LinksLibrary(props: LibraryProps) {
                   }}
                   view={view}
                   onView={(v) => {
-                    setPref(PREF_VIEW, v);
-                    setStoredView(v);
-                    navigate({ view: v });
+                    if (current) {
+                      // Inside a collection the choice becomes its default (for everyone, editors only).
+                      if (canEdit && v !== current.defaultView) run(null, () => updateCollectionAction(current.id, { defaultView: v }));
+                      navigate({ view: v });
+                    } else {
+                      setViewCookie(v);
+                      setStoredView(v);
+                      navigate({ view: null });
+                    }
                   }}
                 />
+              )}
+
+              {!current && scope === "inbox" && canEdit && visible.length > 0 && (
+                <div className="-mt-1 flex flex-wrap items-center gap-3 rounded-card border border-accent-line bg-accent-soft/50 px-4 py-3">
+                  <span className="inline-flex size-9 items-center justify-center rounded-control bg-accent text-white">
+                    <Inbox className="size-[18px]" aria-hidden />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-body font-semibold text-accent-ink">
+                      {visible.length} {visible.length === 1 ? "link esperando" : "links esperando"}
+                    </span>
+                    <span className="text-caption text-muted">Um de cada vez: 1–9 move para a coleção sugerida, ↵ deixa como está, a arquiva.</span>
+                  </span>
+                  <Button variant="primary" onClick={() => setTriageOpen(true)}>
+                    Triar agora
+                  </Button>
+                  <Button variant="ghost" onClick={() => run({ type: "remove", ids: visible.map((l) => l.id) }, () => markTriagedAction(visible.map((l) => l.id)), "Caixa de entrada limpa")}>
+                    Marcar tudo como visto
+                  </Button>
+                </div>
+              )}
+
+              {savedSearch && savedSearch.query !== q.trim() && q.trim() && (
+                <div className="-mt-1 flex animate-in flex-wrap items-center gap-2 rounded-control border border-accent-line bg-accent-soft/60 px-3 py-2 text-body text-accent-ink">
+                  <span className="flex-1">A busca mudou desde que foi salva.</span>
+                  <Button size="sm" variant="soft" onClick={updateSaved}>
+                    Atualizar “{savedSearch.name}”
+                  </Button>
+                </div>
               )}
 
               {current && (current.children.length > 0 || canEdit) && (
@@ -610,7 +813,7 @@ export function LinksLibrary(props: LibraryProps) {
                     <Link
                       key={c.id}
                       href={`/links?c=${c.id}`}
-                      className="inline-flex h-8 items-center gap-2 rounded-[9px] border border-line bg-surface px-3 text-[13px] hover:bg-surface-2"
+                      className="inline-flex h-8 items-center gap-2 rounded-control border border-line bg-surface px-3 text-body hover:bg-surface-2"
                     >
                       <CollectionGlyph icon={c.icon} color={c.color} />
                       <span>{c.name}</span>
@@ -621,20 +824,20 @@ export function LinksLibrary(props: LibraryProps) {
                     <button
                       type="button"
                       onClick={() => handlers.newCollection(current)}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-dashed border-line-2 px-3 text-[13px] text-muted hover:border-ink-2 hover:text-ink"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-control border border-dashed border-line-2 px-3 text-body text-muted hover:border-ink-2 hover:text-ink"
                     >
                       <FolderPlus className="size-[15px]" aria-hidden />
                       Subcoleção
                     </button>
                   )}
                   <span className="ml-auto text-xs text-muted" aria-live="polite">
-                    <ResultCount n={items.length} deep={filtering} />
+                    <ResultCount n={visible.length} more={more.hasMore} deep={filtering} />
                   </span>
                 </div>
               )}
-              {!current && scope !== "shared" && items.length > 0 && (
+              {!current && scope !== "shared" && visible.length > 0 && (
                 <span className="-mt-2 text-xs text-muted" aria-live="polite">
-                  <ResultCount n={items.length} deep={false} />
+                  <ResultCount n={visible.length} more={more.hasMore} deep={false} />
                 </span>
               )}
 
@@ -651,33 +854,51 @@ export function LinksLibrary(props: LibraryProps) {
               ) : scope === "shared" && !current ? (
                 <SharedGrid nodes={sharedCollections} />
               ) : (
-                <LinkViews links={items} view={view} />
+                <>
+                  <LinkViews links={visible} view={view} />
+                  {more.hasMore && <LoadMore onVisible={loadMore} />}
+                </>
               )}
-              {reorderable && items.length > 1 && <p className="text-center text-xs text-muted">Arraste os links para reordenar ou solte-os em uma coleção na barra lateral.</p>}
+              {reorderable && visible.length > 1 && <p className="text-center text-xs text-muted">Arraste os links para reordenar ou solte-os em uma coleção na barra lateral.</p>}
             </div>
           </main>
         </div>
 
-        <BulkBar
-          count={selected.size}
-          archivedScope={archivedScope}
-          tags={tags}
-          allSelected={selected.size === items.length}
-          onSelectAll={() => setSelected(new Set(items.map((l) => l.id)))}
-          onMove={() => setMoveIds([...selected])}
-          onTag={(tag) => {
-            const ids = [...selected];
-            run(
-              { type: "addTag", ids, tag },
-              () => bulkLinksAction({ op: "addTag", ids, tag }),
-              `#${tag} adicionada a ${ids.length} ${ids.length === 1 ? "link" : "links"}`,
-            );
-          }}
-          onArchive={() => archive([...selected], !archivedScope)}
-          onCheck={canEdit ? () => checkLinks([...selected]) : undefined}
-          onDelete={() => remove([...selected])}
-          onClear={() => setSelected(new Set())}
-        />
+        {canEdit && (
+          <BulkBar
+            count={selected.size}
+            archivedScope={archivedScope}
+            tags={tags}
+            allSelected={selected.size === visible.length}
+            onSelectAll={() => setSelected(new Set(visible.map((l) => l.id)))}
+            onMove={() => setMoveIds([...selected])}
+            onTag={(tag) => {
+              const ids = [...selected];
+              run(
+                { type: "addTag", ids, tag },
+                () => bulkLinksAction({ op: "addTag", ids, tag }),
+                `#${tag} adicionada a ${ids.length} ${ids.length === 1 ? "link" : "links"}`,
+              );
+            }}
+            onArchive={() => archive([...selected], !archivedScope)}
+            onCheck={() => checkLinks([...selected])}
+            selectedTags={[...new Set(visible.filter((l) => selected.has(l.id)).flatMap((l) => l.tags))].sort()}
+            onRemoveTag={(tag) => {
+              const ids = [...selected];
+              run({ type: "removeTag", ids, tag }, () => bulkLinksAction({ op: "removeTag", ids, tag }), `#${tag} removida`);
+            }}
+            onStar={(on) => {
+              const ids = [...selected];
+              run({ type: "patch", ids, patch: { starred: on } }, () => bulkLinksAction({ op: "star", ids, on }), on ? "Estrelas adicionadas" : "Estrelas removidas");
+            }}
+            onOpenBehavior={(value) => {
+              const ids = [...selected];
+              run({ type: "patch", ids, patch: { openBehavior: value } }, () => bulkLinksAction({ op: "openBehavior", ids, value }), "Comportamento ao abrir atualizado");
+            }}
+            onDelete={() => remove([...selected])}
+            onClear={() => setSelected(new Set())}
+          />
+        )}
         {canEdit && <MoveDialog ids={moveIds} tree={tree} onClose={() => setMoveIds(null)} onMove={moveLinks} />}
         <LinkPreview
           linkId={openId}
@@ -685,6 +906,7 @@ export function LinksLibrary(props: LibraryProps) {
           onClose={() => navigate({ open: null })}
           onEdit={(l) => setLinkDialog({ mode: "edit", link: l })}
           onToggleStar={star}
+          nav={previewNav}
         />
         {canEdit && <LinkDialog state={linkDialog} onClose={() => setLinkDialog(null)} tree={tree} tags={tags} />}
         {canEdit && (
@@ -692,17 +914,50 @@ export function LinksLibrary(props: LibraryProps) {
         )}
         {canEdit && <ShareDialog node={shareNode} initialToken={shareNode && current?.id === shareNode.id ? current.shareToken : null} onClose={() => setShareNode(null)} />}
         <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
+        {canEdit && <DuplicatesDialog open={dupesOpen} onClose={() => setDupesOpen(false)} />}
+        {canEdit && (
+          <TriageDialog
+            open={triageOpen}
+            onClose={() => setTriageOpen(false)}
+            links={visible}
+            tree={tree}
+            handlers={{
+              file: (l, collectionId) => moveLinks([l.id], collectionId),
+              archive: (l) => archive([l.id], true),
+              done: (l) => void run({ type: "remove", ids: [l.id] }, () => markTriagedAction([l.id])),
+              star,
+            }}
+          />
+        )}
       </LinkOpenerProvider>
     </LibraryContext.Provider>
   );
 }
 
-function ResultCount({ n, deep }: { n: number; deep: boolean }) {
+function ResultCount({ n, more, deep }: { n: number; more: boolean; deep: boolean }) {
   return (
     <>
-      {n} {n === 1 ? "link" : "links"}
+      {n}
+      {more ? "+" : ""} {n === 1 && !more ? "link" : "links"}
       {deep ? " (incluindo subcoleções)" : ""}
     </>
+  );
+}
+
+/** Sentinel that asks for the next page when it scrolls into view. */
+function LoadMore({ onVisible }: { onVisible: () => void }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && onVisible(), { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onVisible]);
+  return (
+    <div ref={ref} className="flex justify-center py-4" role="status" aria-label="Carregando mais links">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line-2 border-t-accent" />
+    </div>
   );
 }
 
@@ -713,19 +968,19 @@ function SharedGrid({ nodes }: { nodes: TreeNode[] }) {
         <Link
           key={n.id}
           href={`/links?c=${n.id}`}
-          className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-[0_10px_30px_-12px_rgba(23,23,28,.22)]"
+          className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise"
         >
           <div className="flex items-center gap-3">
             <CollectionTile icon={n.icon} color={n.color} size={32} />
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[15px] font-semibold">{n.name}</span>
+              <span className="truncate text-lead font-semibold">{n.name}</span>
               <span className="text-xs text-muted">
                 {n.totalCount} {n.totalCount === 1 ? "link" : "links"}
               </span>
             </div>
           </div>
-          {n.description && <p className="line-clamp-2 text-[13px] leading-[19px] text-ink-2">{n.description}</p>}
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
+          {n.description && <p className="line-clamp-2 text-body leading-[19px] text-ink-2">{n.description}</p>}
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-accent-soft px-2 py-0.5 text-caption font-medium text-accent-ink">
             <Link2 className="size-3" aria-hidden />
             {VISIBILITY_LABEL[n.visibility]}
           </span>
@@ -840,6 +1095,7 @@ function Empty({
   }
   const map: Record<Scope, { icon: React.ReactNode; title: string; description: string }> = {
     all: { icon: <Link2 />, title: "Nenhum link", description: "" },
+    inbox: { icon: <Inbox />, title: "Caixa de entrada vazia", description: "Links salvos pela extensão (sem coleção) chegam aqui para você organizar com calma." },
     recent: { icon: <Clock />, title: "Nada aberto ainda", description: "Os links que você abrir aparecem aqui, do mais recente para o mais antigo." },
     starred: { icon: <Star />, title: "Nenhum favorito ainda", description: "Marque links com a estrela para encontrá-los aqui rapidamente." },
     unsorted: { icon: <Inbox />, title: "Tudo organizado", description: "Todos os links estão em alguma coleção." },
@@ -853,4 +1109,99 @@ function Empty({
   };
   const m = map[scope];
   return <EmptyState icon={m.icon} title={m.title} description={m.description} />;
+}
+
+// ------------------------------------------------------------------ keyboard navigation of the list
+
+const primaryOf = (id: string) => document.querySelector<HTMLElement>(`[data-link-primary="${CSS.escape(id)}"]`);
+
+function focusedLinkId(): string | null {
+  return (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-link-primary]")?.dataset.linkPrimary ?? null;
+}
+
+/** Nearest item in a direction, by on-screen geometry (works for grid, compact and list). */
+function neighbor(ids: string[], fromId: string, dir: "up" | "down"): string | null {
+  const from = primaryOf(fromId)?.getBoundingClientRect();
+  if (!from) return null;
+  let best: { id: string; score: number } | null = null;
+  for (const id of ids) {
+    if (id === fromId) continue;
+    const r = primaryOf(id)?.getBoundingClientRect();
+    if (!r) continue;
+    const dy = dir === "down" ? r.top - from.bottom : from.top - r.bottom;
+    if (dy < -4) continue;
+    const score = Math.max(dy, 0) * 4 + Math.abs(r.left - from.left);
+    if (!best || score < best.score) best = { id, score };
+  }
+  return best?.id ?? null;
+}
+
+function focusLink(id: string) {
+  const el = primaryOf(id);
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+
+/**
+ * j/k (and arrows once a link has focus) move between links; x s p e o # act on the
+ * focused one. Returns true when the key was handled.
+ */
+function handleListKey(e: KeyboardEvent, visible: LinkItem[], api: LibraryApi | null): boolean {
+  if (!api || !visible.length) return false;
+  const ids = visible.map((l) => l.id);
+  const current = focusedLinkId();
+  const at = current ? ids.indexOf(current) : -1;
+  const move = (id: string | null | undefined) => {
+    if (!id) return true;
+    e.preventDefault();
+    focusLink(id);
+    return true;
+  };
+  switch (e.key) {
+    case "j":
+      return move(ids[Math.min(at + 1, ids.length - 1)]);
+    case "k":
+      return move(ids[Math.max(at - 1, 0)]);
+    case "ArrowRight":
+      return at >= 0 && move(ids[Math.min(at + 1, ids.length - 1)]);
+    case "ArrowLeft":
+      return at >= 0 && move(ids[Math.max(at - 1, 0)]);
+    case "ArrowDown":
+      return at >= 0 && move(neighbor(ids, ids[at], "down"));
+    case "ArrowUp":
+      return at >= 0 && move(neighbor(ids, ids[at], "up"));
+  }
+  if (at < 0) return false;
+  const link = visible[at];
+  switch (e.key) {
+    case "x":
+      if (!api.canEdit) return false;
+      api.toggleSelect(link.id);
+      break;
+    case "s":
+      void api.star(link);
+      break;
+    case "p":
+      api.pin(link);
+      break;
+    case "e":
+      if (!api.canEdit) return false;
+      api.edit(link);
+      break;
+    case "o":
+      window.open(link.url, "_blank", "noopener,noreferrer");
+      fetch(`/api/links/${link.id}/open`, { method: "POST", keepalive: true }).catch(() => {});
+      break;
+    case "#":
+      if (!api.canEdit) return false;
+      api.archive([link.id], !link.archived);
+      // keep the keyboard flow going on the next link
+      setTimeout(() => focusLink(ids[at + 1] ?? ids[at - 1]), 50);
+      break;
+    default:
+      return false;
+  }
+  e.preventDefault();
+  return true;
 }

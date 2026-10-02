@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Salvar no Waypoint</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body data-view="loading">
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-logo" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="6" r="2.5" /><path d="M8.5 18H12a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" /></symbol>
+      <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" /></symbol>
+      <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.43a5 5 0 0 1 7 0M5 12.86a10 10 0 0 1 5.17-2.69M19 12.86a10 10 0 0 0-2.01-1.53M2 8.82a15 15 0 0 1 4.18-2.65M22 8.82a15 15 0 0 0-11.29-3.76M2 2l20 20" /></symbol>
+    </svg>
+
+    <header class="top">
+      <span class="logo" aria-hidden="true"><svg class="i"><use href="#i-logo" /></svg></span>
+      <span class="top-title">Salvar no Waypoint</span>
+      <span class="ws" id="ws" hidden></span>
+      <button class="btn ghost icon" id="open-options" type="button" aria-label="Configurações da extensão" title="Configurações">
+        <svg class="i"><use href="#i-settings" /></svg>
+      </button>
+    </header>
+
+    <!-- loading -->
+    <section class="view" data-for="loading" aria-busy="true" aria-label="Carregando">
+      <div class="skeleton page"></div>
+      <div class="skeleton line"></div>
+      <div class="skeleton field"></div>
+      <div class="skeleton line"></div>
+      <div class="skeleton field"></div>
+    </section>
+
+    <!-- not configured / bad token / offline / unsupported page / read-only -->
+    <section class="view message" data-for="message">
+      <span class="message-icon" id="msg-icon"><svg class="i"><use href="#i-key" /></svg></span>
+      <h1 id="msg-title">Conecte o Waypoint</h1>
+      <p id="msg-text">Informe o endereço do seu Waypoint e um token de API para começar a salvar links.</p>
+      <div class="message-actions">
+        <button class="btn primary" id="msg-primary" type="button">Abrir configurações</button>
+        <button class="btn ghost" id="msg-secondary" type="button" hidden>Tentar de novo</button>
+      </div>
+    </section>
+
+    <!-- form -->
+    <form class="view" data-for="form" id="form" novalidate>
+      <div class="page-card">
+        <img class="favicon" id="favicon" alt="" width="20" height="20" hidden />
+        <span class="favicon fallback" id="favicon-fallback" aria-hidden="true"></span>
+        <div class="page-meta">
+          <label class="sr-only" for="title">Título</label>
+          <input class="title-input" id="title" name="title" maxlength="500" autocomplete="off" placeholder="Título do link" />
+          <span class="page-url" id="page-url"></span>
+        </div>
+      </div>
+
+      <div class="banner success saved" id="saved-banner" role="status" hidden>
+        <svg class="i"><use href="#i-check" /></svg>
+        <span class="grow">
+          <strong>Já está no Waypoint</strong><span id="saved-where"></span>
+        </span>
+        <button class="link-btn" id="saved-open" type="button">Abrir <svg class="i"><use href="#i-external" /></svg></button>
+      </div>
+
+      <div class="field">
+        <span class="label" id="col-label">Coleção</span>
+        <button class="select" id="col-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="col-label col-value">
+          <svg class="i" id="col-icon"><use href="#i-inbox" /></svg>
+          <span class="select-value" id="col-value">Sem coleção</span>
+          <svg class="i chevron"><use href="#i-chevron" /></svg>
+        </button>
+        <div class="picker" id="col-picker" hidden>
+          <label class="picker-search">
+            <svg class="i"><use href="#i-search" /></svg>
+            <input id="col-search" placeholder="Buscar coleção…" autocomplete="off" aria-controls="col-list" aria-label="Buscar coleção" />
+          </label>
+          <ul class="picker-list" id="col-list" role="listbox" aria-labelledby="col-label"></ul>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="tag-input">Tags</label>
+        <div class="input-shell tags" id="tags-shell">
+          <span id="tag-chips" class="chips"></span>
+          <input id="tag-input" autocomplete="off" placeholder="Adicionar tag…" aria-describedby="tag-hint" aria-controls="tag-suggest" aria-autocomplete="list" />
+        </div>
+        <ul class="suggest" id="tag-suggest" role="listbox" aria-label="Sugestões de tags" hidden></ul>
+        <p class="sr-only" id="tag-hint">Enter ou vírgula adiciona a tag. Backspace remove a última.</p>
+      </div>
+
+      <div class="field">
+        <label class="label" for="note">Nota <span class="opt">· opcional</span></label>
+        <textarea class="textarea" id="note" rows="2" maxlength="5000" placeholder="Por que este link importa?"></textarea>
+      </div>
+
+      <div class="banner danger" id="form-error" role="alert" hidden>
+        <svg class="i"><use href="#i-alert" /></svg>
+        <span id="form-error-text"></span>
+      </div>
+    </form>
+
+    <!-- success -->
+    <section class="view done" data-for="success" role="status">
+      <span class="done-icon"><svg class="i"><use href="#i-check" /></svg></span>
+      <h1>Salvo no Waypoint</h1>
+      <p id="done-where"></p>
+      <div class="done-card">
+        <img class="favicon" id="done-favicon" alt="" width="20" height="20" hidden />
+        <span class="done-title" id="done-title"></span>
+      </div>
+      <div class="message-actions">
+        <button class="btn primary" id="done-open" type="button"><svg class="i"><use href="#i-external" /></svg>Abrir no Waypoint</button>
+        <button class="btn ghost" id="done-close" type="button">Fechar</button>
+      </div>
+    </section>
+
+    <footer class="bottom" data-for="form">
+      <span class="kbd-hint"><kbd id="mod-key">Ctrl</kbd><kbd>Enter</kbd> salva</span>
+      <button class="btn primary" id="save" type="submit" form="form">
+        <span class="spinner" id="save-spinner" hidden></span>
+        <span id="save-label">Salvar</span>
+      </button>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

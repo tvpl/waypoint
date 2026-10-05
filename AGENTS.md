@@ -17,3 +17,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Schema changes: edit `src/server/db/schema.ts`, then `npm run db:generate`. Search index (`search_index`, FTS5) is maintained by the services — call the index helpers when you add a new searchable entity.
 - Any outbound request to a user-supplied URL must go through `safeFetch` (`src/server/lib/safe-fetch.ts`).
 - Checks before committing: `npm run typecheck`, `npm test`, `npm run build`.
+- Desktop app: `desktop/` (Electron; see the README). It runs the standalone server with `WAYPOINT_DESKTOP_SECRET` set, which `src/server/desktop.ts` and `src/proxy.ts` use for the local key and the automatic login. In the window, the page draws the title bar (`src/components/shell/title-bar.tsx`), so full-height screens use `h-app` / `min-h-app` instead of `h-dvh` / `min-h-dvh`. Desktop-only UI checks `useDesktop()` (`src/lib/desktop.ts`).

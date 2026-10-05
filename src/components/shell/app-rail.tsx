@@ -28,6 +28,7 @@ import { Logo } from "./logo";
 import { logoutAction } from "./actions";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { overlayOpen } from "@/lib/dom";
+import { TOGGLE_RAIL_EVENT, useDesktop } from "@/lib/desktop";
 
 const NAV = [
   { href: "/", label: "Início", icon: Home, match: (p: string) => p === "/" },
@@ -89,7 +90,11 @@ export function AppRail({
       toggle();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(TOGGLE_RAIL_EVENT, toggle);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(TOGGLE_RAIL_EVENT, toggle);
+    };
   }, [toggle]);
 
   const item = (on: boolean) =>
@@ -248,9 +253,7 @@ export function AppRail({
           )}
           <ThemeItems current={theme} />
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => logoutAction()}>
-            <LogOut /> Sair
-          </DropdownMenuItem>
+          <SignOutItem />
         </DropdownMenuContent>
       </DropdownMenu>
     </nav>
@@ -277,6 +280,20 @@ function WorkspaceItems({ current, workspaces }: { current: { id: string }; work
 }
 
 const THEME_ICON = { light: Sun, dark: Moon, system: Monitor } as const;
+
+/** Signs out on the web; in the desktop app (single local person, no login) it quits the app. */
+function SignOutItem() {
+  const desktop = useDesktop();
+  return desktop ? (
+    <DropdownMenuItem onSelect={() => desktop.run("quit")}>
+      <LogOut /> Sair do aplicativo
+    </DropdownMenuItem>
+  ) : (
+    <DropdownMenuItem onSelect={() => logoutAction()}>
+      <LogOut /> Sair
+    </DropdownMenuItem>
+  );
+}
 
 function ThemeItems({ current }: { current: ThemePref }) {
   return (["light", "dark", "system"] as const).map((t) => {
@@ -347,7 +364,7 @@ export function MobileTabBar({ user }: { user: { name: string; email: string } }
           <DropdownMenuLabel>Tema</DropdownMenuLabel>
           <ThemeItems current={theme} />
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => logoutAction()}><LogOut /> Sair</DropdownMenuItem>
+          <SignOutItem />
         </DropdownMenuContent>
       </DropdownMenu>
     </nav>

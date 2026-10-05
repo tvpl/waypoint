@@ -36,6 +36,38 @@ O banco fica em `data/waypoint.db` (configurável com `DATABASE_PATH`). As migra
 | `npm run db:generate` | gera uma migração a partir de `src/server/db/schema.ts` |
 | `npm run db:seed` | dados de demonstração |
 
+## Aplicativo de desktop
+
+O Waypoint também roda como aplicativo, fora do navegador, no Windows, no macOS e no Linux (`desktop/`, com Electron). O app traz o próprio servidor e o banco SQLite e funciona offline, sem login: na primeira abertura ele cria a sua conta local.
+
+| Sistema | Arquivo | Observação |
+| --- | --- | --- |
+| Windows | `Waypoint-x.y.z-portatil.exe` | roda sem instalar; os dados ficam em `WaypointData\` ao lado do `.exe` (dá para levar num pendrive) |
+| Windows | `Waypoint-x.y.z-instalador.exe` | instalação normal; dados em `%APPDATA%\Waypoint\data` |
+| macOS | `Waypoint-x.y.z-mac-arm64.dmg` / `-x64.dmg` | sem notarização: na primeira vez, clique com o botão direito → Abrir |
+| Linux | `Waypoint-x.y.z-linux-x86_64.AppImage` | dados em `~/.config/Waypoint/data` |
+
+**Modo portátil** em qualquer sistema: crie uma pasta `WaypointData` ao lado do aplicativo (ou do `.AppImage`/`Waypoint.app`). Banco, uploads, backups e o perfil da janela (tema, posição do canvas) passam a ficar nela.
+
+Destaques:
+
+- **Barra de título própria**, nas cores do tema. Nela ficam o menu (Arquivo, Editar, Exibir, Ir, Janela, Ajuda), voltar/avançar e a busca. No macOS o menu fica na barra do sistema. `Alt` sozinho leva o foco ao menu.
+- **Atalhos:** `Ctrl+N` novo plan · `Ctrl+L` adicionar link · `Ctrl+Shift+L` salvar o link da área de transferência · `Ctrl+1…4` Início/Planner/Links/Tags · `Ctrl+B` barra lateral · `F5` apresentar · `F1` atalhos · `Ctrl+,` configurações (⌘ no macOS).
+- **De qualquer lugar:** `Ctrl+Shift+Espaço` traz o Waypoint com a busca aberta. Há também o ícone na bandeja/barra de menus (com a opção de continuar rodando ao fechar), o menu do Dock e a jump list do Windows.
+- **Backup automático** uma vez por dia em `backups/` (guarda os dez mais recentes) e **Arquivo → Fazer backup agora**.
+- **Links externos** abrem no navegador padrão. Páginas do Waypoint abertas "em nova aba" viram uma nova janela.
+- A **extensão do navegador** continua funcionando: use o endereço mostrado em **Configurações → Aplicativo** (`http://127.0.0.1:47615`) com um token de API.
+
+Como funciona: o processo principal (`desktop/src/main.ts`) sobe o build *standalone* do Next.js num *utility process* em `127.0.0.1`. A cada abertura ele gera uma chave nova e grava num cookie só da janela do app. O `src/proxy.ts` recusa qualquer requisição sem essa chave, exceto a API REST, que tem token próprio. Assim, outros programas e abas do navegador na mesma máquina não acessam os dados. O login automático fica em `src/app/api/desktop/session`.
+
+```bash
+npm run desktop:install   # dependências do Electron (uma vez)
+npm run desktop:dev       # app com next dev (recarrega ao editar)
+npm run desktop:dist      # gera os pacotes do sistema atual em desktop/release
+```
+
+Para gerar pacotes de outro sistema, use `npm run dist:win`, `dist:mac` ou `dist:linux` dentro de `desktop/`. O `.exe` do Windows também pode ser gerado a partir do Linux. O workflow `.github/workflows/desktop.yml` gera e testa os três sistemas a cada mudança em `desktop/`. Uma tag `v*` publica uma release com os arquivos.
+
 ## Arquitetura
 
 ```

@@ -294,7 +294,7 @@ export function PlanViewPage({
   const empty = document.nodes.length === 0;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-surface-2 text-ink">
+    <div className="flex h-app flex-col overflow-hidden bg-surface-2 text-ink">
       <header className="wp-no-print flex h-14 shrink-0 items-center gap-2 px-3 sm:gap-3 sm:px-5">
         <Link href={homeHref} aria-label="Waypoint — início" className="inline-flex shrink-0 rounded-control">
           <Logo />

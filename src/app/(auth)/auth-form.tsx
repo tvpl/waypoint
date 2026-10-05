@@ -9,7 +9,7 @@ import { loginAction, signupAction } from "./actions";
 export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: string }) {
   const [state, action, pending] = useActionState(mode === "login" ? loginAction : signupAction, undefined);
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-bg px-4 py-12">
+    <main className="flex min-h-app items-center justify-center bg-bg px-4 py-12">
       <div className="flex w-full max-w-[400px] flex-col gap-8">
         <div className="flex flex-col items-start gap-5">
           <Logo size={40} />

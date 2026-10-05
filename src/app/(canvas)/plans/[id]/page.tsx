@@ -104,7 +104,7 @@ export default async function PlanViewRoute({ params, searchParams }: Props) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-bg px-6 text-center">
+    <main className="flex min-h-app flex-col items-center justify-center gap-6 bg-bg px-6 text-center">
       <Logo size={40} />
       {children}
     </main>

@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ];
   return (
     <TooltipProvider>
-      <div className="flex h-dvh overflow-hidden bg-bg">
+      <div className="flex h-app overflow-hidden bg-bg">
         <AppRail user={{ name: ctx.user.name, email: ctx.user.email }} workspace={ctx.workspace} workspaces={ctx.workspaces} pins={pins} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">{children}</div>
       </div>

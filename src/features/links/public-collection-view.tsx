@@ -34,7 +34,7 @@ export function PublicCollectionView({
   for (const l of links) if (l.collectionId) byCollection.set(l.collectionId, [...(byCollection.get(l.collectionId) ?? []), l]);
 
   return (
-    <div className="min-h-dvh bg-bg text-ink">
+    <div className="min-h-app bg-bg text-ink">
       <div className="mx-auto flex max-w-[1240px] flex-col gap-8 px-5 py-10 sm:px-8">
         <header className="flex flex-col gap-3">
           {path.length > 1 && (

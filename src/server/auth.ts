@@ -37,7 +37,8 @@ export async function createSession(userId: string) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // The desktop app serves plain http on 127.0.0.1 (see src/server/desktop.ts).
+    secure: process.env.NODE_ENV === "production" && !process.env.WAYPOINT_DESKTOP_SECRET,
     path: "/",
     expires: expiresAt,
   });

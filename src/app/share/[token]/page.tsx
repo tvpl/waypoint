@@ -26,7 +26,7 @@ export default async function SharePage({ params, searchParams }: { params: Prom
   if (!data) notFound();
 
   return (
-    <div className="min-h-dvh bg-bg">
+    <div className="min-h-app bg-bg">
       <header className="flex h-14 items-center gap-3 px-5">
         <Link href={user ? "/" : "/login"} aria-label="Waypoint">
           <Logo />

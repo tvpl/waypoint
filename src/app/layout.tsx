@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "sonner";
 import { AskHost } from "@/components/ui/ask";
+import { TitleBar } from "@/components/shell/title-bar";
+import { DesktopCommands } from "@/components/shell/desktop-commands";
+import { isDesktop } from "@/server/desktop";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
@@ -28,12 +31,25 @@ export const viewport: Viewport = {
 const themeScript = `(function(){try{var t=localStorage.getItem('wp-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);var m=document.createElement('meta');m.name='theme-color';m.content=d?'#0e0f12':'#f5f5f2';document.head.appendChild(m);}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Desktop app: the server runs on the same machine as the window, so its platform is the window's.
+  const desktop = isDesktop();
   return (
-    <html lang="pt-BR" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${instrument.variable}`}>
+    <html
+      lang="pt-BR"
+      suppressHydrationWarning
+      data-platform={desktop ? process.platform : undefined}
+      className={`${geist.variable} ${geistMono.variable} ${instrument.variable}${desktop ? " wp-desktop" : ""}`}
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
+        {desktop && (
+          <>
+            <TitleBar platform={process.platform} />
+            <DesktopCommands />
+          </>
+        )}
         {children}
         <AskHost />
         {/* Above the phone tab bar (64px + safe area); colors come from the theme tokens. */}

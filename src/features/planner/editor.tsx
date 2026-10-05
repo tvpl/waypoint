@@ -1101,7 +1101,7 @@ function EditorShell(props: PlanEditorProps) {
   return (
     <EditorContext.Provider value={api}>
       <PlannerContext.Provider value={plannerCtx}>
-        <div className="flex h-dvh flex-col overflow-hidden bg-bg text-ink">
+        <div className="flex h-app flex-col overflow-hidden bg-bg text-ink">
           <EditorTopbar
             planId={planId}
             workspaceName={props.workspaceName}

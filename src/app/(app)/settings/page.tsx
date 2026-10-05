@@ -4,6 +4,7 @@ import { listMembers, requireWorkspace } from "@/server/services/workspaces";
 import { Button } from "@/components/ui/button";
 import { Card, ProfileForm, ThemePicker, WorkspaceForm } from "@/features/settings/settings-forms";
 import { ApiTokens } from "@/features/settings/api-tokens";
+import { DesktopSettings } from "@/features/settings/desktop-settings";
 import { listApiTokens } from "@/server/services/api-tokens";
 
 export const metadata = { title: "Configurações" };
@@ -18,6 +19,7 @@ export default async function SettingsPage() {
           <h1 className="font-display text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">Configurações</h1>
           <p className="text-lead text-muted">Conta, aparência, workspace e seus dados.</p>
         </div>
+        <DesktopSettings />
         <Card title="Perfil" description="Como você aparece para as pessoas do workspace.">
           <ProfileForm name={ctx.user.name} email={ctx.user.email} />
         </Card>

@@ -282,7 +282,7 @@
 
 /* Floating content (menus, popovers, tooltips): animate in from the anchor's side, out by fading. */
 @utility wp-float {
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, var(--radix-context-menu-content-transform-origin, var(--radix-tooltip-content-transform-origin, center))));
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, var(--radix-context-menu-content-transform-origin, var(--radix-tooltip-content-transform-origin, var(--radix-menubar-content-transform-origin, center)))));
   &[data-side="bottom"] {
     --wp-slide-y: -4px;
   }
@@ -449,6 +449,48 @@
     height: 44px;
     font-size: 15px;
   }
+}
+
+/* ------------------------------------------------------------------
+   Desktop app (desktop/): the window has no OS title bar, so the page draws one
+   (components/shell/title-bar.tsx) and everything else sits below it.
+   Full-height screens use h-app / min-h-app instead of h-app / min-h-app.
+------------------------------------------------------------------ */
+@utility h-app {
+  height: calc(100dvh - var(--titlebar-h, 0px));
+}
+@utility min-h-app {
+  min-height: calc(100dvh - var(--titlebar-h, 0px));
+}
+@utility drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+@utility no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.wp-desktop {
+  --titlebar-h: 40px;
+  /* Width the OS window buttons take on the right (Windows/Linux window controls overlay). */
+  --titlebar-controls-w: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 140px)) + 8px);
+}
+.wp-desktop.wp-fullscreen {
+  --titlebar-h: 0px;
+}
+.wp-desktop.wp-fullscreen .wp-titlebar {
+  display: none;
+}
+.wp-desktop body {
+  padding-top: var(--titlebar-h);
+}
+/* Full-screen overlays (sheets, presentation) start below the title bar so it stays usable. */
+.wp-desktop .fixed.inset-0 {
+  top: var(--titlebar-h);
+}
+.wp-blurred .wp-titlebar > * {
+  opacity: 0.6;
 }
 
 @media (prefers-reduced-motion: reduce) {

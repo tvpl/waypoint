@@ -44,7 +44,7 @@ O Waypoint também roda como aplicativo, fora do navegador, no Windows, no macOS
 | --- | --- | --- |
 | Windows | `Waypoint-x.y.z-portatil.exe` | roda sem instalar; os dados ficam em `WaypointData\` ao lado do `.exe` (dá para levar num pendrive) |
 | Windows | `Waypoint-x.y.z-instalador.exe` | instalação normal; dados em `%APPDATA%\Waypoint\data` |
-| macOS | `Waypoint-x.y.z-mac-arm64.dmg` / `-x64.dmg` | sem notarização: na primeira vez, clique com o botão direito → Abrir |
+| macOS | `Waypoint-x.y.z-mac-arm64.dmg` / `-x64.dmg` | sem notarização: na primeira vez, Ajustes do Sistema → Privacidade e Segurança → Abrir Mesmo Assim (ou `xattr -dr com.apple.quarantine /Applications/Waypoint.app`). Gerado no próprio Mac com `npm run desktop:dist`, o app abre direto |
 | Linux | `Waypoint-x.y.z-linux-x86_64.AppImage` | dados em `~/.config/Waypoint/data` |
 
 **Modo portátil** em qualquer sistema: crie uma pasta `WaypointData` ao lado do aplicativo (ou do `.AppImage`/`Waypoint.app`). Banco, uploads, backups e o perfil da janela (tema, posição do canvas) passam a ficar nela.

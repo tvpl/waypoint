@@ -45,7 +45,7 @@ mac:
   icon: build/icon.png
   category: public.app-category.productivity
   # Ad-hoc signature (no Apple Developer certificate): needed for Apple Silicon to run the app.
-  # Without notarization, the first launch is via right-click → Abrir.
+  # Without notarization, a downloaded copy needs Privacy & Security → Open Anyway on first launch.
   identity: "-"
   hardenedRuntime: false
   target:

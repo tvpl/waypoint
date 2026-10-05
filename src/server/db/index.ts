@@ -28,4 +28,10 @@ export function getDb(): DB {
   return g.__waypointDb;
 }
 
+/** Closes the connection; the next getDb() reopens the file (used to restore a backup in place). */
+export function closeDb() {
+  g.__waypointDb?.$client.close();
+  g.__waypointDb = undefined;
+}
+
 export { schema };

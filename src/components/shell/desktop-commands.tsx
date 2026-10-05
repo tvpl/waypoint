@@ -3,10 +3,12 @@ import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createPlanAction } from "@/app/(app)/plans/actions";
+import { lockNowAction } from "@/app/(app)/settings/desktop-actions";
 import { acceleratorsOf, getDesktop, matchesAccelerator, TOGGLE_RAIL_EVENT } from "@/lib/desktop";
 import { applyTheme, openPalette, useThemePref } from "@/lib/theme";
 import { pastedUrl } from "@/lib/url";
 import { openShortcuts } from "./shortcuts";
+import type { DesktopSecurity } from "@/server/desktop-security";
 
 const GO: Record<string, string> = {
   "app:go-home": "/",
@@ -18,7 +20,19 @@ const GO: Record<string, string> = {
   "app:new-collection": "/links?newCollection=1",
   "app:import": "/links/import",
   "app:extension": "/settings#api-tokens",
+  "app:security": "/settings#seguranca",
+  "app:backups": "/settings#backups",
 };
+
+/** Ends the session and shows the lock screen; without the app lock, says where to turn it on. */
+export async function lockNow(router?: { push(href: string): void }) {
+  const res = await lockNowAction().catch(() => ({ ok: false as const, error: "Não foi possível bloquear." }));
+  if (!res.ok) {
+    toast(res.error, router ? { action: { label: "Configurar", onClick: () => router.push("/settings#seguranca") } } : undefined);
+    return;
+  }
+  window.location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+}
 
 /**
  * Runs a desktop menu command. "app:" commands act on the page (navigation, dialogs, theme);
@@ -37,6 +51,8 @@ export function useDesktopCommand() {
       switch (id) {
         case "app:palette":
           return openPalette();
+        case "app:lock":
+          return lockNow(router);
         case "app:shortcuts":
           return openShortcuts();
         case "app:toggle-rail":
@@ -95,11 +111,39 @@ export function useDesktopCommand() {
  * Desktop app only: runs commands sent by the native menu, tray, dock and global shortcut, and
  * keeps the window chrome in step with the page (theme colors, full screen, focus).
  */
-export function DesktopCommands() {
+export function DesktopCommands({ security }: { security: DesktopSecurity }) {
   const run = useDesktopCommand();
   const theme = useThemePref();
+  const { lock, autoLockMinutes, lockOnSleep } = security;
 
-  React.useEffect(() => getDesktop()?.onCommand((id, arg) => void run(id, arg)), [run]);
+  React.useEffect(
+    () =>
+      getDesktop()?.onCommand((id, arg) => {
+        // The shell reports the computer going to sleep or locking its screen.
+        if (id === "app:system-lock") return void (lock && lockOnSleep && lockNow());
+        void run(id, arg);
+      }),
+    [run, lock, lockOnSleep],
+  );
+
+  // App lock: lock after `autoLockMinutes` without keyboard or pointer activity in this window.
+  React.useEffect(() => {
+    if (!lock || !autoLockMinutes) return;
+    let last = Date.now();
+    const touch = () => (last = Date.now());
+    const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true, capture: true }));
+    const timer = window.setInterval(() => {
+      if (Date.now() - last >= autoLockMinutes * 60_000) {
+        window.clearInterval(timer);
+        void lockNow();
+      }
+    }, 10_000);
+    return () => {
+      window.clearInterval(timer);
+      events.forEach((e) => window.removeEventListener(e, touch, { capture: true }));
+    };
+  }, [lock, autoLockMinutes]);
 
   // Windows/Linux: the native menu bar is hidden, so the page answers the menu's shortcuts itself,
   // after the screens' own handlers (anything they already handled is left alone). macOS uses

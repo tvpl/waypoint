@@ -8,6 +8,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -20,6 +21,7 @@ import {
 } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { Backups, KEEP_OPTIONS, type BackupFrequency } from "./backups";
 import { buildNativeMenu, menuModel, renderModel, type MenuState } from "./menu";
 import { resolveDataLocation, SettingsStore } from "./paths";
 import { DEFAULT_PORT, pickPort, startServer, type ServerHandle } from "./server";
@@ -266,7 +268,7 @@ function run(id: string, from?: WebContents) {
     case "new-window":
       return void createWindow("/");
     case "backup":
-      return void backup(false);
+      return void backup();
     case "open-data":
       return void shell.openPath(location.dir);
     case "open-logs":
@@ -308,24 +310,33 @@ function run(id: string, from?: WebContents) {
   }
 }
 
-async function backup(auto: boolean) {
-  if (!server) return;
+const backups = new Backups(location.dir, settings, () => server);
+
+/** Tells app pages that the backup list changed (title bar status, Settings → Backups). */
+function backupsChanged() {
+  for (const w of BrowserWindow.getAllWindows()) if (w !== quickWindow && !w.isDestroyed()) w.webContents.send("wp:command", "app:backups-changed");
+}
+
+/** Menu / tray "Fazer backup agora": confirms with a native dialog. */
+async function backup() {
   try {
-    const res = await fetch(`${server.origin}/api/desktop/backup`, {
-      method: "POST",
-      headers: { "x-waypoint-desktop": server.secret, "content-type": "application/json" },
-      body: JSON.stringify({ auto }),
-    });
-    const body = (await res.json()) as { file?: string; error?: string };
-    if (!res.ok || !body.file) throw new Error(body.error ?? `HTTP ${res.status}`);
-    if (auto) return;
+    const item = await backups.create();
+    backupsChanged();
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
-    const opts = { type: "info" as const, message: "Backup salvo", detail: body.file, buttons: ["Mostrar na pasta", "OK"], defaultId: 1, cancelId: 1 };
+    const file = backups.path(item.id);
+    const opts = { type: "info" as const, message: "Backup salvo", detail: file, buttons: ["Mostrar na pasta", "OK"], defaultId: 1, cancelId: 1 };
     const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
-    if (response === 0) shell.showItemInFolder(body.file);
+    if (response === 0) shell.showItemInFolder(file);
   } catch (e) {
-    if (!auto) dialog.showErrorBox("Não foi possível fazer o backup", String(e instanceof Error ? e.message : e));
-    else console.error("[waypoint] auto backup failed", e);
+    dialog.showErrorBox("Não foi possível fazer o backup", String(e instanceof Error ? e.message : e));
+  }
+}
+
+async function scheduledBackup() {
+  try {
+    if (await backups.runIfDue()) backupsChanged();
+  } catch (e) {
+    console.error("[waypoint] scheduled backup failed", e);
   }
 }
 
@@ -358,7 +369,8 @@ function trayMenu(): Menu {
     { label: "Salvar link da área de transferência", click: () => (showMain(), sendToPage("app:paste-link", mainWindow!)) },
     { type: "separator" },
     { label: "Continuar aqui ao fechar a janela", type: "checkbox", checked: !!settings.get("closeToTray"), click: () => run("close-to-tray") },
-    { label: "Fazer backup agora", click: () => void backup(false) },
+    { label: "Bloquear o Waypoint", click: () => (showMain(), sendToPage("app:lock", mainWindow!)) },
+    { label: "Fazer backup agora", click: () => void backup() },
     { label: "Abrir pasta de dados", click: () => void shell.openPath(location.dir) },
     { type: "separator" },
     { label: "Sair", click: () => app.quit() },
@@ -514,6 +526,53 @@ ipcMain.on("wp:run", (e, id: unknown) => {
   if (fromApp(e) && typeof id === "string") run(id, e.sender);
 });
 
+ipcMain.handle("wp:backups", async (e, action: unknown, arg: unknown) => {
+  if (!fromApp(e)) throw new Error("forbidden");
+  const id = typeof arg === "string" ? arg : "";
+  switch (action) {
+    case "state":
+      break;
+    case "create":
+      await backups.create();
+      break;
+    case "restore":
+      await backups.restore(id);
+      // The data changed under every open page: start them over.
+      for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.reload();
+      break;
+    case "remove":
+      backups.remove(id);
+      break;
+    case "reveal":
+      shell.showItemInFolder(backups.path(id));
+      break;
+    case "open-dir":
+      fs.mkdirSync(backups.dir(), { recursive: true });
+      await shell.openPath(backups.dir());
+      break;
+    case "choose-dir": {
+      const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+      const opts = { title: "Pasta dos backups", defaultPath: backups.dir(), buttonLabel: "Usar esta pasta", properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[] };
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+      if (!res.canceled && res.filePaths[0]) backups.setDir(res.filePaths[0]);
+      break;
+    }
+    case "reset-dir":
+      backups.setDir(null);
+      break;
+    case "frequency":
+      if (["daily", "weekly", "off"].includes(id)) backups.setFrequency(id as BackupFrequency);
+      break;
+    case "keep":
+      if ((KEEP_OPTIONS as readonly number[]).includes(Number(arg))) backups.setKeep(Number(arg));
+      break;
+    default:
+      throw new Error("Ação desconhecida.");
+  }
+  if (action !== "state") backupsChanged();
+  return backups.state();
+});
+
 ipcMain.on("wp:open-main", (e, urlPath: unknown) => {
   if (!fromApp(e) || typeof urlPath !== "string" || !urlPath.startsWith("/") || urlPath.startsWith("//")) return;
   quickWindow?.hide();
@@ -563,7 +622,7 @@ async function boot() {
   // Then the capture window, in the background, so the shortcut shows it instantly.
   if (quickWindow) void quickWindow.loadURL(`${server.origin}/quick`);
   else createQuickWindow();
-  setTimeout(() => void backup(true), 15_000);
+  setTimeout(() => void scheduledBackup(), 15_000);
 }
 
 async function startOrFail() {
@@ -594,6 +653,13 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    // App lock (src/server/desktop-security.ts): pages lock themselves when the computer sleeps.
+    const systemLock = () =>
+      BrowserWindow.getAllWindows().forEach((w) => w !== quickWindow && !w.isDestroyed() && w.webContents.send("wp:command", "app:system-lock"));
+    powerMonitor.on("lock-screen", systemLock);
+    powerMonitor.on("suspend", systemLock);
+    // Scheduled backups for an app that stays open for days.
+    setInterval(() => void scheduledBackup(), 60 * 60_000);
     lockDownSession();
     refreshMenu();
     createWindow("/", { main: true });

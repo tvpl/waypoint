@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { AskHost } from "@/components/ui/ask";
 import { DesktopChrome } from "@/components/shell/desktop-chrome";
 import { isDesktop } from "@/server/desktop";
+import { desktopSecurity } from "@/server/desktop-security";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
@@ -46,7 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        {desktop && <DesktopChrome platform={process.platform} />}
+        {desktop && <DesktopChrome platform={process.platform} security={desktopSecurity()} />}
         {children}
         <AskHost />
         {/* Above the phone tab bar (64px + safe area); colors come from the theme tokens. */}

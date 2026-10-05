@@ -79,6 +79,7 @@ export function menuModel(s: MenuState): TopMenu[] {
         },
         sep,
         { id: "backup", label: "Fazer backup agora" },
+        { id: "app:backups", label: "Gerenciar backups…" },
         { id: "open-data", label: s.portable ? "Abrir pasta de dados (portátil)" : "Abrir pasta de dados" },
         ...(s.mac
           ? [sep, { id: "role:close", label: "Fechar janela", accelerator: "Cmd+W" }]
@@ -147,6 +148,8 @@ export function menuModel(s: MenuState): TopMenu[] {
       label: "Janela",
       items: [
         { id: "role:minimize", label: "Minimizar", accelerator: "CmdOrCtrl+M" },
+        { id: "app:lock", label: "Bloquear o Waypoint", accelerator: "CmdOrCtrl+Alt+L" },
+        { id: "app:security", label: "Segurança e bloqueio…" },
         { id: "always-on-top", type: "checkbox", label: "Manter sobre as outras janelas", checked: s.alwaysOnTop },
         { id: "close-to-tray", type: "checkbox", label: s.mac ? "Continuar na barra de menus ao fechar" : "Continuar na bandeja ao fechar", checked: s.closeToTray },
       ],

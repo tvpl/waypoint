@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("waypointDesktop", {
   menu: () => ipcRenderer.invoke("wp:menu"),
   run: (id: string) => ipcRenderer.send("wp:run", id),
   openInMain: (path: string) => ipcRenderer.send("wp:open-main", path),
+  backups: (action: string, arg?: string | number) => ipcRenderer.invoke("wp:backups", action, arg),
   setTheme: (pref: string, dark: boolean) => ipcRenderer.send("wp:theme", pref, dark),
   onCommand: (cb: (id: string, arg?: string) => void) => {
     const listener = (_: IpcRendererEvent, id: string, arg?: string) => cb(id, arg);

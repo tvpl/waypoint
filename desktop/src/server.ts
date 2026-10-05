@@ -65,6 +65,8 @@ export async function startServer(opts: { port: number; dataDir: string; dev: bo
     NEXT_TELEMETRY_DISABLED: "1",
     WAYPOINT_DESKTOP_SECRET: secret,
     WAYPOINT_DATA_DIR: opts.dataDir,
+    // With the app lock on, sessions from before this launch don't count (src/server/desktop-security.ts).
+    WAYPOINT_STARTED_AT: String(Date.now()),
     DATABASE_PATH: path.join(opts.dataDir, "waypoint.db"),
     UPLOADS_DIR: path.join(opts.dataDir, "uploads"),
   };

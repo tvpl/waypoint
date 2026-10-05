@@ -15,6 +15,9 @@ import { LinkRow } from "@/features/home/link-row";
 import { cn, timeAgo } from "@/lib/utils";
 import { after } from "next/server";
 import { recentlyBroken, sweepStaleLinks } from "@/server/services/link-health";
+import { isDesktop } from "@/server/desktop";
+import { desktopSecurity } from "@/server/desktop-security";
+import { DesktopCockpit } from "@/features/home/desktop-cockpit";
 
 export const metadata = { title: "Início" };
 
@@ -77,6 +80,8 @@ export default async function HomePage() {
         </div>
 
         <SearchBar />
+
+        {isDesktop() && <DesktopCockpit security={desktopSecurity()} />}
 
         {empty && (
           <section className="grid gap-4 sm:grid-cols-3">

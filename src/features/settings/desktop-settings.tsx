@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Archive, Check, Copy, FolderOpen } from "lucide-react";
+import { Check, Copy, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/misc";
@@ -16,7 +16,7 @@ const formatShortcut = (acc: string, mac: boolean) =>
     .map((p) => (p === "Space" ? "Espaço" : mac ? (MAC_KEYS[p] ?? p) : p === "CommandOrControl" ? "Ctrl" : p))
     .join(mac ? "" : "+");
 
-/** Desktop app only: where the data lives, backups, the address for the browser extension. */
+/** Desktop app only: where the data lives, the address for the browser extension, window behavior. */
 export function DesktopSettings() {
   const desktop = useDesktop();
   const [info, setInfo] = React.useState<DesktopInfo | null>(null);
@@ -46,11 +46,7 @@ export function DesktopSettings() {
         <Button onClick={() => desktop.run("open-data")}>
           <FolderOpen /> Abrir pasta
         </Button>
-        <Button onClick={() => desktop.run("backup")}>
-          <Archive /> Fazer backup agora
-        </Button>
       </div>
-      <p className="text-body text-muted">Um backup automático é feito uma vez por dia, ao abrir o aplicativo; os dez mais recentes ficam em backups/.</p>
 
       <div className="flex flex-col gap-1.5 pt-2">
         <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Endereço para a extensão do navegador</span>

@@ -33,6 +33,9 @@ export type Settings = {
   quickShortcut?: string;
   theme?: "light" | "dark" | "system";
   dark?: boolean;
+  backupDir?: string;
+  backupFrequency?: "daily" | "weekly" | "off";
+  backupKeep?: number;
 };
 
 /** Small JSON file next to the data; written on change, read once at startup. */

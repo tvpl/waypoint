@@ -1,5 +1,5 @@
 "use client";
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 /** One entry of the desktop menu model (desktop/src/menu.ts → renderModel). */
 export type DesktopMenuEntry =
@@ -31,6 +31,18 @@ export type DesktopInfo = {
   closeToTray: boolean;
 };
 
+/** desktop/src/backups.ts */
+export type BackupItem = { id: string; createdAt: number; size: number; auto: boolean; note?: string };
+export type BackupState = {
+  dir: string;
+  customDir: boolean;
+  frequency: "daily" | "weekly" | "off";
+  keep: number;
+  items: BackupItem[];
+  lastAt: number | null;
+};
+export type BackupAction = "state" | "create" | "restore" | "remove" | "reveal" | "open-dir" | "choose-dir" | "reset-dir" | "frequency" | "keep";
+
 /** What the desktop shell's preload exposes (desktop/src/preload.ts). */
 export type DesktopBridge = {
   platform: string;
@@ -39,6 +51,8 @@ export type DesktopBridge = {
   run(id: string): void;
   /** Shows the main window on an app path (from the capture window). */
   openInMain(path: string): void;
+  /** Backup center; every action answers with the new state. */
+  backups(action: BackupAction, arg?: string | number): Promise<BackupState>;
   setTheme(pref: string, dark: boolean): void;
   onCommand(cb: (id: string, arg?: string) => void): () => void;
   onWindowState(cb: (state: { fullScreen: boolean; focused: boolean }) => void): () => void;
@@ -93,4 +107,32 @@ export function matchesAccelerator(e: Pick<KeyboardEvent, "key" | "code" | "ctrl
   if (/^F\d{1,2}$/.test(key) || NAMED_KEYS[key]) return e.shiftKey === mods.has("Shift") && e.key === (NAMED_KEYS[key] ?? key);
   // "=" is also reached as "+" (Shift) on many layouts; don't insist on Shift for punctuation.
   return e.key === key || (key === "=" && e.key === "+");
+}
+
+/** The backup center's state, refreshed whenever a backup is made, restored or removed. */
+export function useBackupState(): [BackupState | null, (action: BackupAction, arg?: string | number) => Promise<BackupState>] {
+  const [state, setState] = useState<BackupState | null>(null);
+  useEffect(() => {
+    const desktop = getDesktop();
+    if (!desktop?.backups) return;
+    const load = () => void desktop.backups("state").then(setState).catch(() => {});
+    load();
+    return desktop.onCommand((id) => id === "app:backups-changed" && load());
+  }, []);
+  const act = async (action: BackupAction, arg?: string | number) => {
+    const next = await getDesktop()!.backups(action, arg);
+    setState(next);
+    return next;
+  };
+  return [state, act];
+}
+
+/** "12,4 MB" */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) (v /= 1024), i++;
+  return `${v.toLocaleString("pt-BR", { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`;
 }

@@ -12,6 +12,8 @@ export type DesktopMenuEntry =
       accelerator?: string;
       /** The same, formatted for display on this platform. */
       shortcut?: string;
+      /** System-wide shortcut handled by the shell: shown, never matched by the page. */
+      global?: boolean;
       checked?: boolean;
       enabled?: boolean;
       submenu?: DesktopMenuEntry[];
@@ -35,6 +37,8 @@ export type DesktopBridge = {
   info(): Promise<DesktopInfo | null>;
   menu(): Promise<DesktopMenu[]>;
   run(id: string): void;
+  /** Shows the main window on an app path (from the capture window). */
+  openInMain(path: string): void;
   setTheme(pref: string, dark: boolean): void;
   onCommand(cb: (id: string, arg?: string) => void): () => void;
   onWindowState(cb: (state: { fullScreen: boolean; focused: boolean }) => void): () => void;
@@ -44,6 +48,9 @@ export function getDesktop(): DesktopBridge | null {
   if (typeof window === "undefined") return null;
   return (window as unknown as { waypointDesktop?: DesktopBridge }).waypointDesktop ?? null;
 }
+
+/** The floating capture window's page (desktop/src/main.ts opens it with the global shortcut). */
+export const QUICK_PATH = "/quick";
 
 /** Asks the app rail to expand or collapse (same as the "[" key); sent by the desktop menu. */
 export const TOGGLE_RAIL_EVENT = "wp:toggle-rail";
@@ -65,7 +72,7 @@ export function acceleratorsOf(menus: DesktopMenu[]): { accelerator: string; id:
     for (const e of entries) {
       if (!("id" in e)) continue;
       if (e.submenu) walk(e.submenu);
-      else if (e.accelerator && !EDITING.has(e.id) && e.enabled !== false) out.push({ accelerator: e.accelerator, id: e.id });
+      else if (e.accelerator && !e.global && !EDITING.has(e.id) && e.enabled !== false) out.push({ accelerator: e.accelerator, id: e.id });
     }
   };
   menus.forEach((m) => walk(m.items));

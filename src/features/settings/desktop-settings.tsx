@@ -87,7 +87,7 @@ export function DesktopSettings() {
           {mac ? "Continuar na barra de menus ao fechar a janela" : "Continuar na bandeja do sistema ao fechar a janela"}
         </label>
         <p className="flex flex-wrap items-center gap-1.5 text-body text-muted">
-          <Kbd>{formatShortcut(info.quickShortcut, mac)}</Kbd> abre a busca do Waypoint de qualquer lugar.
+          <Kbd>{formatShortcut(info.quickShortcut, mac)}</Kbd> abre a captura rápida de qualquer lugar: cole um link para salvar ou digite para buscar.
         </p>
       </div>
       <p className="text-caption text-muted">Waypoint {info.version}</p>

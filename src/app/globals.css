@@ -489,6 +489,10 @@
 .wp-desktop .fixed.inset-0 {
   top: var(--titlebar-h);
 }
+/* The floating capture window (/quick) has no title bar. */
+.wp-desktop:has(.wp-quick) {
+  --titlebar-h: 0px;
+}
 .wp-blurred .wp-titlebar > * {
   opacity: 0.6;
 }

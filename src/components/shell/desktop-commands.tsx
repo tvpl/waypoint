@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { createPlanAction } from "@/app/(app)/plans/actions";
 import { acceleratorsOf, getDesktop, matchesAccelerator, TOGGLE_RAIL_EVENT } from "@/lib/desktop";
 import { applyTheme, openPalette, useThemePref } from "@/lib/theme";
+import { pastedUrl } from "@/lib/url";
 import { openShortcuts } from "./shortcuts";
 
 const GO: Record<string, string> = {
@@ -19,14 +20,6 @@ const GO: Record<string, string> = {
   "app:extension": "/settings#api-tokens",
 };
 
-const isUrl = (s: string) => {
-  try {
-    return ["http:", "https:"].includes(new URL(s).protocol);
-  } catch {
-    return false;
-  }
-};
-
 /**
  * Runs a desktop menu command. "app:" commands act on the page (navigation, dialogs, theme);
  * anything else goes to the desktop shell (window, zoom, backup…).
@@ -37,8 +30,9 @@ export function useDesktopCommand() {
   const busy = React.useRef(false);
 
   return React.useCallback(
-    async (id: string) => {
+    async (id: string, arg?: string) => {
       if (!id.startsWith("app:")) return getDesktop()?.run(id);
+      if (id === "app:navigate") return arg?.startsWith("/") && !arg.startsWith("//") ? router.push(arg) : undefined;
       if (GO[id]) return router.push(GO[id]);
       switch (id) {
         case "app:palette":
@@ -70,7 +64,8 @@ export function useDesktopCommand() {
           try {
             text = (await navigator.clipboard.readText()).trim();
           } catch {}
-          if (isUrl(text)) router.push(`/links?add=1&url=${encodeURIComponent(text)}`);
+          const url = pastedUrl(text);
+          if (url) router.push(`/links?add=1&url=${encodeURIComponent(url)}`);
           else {
             toast("A área de transferência não tem um link.");
             router.push("/links?add=1");
@@ -104,7 +99,7 @@ export function DesktopCommands() {
   const run = useDesktopCommand();
   const theme = useThemePref();
 
-  React.useEffect(() => getDesktop()?.onCommand((id) => void run(id)), [run]);
+  React.useEffect(() => getDesktop()?.onCommand((id, arg) => void run(id, arg)), [run]);
 
   // Windows/Linux: the native menu bar is hidden, so the page answers the menu's shortcuts itself,
   // after the screens' own handlers (anything they already handled is left alone). macOS uses

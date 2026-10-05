@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "sonner";
 import { AskHost } from "@/components/ui/ask";
-import { TitleBar } from "@/components/shell/title-bar";
-import { DesktopCommands } from "@/components/shell/desktop-commands";
+import { DesktopChrome } from "@/components/shell/desktop-chrome";
 import { isDesktop } from "@/server/desktop";
 import "./globals.css";
 
@@ -30,8 +30,10 @@ export const viewport: Viewport = {
 // chrome color (kept in sync afterwards by lib/theme.ts).
 const themeScript = `(function(){try{var t=localStorage.getItem('wp-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);var m=document.createElement('meta');m.name='theme-color';m.content=d?'#0e0f12':'#f5f5f2';document.head.appendChild(m);}catch(e){}})();`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Desktop app: the server runs on the same machine as the window, so its platform is the window's.
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Desktop mode is only known at request time, so nothing (not even the 404 page) is prerendered
+  // without it. The server runs on the same machine as the window, so its platform is the window's.
+  await connection();
   const desktop = isDesktop();
   return (
     <html
@@ -44,12 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        {desktop && (
-          <>
-            <TitleBar platform={process.platform} />
-            <DesktopCommands />
-          </>
-        )}
+        {desktop && <DesktopChrome platform={process.platform} />}
         {children}
         <AskHost />
         {/* Above the phone tab bar (64px + safe area); colors come from the theme tokens. */}

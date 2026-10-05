@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Smoke test for a packaged build: starts the app with a throwaway data folder and checks that
-// the local server comes up, the window lands on the home screen signed in, and the desktop
-// bridge is there. Used by CI after packaging; needs Playwright (a dev dependency of the web app).
+// the local server comes up, the window lands on the home screen signed in, the desktop
+// bridge is there and the quick capture window opens. Used by CI after packaging; needs Playwright (a dev dependency of the web app).
 //
 //   node desktop/scripts/smoke.cjs [path/to/executable]
 const fs = require("node:fs");
@@ -46,6 +46,15 @@ function findExecutable() {
     if (!title.includes("Waypoint")) throw new Error(`Unexpected title: ${title}`);
     if (!bridge || titleBar !== 1) throw new Error("Desktop bridge or title bar missing");
     if (!fs.existsSync(path.join(dataDir, "waypoint.db"))) throw new Error("Database was not created in the data folder");
+    // Quick capture window (global shortcut / tray).
+    await win.evaluate(() => window.waypointDesktop.run("quick"));
+    const quickDeadline = Date.now() + 20_000;
+    let quick;
+    while (!(quick = app.windows().find((w) => w.url().endsWith("/quick")))) {
+      if (Date.now() > quickDeadline) throw new Error("Quick capture window did not open");
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    await quick.waitForSelector("input[placeholder^='Cole um link']", { timeout: 20_000 });
     console.log("✓ smoke test passed");
   } finally {
     await app.close();

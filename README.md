@@ -53,7 +53,7 @@ Destaques:
 
 - **Barra de título própria**, nas cores do tema. Nela ficam o menu (Arquivo, Editar, Exibir, Ir, Janela, Ajuda), voltar/avançar e a busca. No macOS o menu fica na barra do sistema. `Alt` sozinho leva o foco ao menu.
 - **Atalhos:** `Ctrl+N` novo plan · `Ctrl+L` adicionar link · `Ctrl+Shift+L` salvar o link da área de transferência · `Ctrl+1…4` Início/Planner/Links/Tags · `Ctrl+B` barra lateral · `F5` apresentar · `F1` atalhos · `Ctrl+,` configurações (⌘ no macOS).
-- **De qualquer lugar:** `Ctrl+Shift+Espaço` traz o Waypoint com a busca aberta. Há também o ícone na bandeja/barra de menus (com a opção de continuar rodando ao fechar), o menu do Dock e a jump list do Windows.
+- **Captura rápida, de qualquer lugar:** `Ctrl+Shift+Espaço` abre uma janelinha flutuante. Se houver um link na área de transferência, `↵` salva na Caixa de entrada, já com título e imagem. Se você digitar, ela busca em plans, links, coleções e tags. Também abre pelo ícone da bandeja/barra de menus (que tem a opção de continuar rodando ao fechar). Há ainda o menu do Dock e a jump list do Windows.
 - **Backup automático** uma vez por dia em `backups/` (guarda os dez mais recentes) e **Arquivo → Fazer backup agora**.
 - **Links externos** abrem no navegador padrão. Páginas do Waypoint abertas "em nova aba" viram uma nova janela.
 - A **extensão do navegador** continua funcionando: use o endereço mostrado em **Configurações → Aplicativo** (`http://127.0.0.1:47615`) com um token de API.

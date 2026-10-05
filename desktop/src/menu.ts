@@ -15,6 +15,8 @@ export type MenuEntry =
       id: string;
       label: string;
       accelerator?: string;
+      /** A system-wide shortcut (globalShortcut): shown in menus, never registered as a menu accelerator. */
+      global?: boolean;
       checked?: boolean;
       enabled?: boolean;
       submenu?: MenuEntry[];
@@ -60,6 +62,7 @@ export function menuModel(s: MenuState): TopMenu[] {
         { id: "app:new-plan", label: "Novo plan", accelerator: "CmdOrCtrl+N" },
         { id: "app:add-link", label: "Adicionar link", accelerator: "CmdOrCtrl+L" },
         { id: "app:paste-link", label: "Salvar link da área de transferência", accelerator: "CmdOrCtrl+Shift+L" },
+        { id: "quick", label: "Captura rápida…", accelerator: "CmdOrCtrl+Shift+Space", global: true },
         { id: "app:new-collection", label: "Nova coleção", accelerator: "CmdOrCtrl+Shift+N" },
         sep,
         { id: "new-window", label: "Nova janela", accelerator: "CmdOrCtrl+Alt+N" },
@@ -163,12 +166,13 @@ export function menuModel(s: MenuState): TopMenu[] {
   return menus;
 }
 
-const MAC_KEYS: Record<string, string> = { Cmd: "⌘", CmdOrCtrl: "⌘", Ctrl: "⌃", Alt: "⌥", Shift: "⇧", Enter: "↵", Left: "←", Right: "→" };
+const MAC_KEYS: Record<string, string> = { Cmd: "⌘", CmdOrCtrl: "⌘", Ctrl: "⌃", Alt: "⌥", Shift: "⇧", Enter: "↵", Left: "←", Right: "→", Space: " Espaço" };
 
 /** "CmdOrCtrl+Shift+N" → "⇧⌘N" (macOS) or "Ctrl+Shift+N". */
 export function formatAccelerator(acc: string, mac: boolean): string {
   const parts = acc.split("+").map((p) => (p === "" ? "+" : p));
-  if (!mac) return parts.map((p) => (p === "CmdOrCtrl" || p === "Cmd" ? "Ctrl" : p === "Left" ? "←" : p === "Right" ? "→" : p)).join("+");
+  const WIN_KEYS: Record<string, string> = { CmdOrCtrl: "Ctrl", Cmd: "Ctrl", Left: "←", Right: "→", Space: "Espaço" };
+  if (!mac) return parts.map((p) => WIN_KEYS[p] ?? p).join("+");
   const order = ["Ctrl", "Alt", "Shift", "Cmd", "CmdOrCtrl"];
   const mods = parts.slice(0, -1).sort((a, b) => order.indexOf(a) - order.indexOf(b));
   return [...mods, parts.at(-1)!].map((p) => MAC_KEYS[p] ?? p).join("");
@@ -204,6 +208,7 @@ export function buildNativeMenu(menus: TopMenu[], run: (id: string) => void): Me
         label: e.label,
         type: e.submenu ? "submenu" : (e.type ?? "normal"),
         accelerator: e.accelerator,
+        registerAccelerator: !e.global,
         checked: e.checked,
         enabled: e.enabled,
         submenu: e.submenu ? toNative(e.submenu) : undefined,

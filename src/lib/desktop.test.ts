@@ -35,7 +35,7 @@ describe("matchesAccelerator", () => {
 });
 
 describe("acceleratorsOf", () => {
-  it("flattens submenus and skips separators, editing roles and disabled items", () => {
+  it("flattens submenus and skips separators, editing roles, disabled items and global shortcuts", () => {
     const menus: DesktopMenu[] = [
       {
         id: "file",
@@ -45,6 +45,7 @@ describe("acceleratorsOf", () => {
           { type: "separator" },
           { id: "export", label: "Exportar", submenu: [{ id: "app:export-html", label: "HTML", accelerator: "CmdOrCtrl+E" }] },
           { id: "off", label: "Off", accelerator: "CmdOrCtrl+O", enabled: false },
+          { id: "quick", label: "Captura rápida", accelerator: "CmdOrCtrl+Shift+Space", global: true },
         ],
       },
       { id: "edit", label: "Editar", items: [{ id: "role:copy", label: "Copiar", accelerator: "CmdOrCtrl+C" }] },

@@ -8,6 +8,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  screen,
   session,
   shell,
   Tray,
@@ -48,8 +49,10 @@ let server: ServerHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
+let quickWindow: BrowserWindow | null = null;
 /** Commands that arrived before the page could take them (jump list, second launch). */
-let pendingCommand: string | null = process.argv.find((a) => a.startsWith(COMMAND_ARG))?.slice(COMMAND_ARG.length) ?? null;
+const launchCommand = process.argv.find((a) => a.startsWith(COMMAND_ARG))?.slice(COMMAND_ARG.length);
+let pendingCommand: { id: string; arg?: string } | null = launchCommand ? { id: launchCommand } : null;
 
 const assetsDir = path.join(__dirname, "..", "assets");
 const asset = (name: string) => path.join(assetsDir, name);
@@ -156,14 +159,68 @@ function showMain(): BrowserWindow {
 }
 
 /** Sends a page command ("app:…") to a window, waiting for it to load if needed. */
-function sendToPage(id: string, win: BrowserWindow = BrowserWindow.getFocusedWindow() ?? showMain()) {
-  const wc = win.webContents;
-  const send = () => wc.send("wp:command", id);
+function sendToPage(id: string, win?: BrowserWindow, arg?: string) {
+  const focused = BrowserWindow.getFocusedWindow();
+  const target = win ?? (focused && focused !== quickWindow ? focused : showMain());
+  const wc = target.webContents;
   if (!server || wc.isLoading() || !wc.getURL().startsWith(server.origin)) {
-    pendingCommand = id;
+    pendingCommand = { id, arg };
     return;
   }
-  send();
+  wc.send("wp:command", id, arg);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Quick capture: a small floating window (global shortcut, tray) to save a link or search
+
+const QUICK_SIZE = { width: 640, height: 420 };
+
+function createQuickWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    ...QUICK_SIZE,
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: "Captura rápida",
+    backgroundColor: chrome(isDark()).bar,
+    webPreferences: windowOptions().webPreferences,
+  });
+  if (mac) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Like a launcher: it goes away as soon as you click elsewhere.
+  win.on("blur", () => {
+    if (!win.webContents.isDevToolsOpened()) win.hide();
+  });
+  win.on("close", (e) => {
+    if (!quitting) {
+      e.preventDefault();
+      win.hide();
+    }
+  });
+  win.on("closed", () => (quickWindow = null));
+  if (server) void win.loadURL(`${server.origin}/quick`);
+  quickWindow = win;
+  return win;
+}
+
+function toggleQuick() {
+  if (!server) return void showMain();
+  const win = quickWindow ?? createQuickWindow();
+  if (win.isVisible() && win.isFocused()) return win.hide();
+  // Upper third of the screen the pointer is on.
+  const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  win.setBounds({ x: Math.round(x + (width - QUICK_SIZE.width) / 2), y: Math.round(y + height * 0.18), ...QUICK_SIZE });
+  const show = () => {
+    win.show();
+    win.focus();
+    win.webContents.send("wp:command", "app:quick-show");
+  };
+  if (win.webContents.isLoading()) win.webContents.once("did-finish-load", show);
+  else show();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -188,7 +245,7 @@ function refreshMenu() {
 function run(id: string, from?: WebContents) {
   const win = (from && BrowserWindow.fromWebContents(from)) || BrowserWindow.getFocusedWindow() || mainWindow;
   const wc = win?.webContents;
-  if (id.startsWith("app:")) return sendToPage(id, win ?? undefined);
+  if (id.startsWith("app:")) return sendToPage(id, win && win !== quickWindow ? win : undefined);
   switch (id) {
     case "role:undo":
       return wc?.undo();
@@ -244,6 +301,10 @@ function run(id: string, from?: WebContents) {
       return app.quit();
     case "show":
       return void showMain();
+    case "quick":
+      return toggleQuick();
+    case "quick-hide":
+      return quickWindow?.hide();
   }
 }
 
@@ -289,7 +350,8 @@ async function about(win?: BrowserWindow) {
 function trayMenu(): Menu {
   const items: MenuItemConstructorOptions[] = [
     { label: "Abrir o Waypoint", click: () => showMain() },
-    { label: "Buscar…", accelerator: QUICK_SHORTCUT, click: () => (showMain(), sendToPage("app:palette", mainWindow!)) },
+    { label: "Captura rápida…", accelerator: QUICK_SHORTCUT, click: () => toggleQuick() },
+    { label: "Buscar…", click: () => (showMain(), sendToPage("app:palette", mainWindow!)) },
     { type: "separator" },
     { label: "Novo plan", click: () => (showMain(), sendToPage("app:new-plan", mainWindow!)) },
     { label: "Adicionar link", click: () => (showMain(), sendToPage("app:add-link", mainWindow!)) },
@@ -342,10 +404,7 @@ function setupShellIntegration() {
     app.setUserTasks([task("Novo plan", "app:new-plan"), task("Adicionar link", "app:add-link"), task("Buscar", "app:palette")]);
   }
   try {
-    globalShortcut.register(QUICK_SHORTCUT, () => {
-      const win = showMain();
-      sendToPage("app:palette", win);
-    });
+    globalShortcut.register(QUICK_SHORTCUT, toggleQuick);
   } catch (e) {
     console.error("[waypoint] global shortcut unavailable", e);
   }
@@ -417,11 +476,11 @@ app.on("web-contents-created", (_, wc) => {
   });
   wc.on("context-menu", (_, params) => contextMenu(wc, params));
   wc.on("did-finish-load", () => {
-    if (!pendingCommand || !server || !wc.getURL().startsWith(server.origin)) return;
-    const id = pendingCommand;
+    if (!pendingCommand || !server || !wc.getURL().startsWith(server.origin) || wc === quickWindow?.webContents) return;
+    const { id, arg } = pendingCommand;
     pendingCommand = null;
     // Give React a moment to hydrate and subscribe to commands.
-    setTimeout(() => wc.send("wp:command", id), 600);
+    setTimeout(() => wc.send("wp:command", id, arg), 600);
   });
 });
 
@@ -453,6 +512,12 @@ ipcMain.handle("wp:menu", (e) => (fromApp(e) ? renderModel(menuModel(menuState()
 
 ipcMain.on("wp:run", (e, id: unknown) => {
   if (fromApp(e) && typeof id === "string") run(id, e.sender);
+});
+
+ipcMain.on("wp:open-main", (e, urlPath: unknown) => {
+  if (!fromApp(e) || typeof urlPath !== "string" || !urlPath.startsWith("/") || urlPath.startsWith("//")) return;
+  quickWindow?.hide();
+  sendToPage("app:navigate", showMain(), urlPath);
 });
 
 ipcMain.on("wp:theme", (e, pref: unknown, dark: unknown) => {
@@ -488,10 +553,16 @@ async function boot() {
     if (response === 1) return app.quit();
     await startOrFail();
   });
-  for (const win of BrowserWindow.getAllWindows()) {
-    const url = win.webContents.getURL();
-    void openApp(win, url.startsWith("http") ? new URL(url).pathname + new URL(url).search : "/");
-  }
+  const windows = BrowserWindow.getAllWindows().filter((w) => w !== quickWindow);
+  await Promise.all(
+    windows.map((win) => {
+      const url = win.webContents.getURL();
+      return openApp(win, url.startsWith("http") ? new URL(url).pathname + new URL(url).search : "/");
+    }),
+  );
+  // Then the capture window, in the background, so the shortcut shows it instantly.
+  if (quickWindow) void quickWindow.loadURL(`${server.origin}/quick`);
+  else createQuickWindow();
   setTimeout(() => void backup(true), 15_000);
 }
 
@@ -533,6 +604,13 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("activate", () => showMain());
   app.on("before-quit", () => (quitting = true));
+  // Windows/Linux: quit with the last app window (the hidden capture window doesn't count).
+  app.on("browser-window-created", (_, win) => {
+    win.on("closed", () => {
+      if (mac || quitting) return;
+      if (BrowserWindow.getAllWindows().every((w) => w === quickWindow || w.isDestroyed())) app.quit();
+    });
+  });
   app.on("window-all-closed", () => {
     if (!mac) app.quit();
   });

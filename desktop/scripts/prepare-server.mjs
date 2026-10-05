@@ -42,6 +42,35 @@ fs.rmSync(path.join(out, "data"), { recursive: true, force: true });
 // build machine's platform anyway). Next only loads sharp when an image is optimized.
 for (const dep of ["sharp", "@img"]) fs.rmSync(path.join(out, "node_modules", dep), { recursive: true, force: true });
 
+// Turbopack loads server externals through aliases like .next/node_modules/better-sqlite3-<hash>,
+// which are symlinks to the build machine's node_modules. Replace each with a tiny package that
+// requires the real one, so the server works anywhere (and Windows needs no symlinks).
+const aliases = path.join(out, ".next", "node_modules");
+for (const name of fs.existsSync(aliases) ? fs.readdirSync(aliases) : []) {
+  const alias = path.join(aliases, name);
+  if (!fs.lstatSync(alias).isSymbolicLink()) continue;
+  const target = fs.readlinkSync(alias).replaceAll("\\", "/");
+  const pkg = target.slice(target.lastIndexOf("node_modules/") + "node_modules/".length);
+  if (!fs.existsSync(path.join(out, "node_modules", pkg))) throw new Error(`${name} points to ${pkg}, which is not in the server's node_modules.`);
+  fs.rmSync(alias);
+  fs.mkdirSync(alias);
+  fs.writeFileSync(path.join(alias, "package.json"), JSON.stringify({ name, private: true, main: "index.js" }));
+  fs.writeFileSync(path.join(alias, "index.js"), `module.exports = require(${JSON.stringify(pkg)});\n`);
+}
+const symlinks = [];
+const walk = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isSymbolicLink()) symlinks.push(path.relative(out, p));
+    else if (e.isDirectory()) walk(p);
+  }
+};
+walk(out);
+if (symlinks.length) {
+  console.error(`Symlinks left in the server (they would break on other machines):\n${symlinks.join("\n")}`);
+  process.exit(1);
+}
+
 // better-sqlite3 ships N-API binaries for every platform; keep the target's (all archs, for
 // universal macOS builds and Windows on ARM).
 const prebuilds = path.join(out, "node_modules", "better-sqlite3", "prebuilds");

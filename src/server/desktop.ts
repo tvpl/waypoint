@@ -30,6 +30,9 @@ export function hasDesktopKey(req: Request): boolean {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** In-flight creation, shared by windows that sign in at the same time on first launch. */
+let creating: Promise<string> | null = null;
+
 /**
  * The person using the desktop app. Reuses the oldest account when the database already has one
  * (a copied or seeded database); otherwise creates one named after the OS user, with a random
@@ -42,5 +45,6 @@ export async function ensureDesktopUser(): Promise<string> {
   try {
     name = capitalize(os.userInfo().username) || name;
   } catch {}
-  return createUser({ email: "voce@waypoint.local", name, password: crypto.randomBytes(24).toString("base64url") });
+  creating ??= createUser({ email: "voce@waypoint.local", name, password: crypto.randomBytes(24).toString("base64url") }).finally(() => (creating = null));
+  return creating;
 }

@@ -10,6 +10,8 @@ export type CommentView = {
   planId: string;
   /** Node the thread is about; null = the plan itself ("No plan"). */
   nodeId: string | null;
+  /** Layer the thread is about (plan-level threads); null = none. */
+  layerId: string | null;
   /** Thread root (one level of replies). */
   parentId: string | null;
   body: string;

@@ -42,6 +42,8 @@ import {
   showAllLayers,
   soloLayer,
   updateLayer,
+  applyLayerTemplate,
+  viewVisibility,
 } from "@/domain/layers";
 import {
   contentSignature,
@@ -58,7 +60,8 @@ import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { EditorContext, type EditorApi, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
-import { buildInk, INK_SIZES, type Point } from "./ink-geometry";
+import { buildInk, buildTextInk, INK_SIZES, textBox, type Point } from "./ink-geometry";
+import { clearSteps as clearFlowSteps, numberFlow, stepTargets } from "./flow-steps";
 import { InkCanvas } from "./ink-canvas";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
@@ -257,6 +260,7 @@ function EditorShell(props: PlanEditorProps) {
   const [backup, setBackup] = useState<{ document: PlanDocument; at: number } | null>(null);
   const previewExport = useRef<ViewerExport | null>(null);
   const commentsPanel = useCommentsPanel();
+  const openLayerComments = commentsPanel.openLayer;
   const comments = useComments({ planId, enabled: true, open: commentsPanel.open });
   const [previewFocus, setPreviewFocus] = useState<{ id: string; seq: number } | null>(null);
   // phones: a notice first; "Editar mesmo assim" shows the canvas with panels as overlays
@@ -557,7 +561,7 @@ function EditorShell(props: PlanEditorProps) {
     setNodes((list) => list.map((n) => (n.id === id ? { ...n, width: size.width ?? n.width, height: size.height ?? n.height } : n)));
   }, []);
 
-  const updateEdge = useCallback((id: string, patch: { label?: string; description?: string; kind?: EdgeKind }, key?: string) => {
+  const updateEdge = useCallback((id: string, patch: { label?: string; description?: string; kind?: EdgeKind; step?: number }, key?: string) => {
     pendingKey.current = key ?? null;
     setEdges((list) =>
       list.map((e) => {
@@ -751,6 +755,51 @@ function EditorShell(props: PlanEditorProps) {
     [mutate],
   );
 
+  const addInkText = useCallback(
+    (at: { x: number; y: number }) => {
+      const s = inkRef.current;
+      const built = buildTextInk(at, s.size);
+      const node: PlanNode = {
+        id: newId(),
+        kind: "ink",
+        x: built.x,
+        y: built.y,
+        width: built.width,
+        height: built.height,
+        data: { title: "", ink: built.ink, ...(s.color ? { color: s.color } : {}) },
+      };
+      pendingKey.current = null;
+      applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [] });
+      setTimeout(() => setEditingId(node.id), 30);
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
+  /** Text annotations: the box follows the text; one emptied goes away. */
+  const commitInkText = useCallback(
+    (id: string, title: string) => {
+      mutate((d) => {
+        const n = d.nodes.find((x) => x.id === id);
+        if (!n?.data.ink) return d;
+        if (!title.trim()) return removeNodes(d, [id]);
+        const box = textBox(title, n.data.ink.size);
+        const ink = { ...n.data.ink, w: box.width, h: box.height, points: [0, 0, box.width, box.height] };
+        return { ...d, nodes: d.nodes.map((x) => (x.id === id ? { ...x, width: box.width, height: box.height, data: { ...x.data, title, ink } } : x)) };
+      });
+    },
+    [mutate],
+  );
+
+  // A text annotation left empty (Esc right after placing it) disappears.
+  const lastEditing = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = lastEditing.current;
+    lastEditing.current = editingId;
+    if (!prev || prev === editingId) return;
+    const n = nodesRef.current.find((x) => x.id === prev);
+    if (n?.type === "ink" && n.data.ink?.shape === "text" && !n.data.title.trim()) mutate((d) => removeNodes(d, [prev]));
+  }, [editingId, mutate]);
+
   // ---------------------------------------------------------------- layers
   const layersApi: LayersApi = useMemo(() => {
     const list = layersOf(layerState);
@@ -771,7 +820,8 @@ function EditorShell(props: PlanEditorProps) {
         });
         if (id) setActiveLayer(id);
       },
-      update: (id, patch) => mutate((d) => updateLayer(d, id, patch), { key: patch.name !== undefined ? `layer-name:${id}` : undefined }),
+      update: (id, patch) =>
+        mutate((d) => updateLayer(d, id, patch), { key: patch.name !== undefined ? `layer-name:${id}` : patch.opacity !== undefined ? `layer-opacity:${id}` : undefined }),
       move: (id, dir) => mutate((d) => moveLayer(d, id, dir)),
       remove: (id, mode) => {
         mutate((d) => removeLayer(d, id, mode), { select: [] });
@@ -793,9 +843,19 @@ function EditorShell(props: PlanEditorProps) {
       saveView: (name) => mutate((d) => saveView(d, name).doc),
       applyView: (id) => mutate((d) => applyView(d, id)),
       removeView: (id) => mutate((d) => removeView(d, id)),
+      applyTemplate: (id) => {
+        let first: string | null = null;
+        mutate((d) => {
+          const r = applyLayerTemplate(d, id);
+          first = r.first;
+          return r.doc;
+        });
+        if (first) setActiveLayer(first);
+      },
+      comment: (id) => openLayerComments(id),
       counts,
     };
-  }, [layerState, nodes, edges, activeLayer, mutate, select]);
+  }, [layerState, nodes, edges, activeLayer, mutate, select, openLayerComments]);
 
   const focusNode = useCallback(
     (id: string) => {
@@ -856,6 +916,16 @@ function EditorShell(props: PlanEditorProps) {
     setInk,
     addInk,
     removeInk,
+    addInkText,
+    numberSteps: (edgeIds) => {
+      const ids = stepTargets(docOf(), edgeIds ? { nodes: new Set(), edges: new Set(edgeIds) } : selectedIds());
+      if (!ids.length) return void toast.info("Selecione as conexões (ou os elementos entre elas) para numerar.");
+      mutate((d) => numberFlow(d, ids));
+    },
+    clearSteps: (edgeIds) => {
+      const ids = stepTargets(docOf(), edgeIds ? { nodes: new Set(), edges: new Set(edgeIds) } : selectedIds());
+      if (ids.length) mutate((d) => clearFlowSteps(d, ids));
+    },
     layers: layersApi,
     connectKind,
     setConnectKind,
@@ -871,6 +941,7 @@ function EditorShell(props: PlanEditorProps) {
     cacheResource,
     openShare,
     openComments: (id) => commentsPanel.openPanel(id ?? null),
+    exportView: (k, id) => void onExport(k, id),
   };
   const apiRef = useRef(api);
   apiRef.current = api;
@@ -895,7 +966,11 @@ function EditorShell(props: PlanEditorProps) {
       resourceFor,
       editingId,
       setEditingId,
-      commitTitle: (id, title) => updateNodeData(id, { title }),
+      commitTitle: (id, title) => {
+        const n = nodesRef.current.find((x) => x.id === id);
+        if (n?.type === "ink" && n.data.ink?.shape === "text") commitInkText(id, title);
+        else updateNodeData(id, { title });
+      },
       commitEdgeLabel: (id, label) => updateEdge(id, { label: label.trim() || undefined }),
       toggleCollapsed: (id) => apiRef.current.toggleCollapsed(id),
       childCount,
@@ -907,19 +982,24 @@ function EditorShell(props: PlanEditorProps) {
       commentCount,
       openNodeComments,
     }),
-    [resourceFor, editingId, updateNodeData, updateEdge, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
+    [resourceFor, editingId, updateNodeData, commitInkText, updateEdge, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
   );
 
   const commentNodes = useMemo(
-    () => (commentsPanel.open ? nodes.map((n) => ({ id: n.id, kind: n.type ?? "block", title: n.data.title || (n.data.resource ? (resourceFor(n)?.title ?? "") : "") })) : []),
+    () =>
+      commentsPanel.open
+        ? nodes.map((n) => ({ id: n.id, kind: n.type ?? "block", layer: n.data._layer, title: n.data.title || (n.data.resource ? (resourceFor(n)?.title ?? "") : "") }))
+        : [],
     [commentsPanel.open, nodes, resourceFor],
   );
+  const commentLayers = useMemo(() => layersApi.list.map((l) => ({ id: l.id, name: l.name, color: l.color })), [layersApi.list]);
   const commentsAside = commentsPanel.open ? (
     <CommentsPanel
       store={comments}
       target={commentsPanel}
       onClose={commentsPanel.close}
       nodes={commentNodes}
+      layers={commentLayers}
       onSelectNode={(id) => (mode === "edit" ? focusNode(id) : setPreviewFocus((f) => ({ id, seq: (f?.seq ?? 0) + 1 })))}
     />
   ) : null;
@@ -1190,25 +1270,39 @@ function EditorShell(props: PlanEditorProps) {
     }
   };
 
-  const onExport = async (k: ExportKind) => {
-    if (mode === "preview") return void previewExport.current?.(k);
-    const title = meta.title || "plan";
-    if (k === "json") return exportJson({ title, description: meta.description, tags: meta.tags }, docOf());
-    const visible = rf.getNodes().filter((n) => !n.hidden);
-    if (!visible.length) return void toast.error("O plan está vazio.");
+  /** Exports the canvas as it is, or a saved view (shown only while the image is taken). */
+  const onExport = async (k: ExportKind, viewId?: string) => {
+    if (mode === "preview") return void previewExport.current?.(k, viewId);
+    const doc = docOf();
+    const view = viewId ? doc.views?.find((v) => v.id === viewId) : undefined;
+    const title = view ? `${meta.title || "plan"} — ${view.name}` : meta.title || "plan";
+    if (k === "json") return exportJson({ title, description: meta.description, tags: meta.tags }, doc);
+    const vis = view ? viewVisibility(doc, view.id) : null;
+    if (!vis && !rf.getNodes().some((n) => !n.hidden)) return void toast.error("O plan está vazio.");
     const printWin = k === "pdf" ? openPrintWindow(title) : null;
     if (k === "pdf" && !printWin) return void toast.error("Permita pop-ups para exportar em PDF.");
-    const prevSel = selNodeIds();
-    select([]);
+    const prev = selectedIds();
+    if (vis) {
+      setNodes(toFlowNodes(doc, { layerVisibility: vis }));
+      setEdges(toFlowEdges(doc, { layerVisibility: vis }));
+    } else select([]);
+    // let React Flow render (and measure what the view brings back) before taking the picture
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (vis) await new Promise((r) => setTimeout(r, 120));
     try {
+      const visible = rf.getNodes().filter((n) => !n.hidden);
+      if (!visible.length) {
+        printWin?.close();
+        return void toast.error("Esta visão está vazia.");
+      }
       const bounds = rf.getNodesBounds(visible);
       if (k === "pdf") await exportPdf(wrapRef.current!, bounds, title, printWin);
       else await exportImage(wrapRef.current!, bounds, k, title);
     } catch {
       toast.error("Não foi possível exportar. Tente novamente.");
     } finally {
-      select(prevSel);
+      if (vis) applyDoc(doc, { nodes: prev.nodes, edges: prev.edges });
+      else select([...prev.nodes], [...prev.edges]);
     }
   };
 
@@ -1294,6 +1388,7 @@ function EditorShell(props: PlanEditorProps) {
             publishing={publishing}
             people={props.people}
             onExport={onExport}
+            views={layerState.views}
             comments={<CommentsToggle count={comments.counts.unresolvedThreads} open={commentsPanel.open} onClick={commentsPanel.toggle} />}
           />
 

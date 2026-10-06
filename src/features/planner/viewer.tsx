@@ -20,11 +20,11 @@ import { ZoomControls } from "./zoom-controls";
 import { fallbackResource, type ResolvedResource } from "./resource-types";
 import { ResourceIcon } from "./resource-picker";
 import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
-import { viewVisibility } from "@/domain/layers";
-import { ViewLayers } from "./view-layers";
+import { compareViews, layerIdOf, viewVisibility } from "@/domain/layers";
+import { CompareBar, defaultCompare, parseCompare, sideVisibility, ViewLayers, type CompareState } from "./view-layers";
 import type { ExportKind } from "./topbar";
 
-export type ViewerExport = (kind: ExportKind) => Promise<void>;
+export type ViewerExport = (kind: ExportKind, viewId?: string) => Promise<void>;
 
 export type CanvasExtras = {
   /** Comments in unresolved threads per node (badge). */
@@ -41,8 +41,13 @@ type Props = CanvasExtras & {
   className?: string;
   meta?: { title: string; description?: string | null; tags?: string[] };
   exportRef?: MutableRefObject<ViewerExport | null>;
-  /** Presentation stage: no zoom controls; dims everything outside `activeIds`. */
-  stage?: { activeIds: ReadonlySet<string> | null };
+  /**
+   * Presentation stage: no zoom controls; dims everything outside `activeIds` (connections on
+   * `activeLayer` stay lit too, for a layer being revealed).
+   */
+  stage?: { activeIds: ReadonlySet<string> | null; activeLayer?: string };
+  /** Layer visibility decided by the caller (presentation steps); otherwise the reader picks. */
+  layerOverrides?: Record<string, boolean>;
   /** Rendered inside the React Flow provider (e.g. presentation controls). */
   children?: React.ReactNode;
 };
@@ -75,7 +80,7 @@ function ancestorsOf(doc: PlanDocument, id: string) {
 
 type Hover = { id: string; left: number; top: number; sheet?: boolean };
 
-function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef, stage, children, commentCount, openNodeComments, focusRequest }: Props) {
+function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef, stage, layerOverrides: fixedLayers, children, commentCount, openNodeComments, focusRequest }: Props) {
   const rf = useReactFlow();
   const router = useRouter();
   const wrap = useRef<HTMLDivElement>(null);
@@ -89,6 +94,18 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   // Layers this reader turned on/off (or a saved view from ?view=…); the document keeps its defaults.
   const viewParam = useSearchParams()?.get("view");
   const [layerOverrides, setLayerOverrides] = useState<Record<string, boolean>>(() => (viewParam && viewVisibility(doc, viewParam)) || {});
+  const layerOverridesRef = useRef(layerOverrides);
+  layerOverridesRef.current = layerOverrides;
+  // Comparing two views (?compare=a,b opens one directly).
+  const compareParam = useSearchParams()?.get("compare");
+  const [compare, setCompare] = useState<CompareState | null>(() => (stage ? null : parseCompare(doc, compareParam)));
+  const diff = useMemo(() => (compare ? compareViews(doc, compare.a, compare.b) : null), [doc, compare]);
+  const shownLayers = useMemo(() => {
+    if (fixedLayers) return fixedLayers;
+    if (compare && diff) return compare.show === "diff" ? diff.visibility : sideVisibility(doc, compare.show === "a" ? compare.a : compare.b);
+    return layerOverrides;
+  }, [fixedLayers, compare, diff, doc, layerOverrides]);
+  const diffOn = !!diff && compare?.show === "diff";
   const [details, setDetails] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ res: ResolvedResource; title: string } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,19 +118,27 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
     [doc, overrides],
   );
   const active = stage?.activeIds ?? null;
+  const activeLayer = stage?.activeLayer;
   const nodes = useMemo(() => {
-    const list = toFlowNodes(viewDoc, { readOnly: true, layerVisibility: layerOverrides });
+    const list = toFlowNodes(viewDoc, { readOnly: true, layerVisibility: shownLayers });
+    if (diffOn) return list.map((n) => ({ ...n, className: cn(n.className, `wp-diff-${diff!.nodes.get(n.id) ?? "same"}`) }));
     if (!stage) return list;
     return list.map((n) => ({ ...n, className: cn(n.className, "wp-stage-node", active && !active.has(n.id) && "wp-dim") }));
-  }, [viewDoc, stage, active, layerOverrides]);
+  }, [viewDoc, stage, active, shownLayers, diffOn, diff]);
   const edges = useMemo(() => {
-    const list = toFlowEdges(viewDoc, { readOnly: true, layerVisibility: layerOverrides });
+    const list = toFlowEdges(viewDoc, { readOnly: true, layerVisibility: shownLayers });
+    if (diffOn) {
+      return list.map((e) => {
+        const st = diff!.edges.get(e.id) ?? "same";
+        return { ...e, className: cn(e.className, `wp-diff-${st}`), data: { ...e.data!, _diff: st } };
+      });
+    }
     if (!stage) return list;
     return list.map((e) => {
-      const dim = !!active && !(active.has(e.source) && active.has(e.target));
-      return { ...e, className: cn(e.className, "wp-stage-edge", dim && "wp-dim"), data: { ...e.data!, _dim: dim } };
+      const lit = !active || (active.has(e.source) && active.has(e.target)) || (!!activeLayer && layerIdOf(e.data ?? {}) === activeLayer);
+      return { ...e, className: cn(e.className, "wp-stage-edge", !lit && "wp-dim"), data: { ...e.data!, _dim: !lit } };
     });
-  }, [viewDoc, stage, active, layerOverrides]);
+  }, [viewDoc, stage, active, activeLayer, shownLayers, diffOn, diff]);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
   const resourceFor = useCallback(
@@ -189,21 +214,33 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   // exports for the page header
   useEffect(() => {
     if (!exportRef) return;
-    exportRef.current = async (kind) => {
-      const title = meta?.title ?? "plan";
+    exportRef.current = async (kind, viewId) => {
+      const view = viewId ? doc.views?.find((v) => v.id === viewId) : undefined;
+      const title = view ? `${meta?.title ?? "plan"} — ${view.name}` : (meta?.title ?? "plan");
+      if (kind === "json") return exportJson({ title, description: meta?.description, tags: meta?.tags }, doc);
+      // a saved view is shown just for the picture, then the reader's own layers come back
+      const before = layerOverridesRef.current;
+      const vis = view ? viewVisibility(doc, view.id) : null;
+      const win = kind === "pdf" ? openPrintWindow(title) : null;
+      if (kind === "pdf" && !win) return void toast.error("Permita pop-ups para exportar em PDF.");
       try {
-        if (kind === "json") return exportJson({ title, description: meta?.description, tags: meta?.tags }, doc);
-        const visible = rf.getNodes().filter((n) => !n.hidden);
-        if (!visible.length) return void toast.error("O plan está vazio.");
-        const bounds = rf.getNodesBounds(visible);
-        if (kind === "pdf") {
-          const win = openPrintWindow(title);
-          if (!win) return void toast.error("Permita pop-ups para exportar em PDF.");
-          await exportPdf(wrap.current!, bounds, title, win);
+        if (vis) {
+          setLayerOverrides(vis);
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          await new Promise((r) => setTimeout(r, 120));
         }
+        const visible = rf.getNodes().filter((n) => !n.hidden);
+        if (!visible.length) {
+          win?.close();
+          return void toast.error(view ? "Esta visão está vazia." : "O plan está vazio.");
+        }
+        const bounds = rf.getNodesBounds(visible);
+        if (kind === "pdf") await exportPdf(wrap.current!, bounds, title, win);
         else await exportImage(wrap.current!, bounds, kind, title);
       } catch {
         toast.error("Não foi possível exportar. Tente novamente.");
+      } finally {
+        if (vis) setLayerOverrides(before);
       }
     };
     return () => {
@@ -317,7 +354,8 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
             if (touch) setHover(null);
           }}
         />
-        {!stage && <ViewLayers doc={doc} overrides={layerOverrides} onChange={setLayerOverrides} />}
+        {!stage && !compare && <ViewLayers doc={doc} overrides={layerOverrides} onChange={setLayerOverrides} onCompare={() => setCompare(defaultCompare(doc))} />}
+        {!stage && compare && diff && <CompareBar doc={doc} value={compare} counts={diff.counts} onChange={setCompare} onClose={() => setCompare(null)} />}
         {doc.nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <p className="rounded-xl border border-dashed border-line-2 bg-surface/80 px-5 py-4 text-sm text-muted">Este plan ainda está vazio.</p>

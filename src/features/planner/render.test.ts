@@ -170,6 +170,46 @@ describe("planner SSR", () => {
     expect(render({ selectedNodes: [], selectedEdges: [], tool: "erase" })).toContain("Passe sobre os traços");
     const [ink] = toFlowNodes({ nodes: [{ id: "ink1", kind: "ink", x: 0, y: 0, width: 40, height: 20, data: { title: "", ink: { points: [2, 2, 38, 18], w: 40, h: 20, size: 2, arrow: true } } }] });
     expect(render({ selectedNodes: [ink], selectedEdges: [] })).toContain("Apagar desenho");
+    // shapes and text in the drawing bar; a text annotation and a numbered connection
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "draw" })).toContain("Retângulo");
+    const [note] = toFlowNodes({ nodes: [{ id: "t1", kind: "ink", x: 0, y: 0, width: 80, height: 30, data: { title: "Olhe aqui", ink: { points: [0, 0, 80, 30], w: 80, h: 30, size: 4, shape: "text" } } }] });
+    const textHtml = render({ selectedNodes: [note], selectedEdges: [] });
+    expect(textHtml).toContain("Texto à mão");
+    expect(textHtml).toContain("Olhe aqui");
+    const [stepEdge] = toFlowEdges({ edges: [{ ...doc.edges[0], step: 3 }] });
+    const edgeHtml = render({ selectedNodes: [], selectedEdges: [stepEdge] });
+    expect(edgeHtml).toContain("Passo do fluxo");
+    expect(edgeHtml).toContain('value="3"');
+  });
+
+  it("renders the layers panel and the comparison bar", async () => {
+    const { LayersPanel } = await import("./layers-panel");
+    const { CompareBar, ViewLayers } = await import("./view-layers");
+    const { EditorContext } = await import("./editor-context");
+    const { TooltipProvider } = await import("@/components/ui/popover");
+    const layers = [
+      { id: "base", name: "Atual", visible: true },
+      { id: "p", name: "Proposta", visible: true, color: "#E5484D", opacity: 0.6, reveal: true },
+    ];
+    const views = [
+      { id: "v1", name: "Hoje", layers: ["base"] },
+      { id: "v2", name: "Com a proposta", layers: ["base", "p"] },
+    ];
+    const noop = () => {};
+    const api = new Proxy(
+      { layers: { list: layers, views, active: "p", counts: new Map([["p", 2]]) }, selectedNodes: [], selectedEdges: [] },
+      { get: (t, k) => (k in t ? (t as Record<string | symbol, unknown>)[k] : noop) },
+    ) as never;
+    const panel = renderToString(createElement(TooltipProvider, null, createElement(EditorContext.Provider, { value: api }, createElement(LayersPanel))));
+    expect(panel).toContain("Proposta");
+    expect(panel).toContain("60%");
+    expect(panel).toContain("Modelos de camadas");
+    const d = { layers, views };
+    expect(renderToString(createElement(TooltipProvider, null, createElement(ViewLayers, { doc: d, overrides: {}, onChange: noop, onCompare: noop })))).toContain("Camadas");
+    const bar = renderToString(createElement(CompareBar, { doc: d, value: { a: "v:v1", b: "v:v2", show: "diff" }, counts: { added: 2, removed: 0, changed: 1 }, onChange: noop, onClose: noop }));
+    expect(bar).toContain("Diferença");
+    expect(bar).toContain("Com a proposta");
+    expect(bar).toContain("+<!-- -->2");
   });
 
   it("renders the plans list", async () => {

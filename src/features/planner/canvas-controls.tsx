@@ -1,5 +1,5 @@
 "use client";
-import { ArrowLeftRight, ArrowUpRight, Eraser, Grid3x3, Group, Hand, Highlighter, Layers, Magnet, Map as MapIcon, MousePointer2, Network, PenLine, Trash2, Workflow, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUpRight, Circle, Eraser, Grid3x3, Group, Hand, Highlighter, Layers, ListOrdered, Magnet, Map as MapIcon, MousePointer2, Network, PenLine, Square, Trash2, Type, Workflow, X } from "lucide-react";
 import { EDGE_KINDS } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
@@ -113,6 +113,9 @@ const INK_MODES: { id: InkMode; label: string; icon: typeof PenLine }[] = [
   { id: "pen", label: "Caneta", icon: PenLine },
   { id: "highlighter", label: "Marca-texto", icon: Highlighter },
   { id: "arrow", label: "Seta", icon: ArrowUpRight },
+  { id: "rect", label: "Retângulo", icon: Square },
+  { id: "ellipse", label: "Elipse", icon: Circle },
+  { id: "text", label: "Texto à mão (clique no canvas)", icon: Type },
 ];
 
 /** Which layer new drawings and elements go to; switching it is one click away while drawing. */
@@ -260,6 +263,11 @@ export function SelectionBar() {
           </Tooltip>
         ))}
         <Sep />
+        <Tooltip content="Numerar as conexões entre os selecionados, na ordem do fluxo">
+          <button type="button" className={barBtn} onClick={() => ed.numberSteps()} aria-label="Numerar passos">
+            <ListOrdered />
+          </button>
+        </Tooltip>
         <Tooltip content="Agrupar (⌘G)">
           <button type="button" className={barBtn} onClick={ed.group} aria-label="Agrupar">
             <Group /> <span className="pr-1">Agrupar</span>
@@ -277,6 +285,11 @@ export function SelectionBar() {
         <Tooltip content="Inverter direção">
           <button type="button" className={barBtn} aria-label="Inverter direção" onClick={() => ed.swapEdge(e.id)}>
             <ArrowLeftRight />
+          </button>
+        </Tooltip>
+        <Tooltip content="Numerar o fluxo desta camada (1, 2, 3…)">
+          <button type="button" className={barBtn} aria-label="Numerar passos do fluxo" onClick={() => ed.numberSteps()}>
+            <ListOrdered />
           </button>
         </Tooltip>
         <Tooltip content="Excluir conexão">

@@ -73,6 +73,7 @@ export async function loadCommentsAction(planId: string, token?: string | null) 
 const createSchema = z.object({
   body: z.string().max(20000),
   nodeId: idSchema.nullish(),
+  layerId: idSchema.nullish(),
   parentId: idSchema.nullish(),
 });
 
@@ -81,7 +82,7 @@ export async function createCommentAction(planId: string, token: string | null |
     const a = await actor(token);
     const pid = idSchema.parse(planId);
     const data = createSchema.parse(input);
-    const comment = createComment(pid, a, { body: data.body, nodeId: data.nodeId ?? null, parentId: data.parentId ?? null });
+    const comment = createComment(pid, a, { body: data.body, nodeId: data.nodeId ?? null, layerId: data.layerId ?? null, parentId: data.parentId ?? null });
     return { comment, snapshot: snapshot(pid, a) };
   });
 }

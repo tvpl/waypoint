@@ -31,6 +31,10 @@ export type LayersApi = {
   saveView: (name: string) => void;
   applyView: (id: string) => void;
   removeView: (id: string) => void;
+  /** Adds a ready-made set of layers and views (src/domain/layers.ts LAYER_TEMPLATES). */
+  applyTemplate: (id: string) => void;
+  /** Opens the comments panel on a layer's threads. */
+  comment: (id: string) => void;
   /** Elements per layer (top-level nodes and connections). */
   counts: Map<string, number>;
 };
@@ -51,7 +55,7 @@ export type EditorApi = {
   addResourceNode: (ref: ResourceRef, resource: ResolvedResource, at?: { x: number; y: number }) => void;
   updateNodeData: (id: string, patch: Partial<NodeData>, coalesceKey?: string) => void;
   updateNodeSize: (id: string, size: { width?: number; height?: number }) => void;
-  updateEdge: (id: string, patch: Partial<Pick<PlanEdge, "label" | "description" | "kind">>, coalesceKey?: string) => void;
+  updateEdge: (id: string, patch: Partial<Pick<PlanEdge, "label" | "description" | "kind" | "step">>, coalesceKey?: string) => void;
   mutate: (fn: (doc: PlanDocument) => PlanDocument, opts?: { select?: string[]; key?: string }) => void;
 
   remove: () => void;
@@ -83,6 +87,11 @@ export type EditorApi = {
   addInk: (points: Point[], zoom: number) => void;
   /** Removes drawings (eraser). One undo step. */
   removeInk: (ids: string[]) => void;
+  /** Starts a text annotation at a canvas point (edited in place). */
+  addInkText: (at: { x: number; y: number }) => void;
+  /** Numbers the selected flow's connections 1…n ("Numerar passos"), or clears the numbers. */
+  numberSteps: (edgeIds?: string[]) => void;
+  clearSteps: (edgeIds?: string[]) => void;
   layers: LayersApi;
   connectKind: EdgeKind;
   setConnectKind: (k: EdgeKind) => void;
@@ -102,6 +111,8 @@ export type EditorApi = {
   openShare: (section?: "share" | "history") => void;
   /** Opens the comments panel, optionally on a node's thread/composer. */
   openComments: (nodeId?: string | null) => void;
+  /** Exports an image/PDF of a saved view (the canvas shows it only while exporting). */
+  exportView: (kind: "png" | "svg" | "pdf", viewId: string) => void;
 };
 
 export const EditorContext = createContext<EditorApi | null>(null);

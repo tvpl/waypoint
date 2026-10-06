@@ -17,7 +17,8 @@ import { PlanCanvasView, type CanvasExtras, type ViewerExport } from "./viewer";
 import { EdgeLegend } from "./edges";
 import { ResourceIcon } from "./resource-picker";
 import { refKey, fallbackResource, type ResolvedResource } from "./resource-types";
-import { ExportMenu, type ExportKind } from "./topbar";
+import { ExportMenu, ViewExportItems, type ExportKind } from "./topbar";
+import { layersOf } from "@/domain/layers";
 import { ShareDialog } from "./share-dialog";
 import { PresentationMode } from "./presentation";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
@@ -263,7 +264,8 @@ export function PlanViewPage({
   const [share, setShare] = useState(false);
   const [presenting, setPresenting] = useState(present);
   const presentBtn = useRef<HTMLButtonElement>(null);
-  const onExport = (k: ExportKind) => void exportRef.current?.(k);
+  const onExport = (k: ExportKind, viewId?: string) => void exportRef.current?.(k, viewId);
+  const views = document.views ?? [];
 
   const panel = useCommentsPanel();
   const comments = useComments({ planId: plan.id, token: shareToken, enabled: !!viewer, open: panel.open });
@@ -276,7 +278,8 @@ export function PlanViewPage({
     () => (viewer ? { commentCount, openNodeComments, focusRequest: focus } : {}),
     [viewer, commentCount, openNodeComments, focus],
   );
-  const commentNodes = useMemo(() => document.nodes.map((n) => ({ id: n.id, kind: n.kind, title: n.data.title || (resources[n.id]?.title ?? "") })), [document, resources]);
+  const commentNodes = useMemo(() => document.nodes.map((n) => ({ id: n.id, kind: n.kind, layer: n.layer, title: n.data.title || (resources[n.id]?.title ?? "") })), [document, resources]);
+  const commentLayers = useMemo(() => layersOf(document).map((l) => ({ id: l.id, name: l.name, color: l.color })), [document]);
 
   const startPresenting = () => {
     setPresenting(true);
@@ -337,9 +340,9 @@ export function PlanViewPage({
           </Button>
         )}
         <div className="hidden md:block">
-          <ExportMenu onExport={onExport} />
+          <ExportMenu onExport={onExport} views={views} />
         </div>
-        <MobileMenu planId={plan.id} canEdit={canEdit} onShare={() => setShare(true)} onExport={onExport} />
+        <MobileMenu planId={plan.id} canEdit={canEdit} onShare={() => setShare(true)} onExport={onExport} views={views} />
       </header>
       {status.kind === "draft" && (
         <Notice>
@@ -365,6 +368,7 @@ export function PlanViewPage({
             target={panel}
             onClose={panel.close}
             nodes={commentNodes}
+            layers={commentLayers}
             onSelectNode={(id) => setFocus((f) => ({ id, seq: (f?.seq ?? 0) + 1 }))}
             className="fixed inset-0 z-30 w-full border-l-0 lg:static lg:z-auto lg:w-[340px] lg:border-l"
           />
@@ -377,7 +381,19 @@ export function PlanViewPage({
 }
 
 /** Phones/tablets: header actions collapse into one menu. */
-function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; canEdit: boolean; onShare: () => void; onExport: (k: ExportKind) => void }) {
+function MobileMenu({
+  planId,
+  canEdit,
+  onShare,
+  onExport,
+  views,
+}: {
+  planId: string;
+  canEdit: boolean;
+  onShare: () => void;
+  onExport: (k: ExportKind, viewId?: string) => void;
+  views: { id: string; name: string }[];
+}) {
   const router = useRouter();
   return (
     <div className="md:hidden">
@@ -412,6 +428,7 @@ function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; ca
           <DropdownMenuItem onSelect={() => onExport("json")}>
             <FileJson /> JSON
           </DropdownMenuItem>
+          <ViewExportItems views={views} onExport={onExport} />
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

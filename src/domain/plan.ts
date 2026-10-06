@@ -50,6 +50,11 @@ export const inkSchema = z.object({
   highlighter: z.boolean().optional(),
   /** Straight line with an arrowhead at the end. */
   arrow: z.boolean().optional(),
+  /**
+   * Drawn shape instead of a freehand line: a rectangle or an ellipse filling the node box, or
+   * handwritten-style text (the node title, `size` sets the type size).
+   */
+  shape: z.enum(["rect", "ellipse", "text"]).optional(),
 });
 export type Ink = z.infer<typeof inkSchema>;
 
@@ -110,6 +115,8 @@ export const planEdgeSchema = z.object({
   label: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
   layer: z.string().max(64).optional(),
+  /** Numbered step of a flow (badge on the connection). */
+  step: z.number().int().min(1).max(999).optional(),
 });
 export type PlanEdge = z.infer<typeof planEdgeSchema>;
 
@@ -137,8 +144,12 @@ export const planLayerSchema = z.object({
   locked: z.boolean().optional(),
   /** Moving dashes on this layer's connections, to show a flow. */
   animate: z.boolean().optional(),
-  /** Shown faded (context for the other layers). */
+  /** Shown faded (context for the other layers). Superseded by `opacity`; read as 0.3. */
   dimmed: z.boolean().optional(),
+  /** 0.1–1; missing = opaque. */
+  opacity: z.number().min(0.1).max(1).optional(),
+  /** Presentation: starts hidden and appears as a step of its own ("revelar"). */
+  reveal: z.boolean().optional(),
   description: z.string().max(500).optional(),
 });
 export type PlanLayer = z.infer<typeof planLayerSchema>;

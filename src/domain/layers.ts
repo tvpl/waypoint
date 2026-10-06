@@ -30,6 +30,11 @@ export function layersOf(doc: Pick<Doc, "layers">): PlanLayer[] {
 
 export const layerIdOf = (x: { layer?: string }) => x.layer ?? BASE_LAYER_ID;
 
+/** How opaque a layer renders (the old `dimmed` flag reads as 30%). */
+export function layerOpacity(l: Pick<PlanLayer, "opacity" | "dimmed">): number {
+  return l.opacity ?? (l.dimmed ? 0.3 : 1);
+}
+
 /** Effective visibility per layer: the document's, with optional per-viewer overrides. */
 export function layerVisibility(doc: Pick<Doc, "layers">, overrides?: Readonly<Record<string, boolean>>): Map<string, boolean> {
   return new Map(layersOf(doc).map((l) => [l.id, overrides && l.id in overrides ? overrides[l.id] : l.visible !== false]));
@@ -64,7 +69,9 @@ export function syncNodeLayers(nodes: PlanNode[], layerIds?: ReadonlySet<string>
 
 function withLayers<T extends Doc>(doc: T, layers: PlanLayer[]): T {
   // Only the implicit base left, unchanged: no need to store anything.
-  const onlyDefaultBase = layers.length === 1 && layers[0].id === BASE_LAYER_ID && layers[0].name === BASE_LAYER.name && layers[0].visible !== false && !layers[0].locked && !layers[0].animate && !layers[0].dimmed && !layers[0].color;
+  const b = layers[0];
+  const onlyDefaultBase =
+    layers.length === 1 && b.id === BASE_LAYER_ID && b.name === BASE_LAYER.name && b.visible !== false && !b.locked && !b.animate && !b.dimmed && !b.color && !b.reveal && (b.opacity ?? 1) >= 1;
   const next = { ...doc, layers: onlyDefaultBase ? undefined : layers };
   if (!next.layers) delete next.layers;
   return next;
@@ -84,7 +91,15 @@ export function updateLayer<T extends Doc>(doc: T, id: string, patch: Partial<Om
   if (!layers.some((l) => l.id === id)) return doc;
   return withLayers(
     doc,
-    layers.map((l) => (l.id === id ? { ...l, ...patch, name: (patch.name ?? l.name).slice(0, 80) } : l)),
+    layers.map((l) => {
+      if (l.id !== id) return l;
+      const next: PlanLayer = { ...l, ...patch, name: (patch.name ?? l.name).slice(0, 80) };
+      // Opacity replaces the old on/off fade; full opacity and false flags aren't stored.
+      if ("opacity" in patch) delete next.dimmed;
+      if (next.opacity !== undefined && next.opacity >= 1) delete next.opacity;
+      for (const k of ["locked", "animate", "dimmed", "reveal"] as const) if (next[k] === false) delete next[k];
+      return next;
+    }),
   );
 }
 
@@ -237,4 +252,208 @@ export function layerCounts(doc: Doc): Map<string, number> {
   const out = new Map<string, number>();
   for (const x of [...doc.nodes.filter((n) => !n.parentId), ...doc.edges]) out.set(layerIdOf(x), (out.get(layerIdOf(x)) ?? 0) + 1);
   return out;
+}
+
+// ------------------------------------------------------------------ templates
+
+export type LayerTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  /** New name for the base layer while it still has the default one. */
+  base: string;
+  layers: { name: string; color: string; reveal?: boolean; animate?: boolean; opacity?: number }[];
+  /** Saved views, by layer position: 0 = base, 1… = the template's layers. */
+  views: { name: string; layers: number[] }[];
+};
+
+/** Ready-made layer sets for the usual "perspectives" over one drawing. */
+export const LAYER_TEMPLATES: LayerTemplate[] = [
+  {
+    id: "proposal",
+    name: "Atual, proposta e riscos",
+    description: "O que existe hoje, o que muda e o que preocupa.",
+    base: "Atual",
+    layers: [
+      { name: "Proposta", color: "#12A594", animate: true, reveal: true },
+      { name: "Riscos", color: "#E5484D", reveal: true },
+    ],
+    views: [
+      { name: "Hoje", layers: [0] },
+      { name: "Com a proposta", layers: [0, 1] },
+      { name: "Proposta e riscos", layers: [0, 1, 2] },
+    ],
+  },
+  {
+    id: "exceptions",
+    name: "Fluxo principal e exceções",
+    description: "O caminho feliz separado dos desvios e erros.",
+    base: "Fluxo principal",
+    layers: [
+      { name: "Exceções", color: "#F76B15", animate: true },
+      { name: "Erros", color: "#E5484D" },
+    ],
+    views: [
+      { name: "Caminho feliz", layers: [0] },
+      { name: "Com exceções", layers: [0, 1] },
+      { name: "Tudo", layers: [0, 1, 2] },
+    ],
+  },
+  {
+    id: "versions",
+    name: "Versões v1 → v3",
+    description: "Cada versão acrescenta uma camada; a apresentação revela uma por vez.",
+    base: "v1",
+    layers: [
+      { name: "v2", color: "#2F4FD8", reveal: true },
+      { name: "v3", color: "#8E4EC6", reveal: true },
+    ],
+    views: [
+      { name: "v1", layers: [0] },
+      { name: "v2", layers: [0, 1] },
+      { name: "v3", layers: [0, 1, 2] },
+    ],
+  },
+  {
+    id: "extras",
+    name: "Essencial, complementos e notas",
+    description: "O núcleo limpo, com detalhes e anotações por cima.",
+    base: "Essencial",
+    layers: [
+      { name: "Complementos", color: "#0090FF" },
+      { name: "Anotações", color: "#D6409F", opacity: 0.85 },
+    ],
+    views: [
+      { name: "Essencial", layers: [0] },
+      { name: "Com complementos", layers: [0, 1] },
+      { name: "Completo", layers: [0, 1, 2] },
+    ],
+  },
+];
+
+/**
+ * Adds a template's layers and views. Existing layers stay; a name already in use gets a
+ * number. Returns the first new layer (to make it the active one).
+ */
+export function applyLayerTemplate<T extends Doc>(doc: T, templateId: string): { doc: T; first: string | null } {
+  const t = LAYER_TEMPLATES.find((x) => x.id === templateId);
+  if (!t) return { doc, first: null };
+  let layers = layersOf(doc).map((l) => (l.id === BASE_LAYER_ID && l.name === BASE_LAYER.name ? { ...l, name: t.base } : l));
+  const names = new Set(layers.map((l) => l.name.toLowerCase()));
+  const unique = (name: string) => {
+    let out = name;
+    for (let i = 2; names.has(out.toLowerCase()); i++) out = `${name} (${i})`;
+    names.add(out.toLowerCase());
+    return out;
+  };
+  const ids = [BASE_LAYER_ID];
+  for (const l of t.layers) {
+    const id = newLayerId();
+    ids.push(id);
+    const layer: PlanLayer = { id, name: unique(l.name), color: l.color, visible: true };
+    if (l.reveal) layer.reveal = true;
+    if (l.animate) layer.animate = true;
+    if (l.opacity !== undefined) layer.opacity = l.opacity;
+    layers = [...layers, layer];
+  }
+  const views: PlanView[] = [...(doc.views ?? [])];
+  for (const v of t.views) {
+    if (views.length >= 30) break;
+    views.push({ id: `v${Math.random().toString(36).slice(2, 10)}`, name: v.name, layers: v.layers.map((i) => ids[i]) });
+  }
+  return { doc: withLayers({ ...doc, views }, layers.slice(0, 50)), first: ids[1] ?? null };
+}
+
+// ------------------------------------------------------------------ comparing views
+
+export type DiffStatus = "same" | "added" | "removed" | "changed";
+
+/**
+ * What a side of a comparison shows: a saved view (`v:<id>`) or a layer over the base
+ * (`l:<id>`; the base alone for the base layer).
+ */
+export function compareSideLayers(doc: Pick<Doc, "layers" | "views">, side: string): Set<string> | null {
+  if (side.startsWith("v:")) {
+    const v = doc.views?.find((x) => x.id === side.slice(2));
+    return v ? new Set(v.layers) : null;
+  }
+  if (side.startsWith("l:")) {
+    const id = side.slice(2);
+    return layersOf(doc).some((l) => l.id === id) ? new Set([BASE_LAYER_ID, id]) : null;
+  }
+  return null;
+}
+
+/** Everything a comparison can pick from: the saved views, then each layer over the base. */
+export function compareOptions(doc: Pick<Doc, "layers" | "views">): { id: string; name: string }[] {
+  return [
+    ...(doc.views ?? []).map((v) => ({ id: `v:${v.id}`, name: v.name })),
+    ...layersOf(doc).map((l) => ({ id: `l:${l.id}`, name: l.id === BASE_LAYER_ID ? `Só ${l.name}` : `${layersOf(doc)[0].name} + ${l.name}` })),
+  ];
+}
+
+const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
+
+/**
+ * Compares two sides (see `compareSideLayers`). Elements on layers both sides show are "same",
+ * only in B "added", only in A "removed". A removed and an added element with the same title
+ * are the same thing redrawn: both are "changed".
+ */
+export function compareViews(
+  doc: Doc,
+  a: string,
+  b: string,
+): {
+  visibility: Record<string, boolean>;
+  nodes: Map<string, DiffStatus>;
+  edges: Map<string, DiffStatus>;
+  counts: Record<Exclude<DiffStatus, "same">, number>;
+} | null {
+  const la = compareSideLayers(doc, a);
+  const lb = compareSideLayers(doc, b);
+  if (!la || !lb) return null;
+  const status = (layer: string): DiffStatus | null => {
+    const inA = la.has(layer);
+    const inB = lb.has(layer);
+    if (inA && inB) return "same";
+    if (inB) return "added";
+    if (inA) return "removed";
+    return null;
+  };
+  const nodes = new Map<string, DiffStatus>();
+  for (const n of doc.nodes) {
+    const s = status(layerIdOf(n));
+    if (s) nodes.set(n.id, s);
+  }
+  // Same title on both sides of the change: it was redrawn, not added or removed.
+  const titled = (s: DiffStatus) => {
+    const out = new Map<string, string[]>();
+    for (const n of doc.nodes) {
+      if (nodes.get(n.id) !== s || n.kind === "ink" || !n.data.title.trim()) continue;
+      const k = norm(n.data.title);
+      out.set(k, [...(out.get(k) ?? []), n.id]);
+    }
+    return out;
+  };
+  const removed = titled("removed");
+  for (const [k, ids] of titled("added")) {
+    const other = removed.get(k);
+    if (!other) continue;
+    for (const id of [...ids, ...other]) nodes.set(id, "changed");
+  }
+  const edges = new Map<string, DiffStatus>();
+  for (const e of doc.edges) {
+    const s = status(layerIdOf(e));
+    if (!s || !nodes.has(e.source) || !nodes.has(e.target)) continue;
+    edges.set(e.id, s);
+  }
+  const counts = { added: 0, removed: 0, changed: 0 };
+  // Counted like the layers panel: top-level elements and connections.
+  for (const n of doc.nodes) {
+    const s = nodes.get(n.id);
+    if (s && s !== "same" && !n.parentId) counts[s]++;
+  }
+  for (const s of edges.values()) if (s === "added" || s === "removed") counts[s]++;
+  const visibility = Object.fromEntries(layersOf(doc).map((l) => [l.id, la.has(l.id) || lb.has(l.id)]));
+  return { visibility, nodes, edges, counts };
 }

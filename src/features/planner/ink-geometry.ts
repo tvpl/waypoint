@@ -7,7 +7,30 @@ import type { Ink } from "@/domain/plan";
 
 export type Point = [number, number];
 
-export type InkMode = "pen" | "highlighter" | "arrow";
+export type InkMode = "pen" | "highlighter" | "arrow" | "rect" | "ellipse" | "text";
+
+/** Modes drawn by dragging a box. */
+export const isShapeMode = (m: InkMode): m is "rect" | "ellipse" => m === "rect" || m === "ellipse";
+
+/** Handwritten-style annotation text: its type size for a stroke width (2 / 4 / 8 → 17 / 22 / 32). */
+export const inkFontSize = (size: number) => Math.round(12 + size * 2.5);
+
+/** Box for a text annotation (single line), measured when a canvas is available. */
+export function textBox(text: string, size: number): { width: number; height: number } {
+  const font = inkFontSize(size);
+  let width = text.length * font * 0.55;
+  if (typeof document !== "undefined") {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (ctx) {
+      ctx.font = `600 ${font}px ${INK_FONT}`;
+      width = ctx.measureText(text).width;
+    }
+  }
+  return { width: Math.max(24, Math.ceil(width + 14)), height: Math.ceil(font * 1.35 + 6) };
+}
+
+/** Font of text annotations (planner.css uses the same stack). */
+export const INK_FONT = '"Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive';
 
 /** Ink colors: theme-adaptive ink first (stored as no color), then fixed colors that read on both canvases. */
 export const INK_COLORS: { value: string | undefined; name: string }[] = [
@@ -57,6 +80,25 @@ export function simplify(points: Point[], minDist: number): Point[] {
  */
 export function buildInk(points: Point[], opts: { size: number; mode: InkMode; zoom?: number }): { x: number; y: number; width: number; height: number; ink: Ink } | null {
   if (points.length === 0) return null;
+  if (opts.mode === "text") return null;
+  if (isShapeMode(opts.mode)) {
+    const [a, b] = [points[0], points[points.length - 1]];
+    const w = Math.abs(b[0] - a[0]);
+    const h = Math.abs(b[1] - a[1]);
+    if (Math.max(w, h) < Math.max(8, opts.size * 3) / (opts.zoom ?? 1)) return null;
+    const pad = opts.size / 2 + 1;
+    const x = Math.min(a[0], b[0]) - pad;
+    const y = Math.min(a[1], b[1]) - pad;
+    const width = Math.max(4, w + pad * 2);
+    const height = Math.max(4, h + pad * 2);
+    return {
+      x: round(x),
+      y: round(y),
+      width: round(width),
+      height: round(height),
+      ink: { points: [round(pad), round(pad), round(width - pad), round(height - pad)], w: round(width), h: round(height), size: opts.size, shape: opts.mode },
+    };
+  }
   const arrow = opts.mode === "arrow";
   const highlighter = opts.mode === "highlighter";
   const size = highlighter ? opts.size * HIGHLIGHTER_SCALE : opts.size;
@@ -139,4 +181,26 @@ export function inkPaths(ink: Ink): { fill: string; line: string; head?: string 
     return { fill: "", line: centerline([a, end]), head: arrowHead(a, b, ink.size) };
   }
   return { fill: strokeOutline(pts, ink.size, ink.highlighter), line: centerline(pts) };
+}
+
+/** A text annotation at a point (canvas coordinates): the box starts small and grows with the text. */
+export function buildTextInk(at: { x: number; y: number }, size: number): { x: number; y: number; width: number; height: number; ink: Ink } {
+  const { width, height } = textBox("", size);
+  const y = at.y - height / 2;
+  return { x: round(at.x), y: round(y), width, height, ink: { points: [0, 0, width, height], w: width, h: height, size, shape: "text" } };
+}
+
+/** Outline of a drawn rectangle or ellipse inside a `width` × `height` box. */
+export function shapePath(shape: "rect" | "ellipse", width: number, height: number, size: number): string {
+  const p = size / 2 + 1;
+  const w = Math.max(1, width - p * 2);
+  const h = Math.max(1, height - p * 2);
+  if (shape === "ellipse") {
+    const rx = w / 2;
+    const ry = h / 2;
+    const cx = p + rx;
+    return `M${(cx - rx).toFixed(1)} ${(p + ry).toFixed(1)} a${rx.toFixed(1)} ${ry.toFixed(1)} 0 1 0 ${(rx * 2).toFixed(1)} 0 a${rx.toFixed(1)} ${ry.toFixed(1)} 0 1 0 ${(-rx * 2).toFixed(1)} 0 Z`;
+  }
+  const r = Math.min(size * 2 + 4, w / 2, h / 2);
+  return `M${(p + r).toFixed(1)} ${p.toFixed(1)} H${(p + w - r).toFixed(1)} Q${(p + w).toFixed(1)} ${p.toFixed(1)} ${(p + w).toFixed(1)} ${(p + r).toFixed(1)} V${(p + h - r).toFixed(1)} Q${(p + w).toFixed(1)} ${(p + h).toFixed(1)} ${(p + w - r).toFixed(1)} ${(p + h).toFixed(1)} H${(p + r).toFixed(1)} Q${p.toFixed(1)} ${(p + h).toFixed(1)} ${p.toFixed(1)} ${(p + h - r).toFixed(1)} V${(p + r).toFixed(1)} Q${p.toFixed(1)} ${p.toFixed(1)} ${(p + r).toFixed(1)} ${p.toFixed(1)} Z`;
 }

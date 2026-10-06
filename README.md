@@ -13,13 +13,17 @@ Além do essencial, o Planner tem **layout automático** (vertical ou horizontal
 
 - ocultada (`⌥` + clique no olho mostra só ela);
 - travada, para desenhar por cima sem mexer na base;
-- esmaecida, para servir de contexto;
+- mais ou menos transparente (opacidade de 10% a 100%), para servir de contexto;
 - animada, com tracejado correndo nas conexões para mostrar o sentido do fluxo;
+- revelada na apresentação: começa oculta e aparece num passo próprio, antes dos seus elementos;
+- comentada: a conversa fica presa à camada, e o painel de comentários filtra por camada;
 - reordenada ou excluída (mantendo ou não os elementos).
 
-Elementos novos, conexões e desenhos entram na **camada ativa**, e uma conexão pode ligar blocos de camadas diferentes: assim se desenha um fluxo novo sobre a arquitetura atual. A ferramenta **Desenhar** (`P`) tem caneta, marca-texto e seta, com cores e espessuras; a **borracha** é `E`. Os traços nunca bloqueiam cliques nos elementos de baixo.
+Para começar rápido há **modelos de camadas** com visões prontas: "Atual, proposta e riscos", "Fluxo principal e exceções", "Versões v1 → v3" e "Essencial, complementos e notas".
 
-**Visões** guardam combinações de camadas visíveis (ex.: "Hoje", "Com a proposta"). Quem lê o plan publicado alterna camadas e visões no botão **Camadas**, só para si. `?view=<id>` abre o link (ou a apresentação) direto numa visão.
+Elementos novos, conexões e desenhos entram na **camada ativa**, e uma conexão pode ligar blocos de camadas diferentes: assim se desenha um fluxo novo sobre a arquitetura atual. A ferramenta **Desenhar** (`P`) tem caneta, marca-texto, seta, retângulo, elipse e texto à mão, com cores e espessuras; a **borracha** é `E`. Os traços nunca bloqueiam cliques nos elementos de baixo. Conexões podem ter **passos numerados** (1, 2, 3…): "Numerar passos do fluxo" (menu da conexão) numera as conexões selecionadas, ou as da camada, na ordem do fluxo.
+
+**Visões** guardam combinações de camadas visíveis (ex.: "Hoje", "Com a proposta"). Quem lê o plan publicado alterna camadas e visões no botão **Camadas**, só para si. `?view=<id>` abre o link (ou a apresentação) direto numa visão. **Comparar visões** mostra duas visões lado a lado (A, B ou a diferença): o que entrou, o que saiu e o que mudou (mesmo título redesenhado em outra camada), com link compartilhável (`?compare=v:<a>,v:<b>`). No menu de exportação, **Exportar visão** gera PNG, SVG ou PDF de uma visão sem mexer no que está na tela.
 
 Qualquer bloco de um plan pode apontar para um **Resource**: uma URL, outro plan, um favorito, uma coleção, um arquivo ou uma página interna. É isso que transforma o desenho em uma porta de entrada para todo o contexto de um projeto.
 

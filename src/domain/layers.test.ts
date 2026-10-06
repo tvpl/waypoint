@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   activeView,
   addLayer,
+  applyLayerTemplate,
+  compareOptions,
+  compareViews,
+  layerOpacity,
   applyView,
   assignLayer,
   BASE_LAYER_ID,
@@ -125,5 +129,57 @@ describe("layers in documents and on the canvas", () => {
     expect(toFlowNodes(d2, { readOnly: true }).find((n) => n.id === "a")?.draggable).toBe(false);
     const hidden = toFlowNodes(updateLayer(d2, id, { visible: false })).find((n) => n.id === "a");
     expect(hidden?.hidden).toBe(true);
+  });
+});
+
+describe("layer opacity, templates and comparisons", () => {
+  it("opacity replaces the old fade flag and renders on nodes and edges", () => {
+    const { doc: d1, id } = addLayer(doc(), "Contexto");
+    expect(layerOpacity({ dimmed: true })).toBe(0.3);
+    let d = assignLayer(d1, id, { nodes: ["a"], edges: ["e1"] });
+    d = updateLayer(d, id, { dimmed: true });
+    d = updateLayer(d, id, { opacity: 0.5 });
+    expect(d.layers?.find((l) => l.id === id)).toMatchObject({ opacity: 0.5 });
+    expect(d.layers?.find((l) => l.id === id)?.dimmed).toBeUndefined();
+    expect(toFlowNodes(d).find((n) => n.id === "a")?.style).toEqual({ opacity: 0.5 });
+    expect(toFlowEdges(d)[0].data?._opacity).toBe(0.5);
+    expect(updateLayer(d, id, { opacity: 1 }).layers?.find((l) => l.id === id)?.opacity).toBeUndefined();
+  });
+
+  it("templates add named layers and views without touching existing ones", () => {
+    const { doc: d1 } = addLayer(doc(), "Minha");
+    const { doc: d, first } = applyLayerTemplate(d1, "versions");
+    const names = layersOf(d).map((l) => l.name);
+    expect(names).toEqual(["v1", "Minha", "v2", "v3"]);
+    expect(layersOf(d).find((l) => l.id === first)?.name).toBe("v2");
+    expect(layersOf(d).find((l) => l.name === "v3")?.reveal).toBe(true);
+    expect(d.views?.map((v) => [v.name, v.layers.length])).toEqual([
+      ["v1", 1],
+      ["v2", 2],
+      ["v3", 3],
+    ]);
+    // Applied twice: names don't collide.
+    expect(layersOf(applyLayerTemplate(d, "versions").doc).map((l) => l.name)).toContain("v2 (2)");
+    expect(normalizeDocument(d).views).toHaveLength(3);
+  });
+
+  it("compares two views: added, removed and redrawn (same title) elements", () => {
+    let d = doc({ nodes: [node("a"), node("old", { data: { title: "Gateway" } }), node("new", { data: { title: "gateway " } }), node("extra")] });
+    const v1 = addLayer(d, "v1");
+    const v2 = addLayer(v1.doc, "v2");
+    d = assignLayer(assignLayer(v2.doc, v1.id, { nodes: ["old"] }), v2.id, { nodes: ["new", "extra"] });
+    d = { ...d, edges: [{ id: "e", source: "a", target: "extra", kind: "flow", layer: v2.id }] };
+    const before = saveView(applyView(d, "x"), "x"); // no such view: unchanged
+    expect(before.doc.views).toHaveLength(1);
+    const r = compareViews(d, `l:${v1.id}`, `l:${v2.id}`)!;
+    expect(r.nodes.get("a")).toBe("same");
+    expect(r.nodes.get("old")).toBe("changed");
+    expect(r.nodes.get("new")).toBe("changed");
+    expect(r.nodes.get("extra")).toBe("added");
+    expect(r.edges.get("e")).toBe("added");
+    expect(r.counts).toEqual({ added: 2, removed: 0, changed: 2 });
+    expect(Object.values(r.visibility).every(Boolean)).toBe(true);
+    expect(compareViews(d, "v:nope", `l:${v2.id}`)).toBeNull();
+    expect(compareOptions(d).map((o) => o.name)).toEqual(["Só Base", "Base + v1", "Base + v2"]);
   });
 });

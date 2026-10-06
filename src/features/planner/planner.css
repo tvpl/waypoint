@@ -364,11 +364,7 @@
 }
 
 /* ---------------------------------------------------------------- layers */
-/* Faded layer: context for the layers above it. */
-.wp-flow .react-flow__node.wp-layer-dim,
-.wp-flow .react-flow__edge.wp-layer-dim {
-  opacity: 0.3;
-}
+/* Layer opacity is an inline style on nodes and edges (canvas-adapter). */
 /* Animated layer: dashes travel along its connections to show the direction of a flow. */
 .wp-flow .react-flow__edge.animated .wp-edge-path {
   stroke-dasharray: 7 6;
@@ -433,4 +429,106 @@
 .wp-view .react-flow__node-ink .wp-ink-stroke {
   pointer-events: none;
   cursor: default;
+}
+
+/* Text annotations (handwritten style) and drawn shapes. */
+.wp-ink-text {
+  font-family: "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.wp-flow .react-flow__node-ink span.wp-ink-text {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.wp-flow .react-flow__node-ink.selected span.wp-ink-text {
+  text-shadow: 0 0 1.5px var(--accent);
+}
+.wp-tool-draw .react-flow__node-ink span.wp-ink-text,
+.wp-view .react-flow__node-ink span.wp-ink-text {
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- flow steps */
+.wp-edge-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 11px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  vertical-align: -3px;
+}
+.wp-edge-label.is-step-only {
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+.wp-edge-label.is-step-only .wp-edge-step {
+  margin-right: 0;
+  vertical-align: 0;
+  box-shadow: 0 0 0 3px var(--wp-canvas-bg, var(--canvas));
+}
+
+/* ---------------------------------------------------------------- comparing views */
+/* Fixed hues (like canvas node colors): they read on both the light and dark canvas. */
+.wp-flow {
+  --wp-diff-added: #30a46c;
+  --wp-diff-removed: #e5484d;
+  --wp-diff-changed: #f5a524;
+}
+.wp-flow .react-flow__node.wp-diff-added,
+.wp-flow .react-flow__node.wp-diff-removed,
+.wp-flow .react-flow__node.wp-diff-changed {
+  outline: 2.5px solid var(--wp-diff);
+  outline-offset: 5px;
+  border-radius: 14px;
+}
+.wp-flow .react-flow__node.wp-diff-added {
+  --wp-diff: var(--wp-diff-added);
+}
+.wp-flow .react-flow__node.wp-diff-removed {
+  --wp-diff: var(--wp-diff-removed);
+  outline-style: dashed;
+  opacity: 0.6;
+}
+.wp-flow .react-flow__node.wp-diff-changed {
+  --wp-diff: var(--wp-diff-changed);
+}
+.wp-flow .react-flow__node.wp-diff-same {
+  opacity: 0.45;
+}
+/* Drawings: tint the stroke instead of boxing it. */
+.wp-flow .react-flow__node-ink.wp-diff-added,
+.wp-flow .react-flow__node-ink.wp-diff-removed,
+.wp-flow .react-flow__node-ink.wp-diff-changed {
+  outline: none;
+  filter: drop-shadow(0 0 2px var(--wp-diff)) drop-shadow(0 0 1px var(--wp-diff));
+}
+.wp-flow .react-flow__edge.wp-diff-added .wp-edge-path,
+.wp-flow .react-flow__edge.wp-diff-added .wp-edge-arrow {
+  stroke: var(--wp-diff-added);
+}
+.wp-flow .react-flow__edge.wp-diff-added .wp-edge-arrow {
+  fill: var(--wp-diff-added);
+}
+.wp-flow .react-flow__edge.wp-diff-removed .wp-edge-path,
+.wp-flow .react-flow__edge.wp-diff-removed .wp-edge-arrow {
+  stroke: var(--wp-diff-removed);
+  opacity: 0.7;
+}
+.wp-flow .react-flow__edge.wp-diff-removed .wp-edge-arrow {
+  fill: var(--wp-diff-removed);
+}
+.wp-flow .react-flow__edge.wp-diff-same {
+  opacity: 0.45;
+}
+.wp-edge-label.wp-diff-same {
+  opacity: 0.45;
 }

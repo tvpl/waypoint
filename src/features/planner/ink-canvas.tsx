@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useEditor } from "./editor-context";
-import { arrowHead, centerline, HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, strokeOutline, type Point } from "./ink-geometry";
+import { arrowHead, centerline, HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, isShapeMode, shapePath, strokeOutline, type Point } from "./ink-geometry";
 
 /** Where a press starts a stroke: the canvas itself, not the floating toolbars over it. */
 const CANVAS = ".react-flow__pane, .react-flow__node, .react-flow__edge, .react-flow__nodesselection, .react-flow__edgelabel-renderer";
@@ -45,9 +45,20 @@ export function InkCanvas({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nul
       }
     };
     const down = (e: PointerEvent) => {
-      if (e.button !== 0 || !(e.target as Element | null)?.closest?.(CANVAS)) return;
+      const target = e.target as Element | null;
+      // typing in a text annotation: let the field have its clicks
+      if (target?.closest?.("input, textarea")) return;
+      if (e.button !== 0 || !target?.closest?.(CANVAS)) return;
       e.preventDefault();
       e.stopPropagation();
+      if (tool === "draw" && edRef.current.ink.mode === "text") {
+        // The first click away from a text being typed finishes it; the next one starts another.
+        const typing = document.activeElement as HTMLElement | null;
+        if (typing && el.contains(typing) && typing.matches("input, textarea")) return void typing.blur();
+        const p = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        edRef.current.addInkText(p);
+        return;
+      }
       el.setPointerCapture(e.pointerId);
       if (tool === "draw") {
         stroke = { flow: [toFlow(e)], screen: [local(e)] };
@@ -111,6 +122,17 @@ export function InkCanvas({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nul
   const zoom = rf.getViewport().zoom;
   const width = (mode === "highlighter" ? size * HIGHLIGHTER_SCALE : size) * zoom;
   const fill = color ?? (mode === "highlighter" ? HIGHLIGHTER_COLOR : "var(--ink)");
+  if (isShapeMode(mode)) {
+    const [a, b] = [preview[0], preview[preview.length - 1]];
+    const pad = width / 2 + 1;
+    const w = Math.abs(b[0] - a[0]) + pad * 2;
+    const h = Math.abs(b[1] - a[1]) + pad * 2;
+    return (
+      <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full" aria-hidden>
+        <path d={shapePath(mode, w, h, width)} transform={`translate(${Math.min(a[0], b[0]) - pad} ${Math.min(a[1], b[1]) - pad})`} fill="none" stroke={fill} strokeWidth={width} strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
     <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full" aria-hidden>
       {mode === "arrow" ? (

@@ -69,3 +69,25 @@ describe("presentation steps and layers", () => {
     expect(presentationSteps(doc, "T", { p: true }).map((s) => s.nodeId)).toEqual([null, "a", "b"]);
   });
 });
+
+describe("presentation reveals layers", () => {
+  it("hides revealed layers until their step, right before their first element", () => {
+    const d: PlanDocument = {
+      ...doc([n("a", 0, 0), n("b", 300, 0, { layer: "v2" }), n("c", 0, 300, { layer: "notes" }), n("ink", 0, 600, { kind: "ink", layer: "notes" })]),
+      layers: [
+        { id: "base", name: "v1", visible: true },
+        { id: "v2", name: "v2", visible: true, reveal: true },
+        { id: "notes", name: "Notas", visible: true },
+      ],
+    };
+    const steps = presentationSteps(d, "Plano");
+    expect(steps.map((s) => s.layerId ?? s.nodeId)).toEqual([null, "a", "c", "v2", "b"]);
+    expect(steps[0].layers).toEqual({ base: true, v2: false, notes: true });
+    expect(steps[3]).toMatchObject({ title: "v2", nodeId: null, layers: { v2: true } });
+    // a revealed layer with no steps of its own still appears at the end
+    const drawingsOnly = { ...d, layers: d.layers!.map((l) => (l.id === "notes" ? { ...l, reveal: true } : l)), nodes: d.nodes.filter((x) => x.id !== "c") };
+    expect(presentationSteps(drawingsOnly, "P").map((s) => s.layerId ?? s.nodeId)).toEqual([null, "a", "v2", "b", "notes"]);
+    // without revealed layers nothing changes
+    expect(presentationSteps(doc([n("a", 0, 0)]), "P")[0].layers).toBeUndefined();
+  });
+});

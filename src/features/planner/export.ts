@@ -53,7 +53,34 @@ export async function renderFlowImage(container: HTMLElement, bounds: Rect, form
       return !c.contains("react-flow__resize-control") && !c.contains("wp-no-export");
     },
   };
-  return format === "png" ? toPng(viewportEl, opts) : toSvg(viewportEl, opts);
+  const restore = inlineSvgPaint(viewportEl);
+  try {
+    return await (format === "png" ? toPng(viewportEl, opts) : toSvg(viewportEl, opts));
+  } finally {
+    restore();
+  }
+}
+
+const PAINT = ["stroke", "fill", "stroke-width", "stroke-dasharray", "stroke-opacity", "fill-opacity", "opacity"] as const;
+
+/**
+ * Connection lines and drawings are painted by stylesheet rules with CSS variables, which the
+ * image renderer doesn't resolve (lines came out invisible). Writes the computed paint on each
+ * shape for the capture and gives back a function that undoes it.
+ */
+function inlineSvgPaint(root: HTMLElement): () => void {
+  const saved: [SVGElement, string | null][] = [];
+  for (const el of root.querySelectorAll<SVGElement>("svg path, svg rect, svg ellipse, svg circle, svg line, svg polyline, svg polygon")) {
+    const cs = getComputedStyle(el);
+    saved.push([el, el.getAttribute("style")]);
+    for (const prop of PAINT) el.style.setProperty(prop, cs.getPropertyValue(prop));
+  }
+  return () => {
+    for (const [el, style] of saved) {
+      if (style === null) el.removeAttribute("style");
+      else el.setAttribute("style", style);
+    }
+  };
 }
 
 export async function exportImage(container: HTMLElement, bounds: Rect, format: "png" | "svg", title: string) {

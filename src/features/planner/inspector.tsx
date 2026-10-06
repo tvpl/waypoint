@@ -20,6 +20,7 @@ import {
   Group,
   ImagePlus,
   Link2,
+  ListOrdered,
   Loader2,
   Search,
   SendToBack,
@@ -49,7 +50,7 @@ import { TagInput } from "./tag-input";
 import { ResourceIcon, ResourceRow, useResourceSearch } from "./resource-picker";
 import { parseUserUrl, fallbackResource } from "./resource-types";
 import { BASE_LAYER_ID } from "@/domain/layers";
-import { HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, INK_COLORS, INK_SIZES } from "./ink-geometry";
+import { HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, INK_COLORS, INK_SIZES, textBox } from "./ink-geometry";
 
 const VISIBILITY_LABEL: Record<string, string> = {
   private: "Privado",
@@ -138,7 +139,21 @@ function LayerField() {
 function InkInspector({ node }: { node: PlanFlowNode }) {
   const ed = useEditor();
   const ink = node.data.ink!;
-  const kind = ink.arrow ? "Seta" : ink.highlighter ? "Destaque" : "Desenho";
+  const text = ink.shape === "text";
+  const kind = text ? "Texto à mão" : ink.shape === "rect" ? "Retângulo" : ink.shape === "ellipse" ? "Elipse" : ink.arrow ? "Seta" : ink.highlighter ? "Destaque" : "Desenho";
+  // Text annotations: the box follows the text and its size.
+  const setText = (title: string, size = ink.size) =>
+    ed.mutate(
+      (d) => ({
+        ...d,
+        nodes: d.nodes.map((n) => {
+          if (n.id !== node.id) return n;
+          const box = textBox(title, size);
+          return { ...n, width: box.width, height: box.height, data: { ...n.data, title, ink: { ...ink, size, w: box.width, h: box.height, points: [0, 0, box.width, box.height] } } };
+        }),
+      }),
+      { key: `ink-text:${node.id}` },
+    );
   const base = ink.highlighter ? ink.size / HIGHLIGHTER_SCALE : ink.size;
   const shown = node.data.color ?? (ink.highlighter ? HIGHLIGHTER_COLOR : undefined);
   const Icon = KIND_ICON.ink;
@@ -174,14 +189,19 @@ function InkInspector({ node }: { node: PlanFlowNode }) {
           })}
         </div>
       </div>
+      {text && (
+        <F label="Texto" htmlFor={`it-${node.id}`}>
+          <Input id={`it-${node.id}`} className={smallInput} maxLength={300} value={node.data.title} onChange={(e) => setText(e.target.value)} />
+        </F>
+      )}
       <div className="flex flex-col gap-1.5">
-        <Label>Espessura</Label>
+        <Label>{text ? "Tamanho" : "Espessura"}</Label>
         <Segmented
-          label="Espessura"
+          label={text ? "Tamanho" : "Espessura"}
           className="self-start"
           value={String(INK_SIZES.reduce((a, b) => (Math.abs(b - base) < Math.abs(a - base) ? b : a)))}
-          onChange={(v) => ed.updateNodeData(node.id, { ink: { ...ink, size: Number(v) * (ink.highlighter ? HIGHLIGHTER_SCALE : 1) } })}
-          options={INK_SIZES.map((n) => ({ value: String(n), label: n === INK_SIZES[0] ? "Fina" : n === INK_SIZES[1] ? "Média" : "Grossa" }))}
+          onChange={(v) => (text ? setText(node.data.title, Number(v)) : ed.updateNodeData(node.id, { ink: { ...ink, size: Number(v) * (ink.highlighter ? HIGHLIGHTER_SCALE : 1) } }))}
+          options={INK_SIZES.map((n) => ({ value: String(n), label: text ? (n === INK_SIZES[0] ? "P" : n === INK_SIZES[1] ? "M" : "G") : n === INK_SIZES[0] ? "Fina" : n === INK_SIZES[1] ? "Média" : "Grossa" }))}
         />
       </div>
       <LayerField />
@@ -800,6 +820,27 @@ function EdgeInspector({ edge }: { edge: PlanFlowEdge }) {
           <Textarea id={`ed-${edge.id}`} rows={3} maxLength={2000} className="min-h-[72px] rounded-lg text-body" value={d.description ?? ""} onChange={(e) => ed.updateEdge(edge.id, { description: e.target.value }, `edesc:${edge.id}`)} />
         </F>
         <LayerField />
+        <F label="Passo do fluxo" htmlFor={`es-${edge.id}`}>
+          <div className="flex items-center gap-2">
+            <Input
+              id={`es-${edge.id}`}
+              type="number"
+              min={1}
+              max={999}
+              className={cn(smallInput, "w-20")}
+              value={d.step ?? ""}
+              placeholder="—"
+              onChange={(e) => {
+                const n = Math.round(Number(e.target.value));
+                ed.updateEdge(edge.id, { step: e.target.value && n >= 1 && n <= 999 ? n : undefined }, `estep:${edge.id}`);
+              }}
+            />
+            <Button size="sm" variant="secondary" className="flex-1" onClick={() => ed.numberSteps()}>
+              <ListOrdered /> Numerar o fluxo
+            </Button>
+          </div>
+          <span className="text-caption text-muted">Numera as conexões desta camada na ordem do fluxo.</span>
+        </F>
         <div className="flex flex-col gap-1.5">
           <Label>Tipo</Label>
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Tipo de conexão">

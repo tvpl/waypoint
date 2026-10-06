@@ -72,6 +72,7 @@ function toView(r: CommentRow, authorName: string | null): CommentView {
     id: r.id,
     planId: r.planId,
     nodeId: r.nodeId,
+    layerId: r.layerId ?? null,
     parentId: r.parentId,
     body: r.body,
     resolvedAt: r.resolvedAt ? r.resolvedAt.getTime() : null,
@@ -128,13 +129,17 @@ export function mentionCandidates(planId: string, actor: CommentActor): { id: st
 export function createComment(
   planId: string,
   actor: CommentActor,
-  input: { body: unknown; nodeId?: string | null; parentId?: string | null },
+  input: { body: unknown; nodeId?: string | null; layerId?: string | null; parentId?: string | null },
 ): CommentView {
   const { userId } = commentAccess(planId, actor);
   const body = cleanBody(input.body);
   let nodeId = input.nodeId ?? null;
   let parentId = input.parentId ?? null;
   if (nodeId !== null && (typeof nodeId !== "string" || !nodeId || nodeId.length > 64)) throw new UserError("Elemento inválido.");
+  let layerId = input.layerId ?? null;
+  if (layerId !== null && (typeof layerId !== "string" || !layerId || layerId.length > 64)) throw new UserError("Camada inválida.");
+  // A thread is about one thing: a node's thread follows the node's layer.
+  if (nodeId !== null) layerId = null;
   if (parentId !== null) {
     const parent = typeof parentId === "string" && parentId.length <= 64 ? getComment(parentId) : undefined;
     if (!parent || parent.planId !== planId) throw new UserError("Comentário não encontrado.");
@@ -143,9 +148,10 @@ export function createComment(
     if (!root || root.planId !== planId) throw new UserError("Comentário não encontrado.");
     parentId = root.id;
     nodeId = root.nodeId;
+    layerId = root.layerId ?? null;
   }
   const now = new Date();
-  const row: CommentRow = { id: newId(), planId, nodeId, parentId, userId, body, resolvedAt: null, createdAt: now, updatedAt: now };
+  const row: CommentRow = { id: newId(), planId, nodeId, layerId, parentId, userId, body, resolvedAt: null, createdAt: now, updatedAt: now };
   const db = getDb();
   db.transaction((tx) => {
     tx.insert(schema.planComments).values(row).run();

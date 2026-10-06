@@ -7,11 +7,14 @@ import {
   Eye,
   EyeOff,
   Focus,
+  LayoutTemplate,
   Lock,
   LockOpen,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Plus,
+  Presentation,
   Save,
   SquareMousePointer,
   SunDim,
@@ -19,7 +22,7 @@ import {
   Waves,
   X,
 } from "lucide-react";
-import { BASE_LAYER_ID, LAYER_COLORS } from "@/domain/layers";
+import { BASE_LAYER_ID, LAYER_COLORS, LAYER_TEMPLATES, layerOpacity } from "@/domain/layers";
 import type { PlanLayer } from "@/domain/plan";
 import { SectionLabel } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/popover";
@@ -50,6 +53,7 @@ function LayerRow({ layer, index, total }: { layer: PlanLayer; index: number; to
   const [renaming, setRenaming] = React.useState(false);
   const base = layer.id === BASE_LAYER_ID;
   const hasSelection = ed.selectedNodes.length > 0 || ed.selectedEdges.length > 0;
+  const opacity = layerOpacity(layer);
 
   return (
     <li
@@ -112,7 +116,12 @@ function LayerRow({ layer, index, total }: { layer: PlanLayer; index: number; to
         >
           <span className="truncate">{layer.name}</span>
           {layer.animate && <Waves className="size-3 shrink-0 opacity-70" aria-label="Conexões animadas" />}
-          {layer.dimmed && <SunDim className="size-3 shrink-0 opacity-70" aria-label="Esmaecida" />}
+          {layer.reveal && <Presentation className="size-3 shrink-0 opacity-70" aria-label="Revelada na apresentação" />}
+          {opacity < 1 && (
+            <span className="shrink-0 text-caption tabular-nums opacity-70" aria-label={`Opacidade ${Math.round(opacity * 100)}%`}>
+              {Math.round(opacity * 100)}%
+            </span>
+          )}
           <span className="ml-auto shrink-0 pr-0.5 text-caption tabular-nums text-muted">{count || ""}</span>
         </button>
       )}
@@ -162,13 +171,17 @@ function LayerRow({ layer, index, total }: { layer: PlanLayer; index: number; to
           <DropdownMenuItem onSelect={() => L.solo(layer.id)}>
             <Focus /> Mostrar só esta {base ? "" : "(e a base)"}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => L.update(layer.id, { dimmed: !layer.dimmed })}>
-            <SunDim /> Esmaecer
-            {layer.dimmed && <Check className="ml-auto" />}
-          </DropdownMenuItem>
+          <OpacityField layer={layer} />
           <DropdownMenuItem onSelect={() => L.update(layer.id, { animate: !layer.animate })}>
             <Waves /> Animar conexões (mostrar fluxo)
             {layer.animate && <Check className="ml-auto" />}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => L.update(layer.id, { reveal: !layer.reveal })}>
+            <Presentation /> Revelar na apresentação
+            {layer.reveal && <Check className="ml-auto" />}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => L.comment(layer.id)}>
+            <MessageSquare /> Comentar nesta camada
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => L.move(layer.id, "up")} disabled={index === total - 1}>
@@ -207,6 +220,68 @@ function LayerRow({ layer, index, total }: { layer: PlanLayer; index: number; to
         </DropdownMenuContent>
       </DropdownMenu>
     </li>
+  );
+}
+
+/** Layer opacity, inside the layer menu (the arrow keys adjust it in steps of 10%). */
+function OpacityField({ layer }: { layer: PlanLayer }) {
+  const L = useEditor().layers;
+  const value = Math.round(layerOpacity(layer) * 100);
+  const id = React.useId();
+  return (
+    <div className="flex h-9 items-center gap-2.5 px-2.5 text-body" onKeyDown={(e) => e.stopPropagation()}>
+      <SunDim className="size-[15px] shrink-0 text-ink-2" aria-hidden />
+      <label htmlFor={id} className="shrink-0">
+        Opacidade
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={10}
+        max={100}
+        step={5}
+        value={value}
+        onChange={(e) => L.update(layer.id, { opacity: Number(e.target.value) / 100 })}
+        className="h-1 min-w-0 flex-1 accent-[var(--accent)]"
+      />
+      <span className="w-9 shrink-0 text-right text-caption tabular-nums text-muted">{value}%</span>
+    </div>
+  );
+}
+
+/** Ready-made sets of layers and views. */
+function TemplatesMenu({ trigger }: { trigger?: React.ReactNode }) {
+  const L = useEditor().layers;
+  return (
+    <DropdownMenu>
+      <Tooltip content="Modelos de camadas" side="right">
+        <DropdownMenuTrigger asChild>
+          {trigger ?? (
+            <button type="button" aria-label="Modelos de camadas" className={iconBtn}>
+              <LayoutTemplate />
+            </button>
+          )}
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-[290px]">
+        <DropdownMenuLabel>Modelos de camadas</DropdownMenuLabel>
+        {LAYER_TEMPLATES.map((t) => (
+          <DropdownMenuItem key={t.id} onSelect={() => L.applyTemplate(t.id)} className="h-auto items-start py-2">
+            <span className="mt-0.5 flex shrink-0 -space-x-1" aria-hidden>
+              {t.layers.map((l) => (
+                <span key={l.name} className="size-2.5 rounded-full ring-2 ring-surface" style={{ background: l.color }} />
+              ))}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="font-medium">{t.name}</span>
+              <span className="text-caption leading-4 text-muted">
+                {[t.base, ...t.layers.map((l) => l.name)].join(" · ")} — {t.description}
+              </span>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -268,7 +343,7 @@ function ViewsMenu() {
 
 /**
  * Layers of the plan, top layer first: pick the active one (where new things go), hide, lock,
- * fade, animate flows, reorder, and save views.
+ * set opacity, animate flows, reveal in presentations, reorder, comment, and save views.
  */
 export function LayersPanel() {
   const ed = useEditor();
@@ -280,6 +355,7 @@ export function LayersPanel() {
         <SectionLabel>Camadas</SectionLabel>
         <div className="flex items-center gap-0.5">
           <ViewsMenu />
+          <TemplatesMenu />
           <Tooltip content="Nova camada" side="right">
             <button type="button" aria-label="Nova camada" className={iconBtn} onClick={L.add}>
               <Plus />
@@ -293,7 +369,17 @@ export function LayersPanel() {
         ))}
       </ul>
       {L.list.length === 1 && (
-        <p className="text-caption leading-4 text-muted">Crie camadas para desenhar fluxos alternativos, versões ou anotações por cima do plan, e mostre ou oculte cada uma.</p>
+        <p className="text-caption leading-4 text-muted">
+          Crie camadas para desenhar fluxos alternativos, versões ou anotações por cima do plan, e mostre ou oculte cada uma. Ou comece por um{" "}
+          <TemplatesMenu
+            trigger={
+              <button type="button" className="font-medium text-accent-ink hover:underline">
+                modelo
+              </button>
+            }
+          />
+          .
+        </p>
       )}
     </section>
   );

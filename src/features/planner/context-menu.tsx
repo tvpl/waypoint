@@ -1,6 +1,6 @@
 "use client";
 import { ContextMenu as CM } from "radix-ui";
-import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Layers, Link2, MessageSquarePlus, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
+import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Layers, Link2, ListOrdered, ListX, MessageSquarePlus, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
 import { BASE_LAYER_ID } from "@/domain/layers";
 import { EDGE_KINDS, NODE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
@@ -135,6 +135,14 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
             <ContextMenuItem onSelect={() => ed.swapEdge(edge.id)}>
               <ArrowLeftRight /> Inverter direção
             </ContextMenuItem>
+            <ContextMenuItem onSelect={() => ed.numberSteps(ed.selectedEdges.length > 1 ? undefined : [edge.id])}>
+              <ListOrdered /> Numerar passos do fluxo
+            </ContextMenuItem>
+            {edge.data?.step !== undefined && (
+              <ContextMenuItem onSelect={() => ed.clearSteps(ed.selectedEdges.length > 1 ? undefined : [edge.id])}>
+                <ListX /> Remover numeração
+              </ContextMenuItem>
+            )}
             {toLayer}
             <ContextMenuItem danger onSelect={ed.remove} shortcut="⌫">
               <Trash2 /> Excluir conexão

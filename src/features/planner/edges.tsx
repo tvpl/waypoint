@@ -28,10 +28,13 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
     offset: 18,
   });
   const label = p.data?.label;
+  const step = p.data?.step;
+  const opacity = p.data?._opacity;
   const { mode, editingId, setEditingId, commitEdgeLabel } = usePlanner();
   const editing = mode === "edit" && editingId === p.id && !!commitEdgeLabel;
+  const faded = opacity !== undefined ? { opacity } : undefined;
   return (
-    <>
+    <g style={faded}>
       <BaseEdge
         id={p.id}
         path={path}
@@ -63,18 +66,23 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
           />
         </EdgeLabelRenderer>
       )}
-      {label && !editing && (
+      {(label || step) && !editing && (
         <EdgeLabelRenderer>
           <div
-            className={cn("wp-edge-label nodrag nopan", p.selected && "is-selected", p.data?._dim === true && "is-dim")}
-            style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)` }}
-            title={p.data?.description || label}
+            className={cn("wp-edge-label nodrag nopan", !label && "is-step-only", p.selected && "is-selected", p.data?._dim === true && "is-dim", p.data?._diff && `wp-diff-${p.data._diff}`)}
+            style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, ...faded }}
+            title={p.data?.description || label || `Passo ${step}`}
           >
+            {step && (
+              <span className="wp-edge-step" aria-label={`Passo ${step}`}>
+                {step}
+              </span>
+            )}
             {label}
           </div>
         </EdgeLabelRenderer>
       )}
-    </>
+    </g>
   );
 });
 

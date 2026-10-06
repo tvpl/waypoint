@@ -404,7 +404,7 @@ export const apiTokens = sqliteTable(
   (t) => [index("api_tokens_user_idx").on(t.userId)],
 );
 
-/** Comments on a plan, optionally anchored to a node. */
+/** Comments on a plan, optionally anchored to a node or a layer. */
 export const planComments = sqliteTable(
   "plan_comments",
   {
@@ -413,6 +413,8 @@ export const planComments = sqliteTable(
       .notNull()
       .references(() => plans.id, { onDelete: "cascade" }),
     nodeId: text("node_id"),
+    /** Layer the thread is about (plan-level threads only; a node's thread follows the node). */
+    layerId: text("layer_id"),
     parentId: text("parent_id"),
     userId: text("user_id")
       .notNull()

@@ -22,7 +22,7 @@ import {
   type PlanNode,
   type Viewport,
 } from "./plan";
-import { hiddenByLayers, layerIdOf, layerIndex, layersOf, layerVisibility, LAYER_Z } from "./layers";
+import { hiddenByLayers, layerIdOf, layerIndex, layerOpacity, layersOf, layerVisibility, LAYER_Z } from "./layers";
 
 // ------------------------------------------------------------------ types
 
@@ -33,7 +33,7 @@ import { hiddenByLayers, layerIdOf, layerIndex, layersOf, layerVisibility, LAYER
 export type FlowNodeData = NodeData & { _h?: number; _layer?: string; _z?: number } & Record<string, unknown>;
 export type PlanFlowNode = Node<FlowNodeData, NodeKind>;
 
-export type FlowEdgeData = { kind: EdgeKind; label?: string; description?: string; layer?: string } & Record<string, unknown>;
+export type FlowEdgeData = { kind: EdgeKind; label?: string; description?: string; layer?: string; step?: number; _opacity?: number; _diff?: string } & Record<string, unknown>;
 export type PlanFlowEdge = Edge<FlowEdgeData, "plan">;
 
 /** Height a collapsed container shrinks to (header only). */
@@ -124,7 +124,7 @@ export type ToFlowOptions = {
 };
 
 /** What a node or edge needs to know about its layer when rendered. */
-type LayerRender = { z: number; hidden: boolean; locked: boolean; dimmed: boolean; animate: boolean };
+type LayerRender = { z: number; hidden: boolean; locked: boolean; opacity: number; animate: boolean };
 
 function layerRender(doc: Pick<PlanDocument, "layers">, opts: ToFlowOptions): Map<string, LayerRender> {
   const vis = layerVisibility(doc, opts.layerVisibility);
@@ -132,7 +132,7 @@ function layerRender(doc: Pick<PlanDocument, "layers">, opts: ToFlowOptions): Ma
   return new Map(
     layersOf(doc).map((l) => [
       l.id,
-      { z: (idx.get(l.id) ?? 0) * LAYER_Z, hidden: vis.get(l.id) === false, locked: !opts.readOnly && !!l.locked, dimmed: !!l.dimmed, animate: !!l.animate },
+      { z: (idx.get(l.id) ?? 0) * LAYER_Z, hidden: vis.get(l.id) === false, locked: !opts.readOnly && !!l.locked, opacity: layerOpacity(l), animate: !!l.animate },
     ]),
   );
 }
@@ -159,7 +159,7 @@ export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: Reado
     out.selectable = false;
     out.deletable = false;
   }
-  if (layer?.dimmed) out.className = "wp-layer-dim";
+  if (layer && layer.opacity < 1) out.style = { opacity: layer.opacity };
   if (opts.readOnly) {
     out.draggable = false;
     out.selectable = false;
@@ -186,7 +186,7 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerR
     sourceHandle: e.sourceHandle ?? null,
     targetHandle: e.targetHandle ?? null,
     type: "plan",
-    data: { kind, label: e.label, description: e.description, layer: e.layer },
+    data: { kind, label: e.label, description: e.description, layer: e.layer, step: e.step },
     markerEnd: edgeMarker(kind),
     // Above top-level containers so connectors crossing an area stay visible (and above
     // everything on lower layers).
@@ -195,7 +195,8 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerR
   if (opts.selected?.has(e.id)) out.selected = true;
   if (layer?.hidden) out.hidden = true;
   if (layer?.animate) out.animated = true;
-  if (layer?.dimmed) out.className = "wp-layer-dim";
+  // Read by the edge component (React Flow doesn't apply edge styles to the label).
+  if (layer && layer.opacity < 1) out.data!._opacity = layer.opacity;
   if (layer?.locked) {
     out.selectable = false;
     out.deletable = false;
@@ -298,6 +299,7 @@ export function fromFlowEdge(e: AnyFlowEdge): PlanEdge {
   if (d.label) out.label = d.label;
   if (d.description) out.description = d.description;
   if (typeof d.layer === "string") out.layer = d.layer;
+  if (typeof d.step === "number" && Number.isInteger(d.step) && d.step >= 1) out.step = d.step;
   return out;
 }
 

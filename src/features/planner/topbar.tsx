@@ -1,11 +1,21 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, CloudOff, Presentation, Download, Eye, FileJson, History, ImageDown, Loader2, MoreHorizontal, Pencil, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudOff, Presentation, Download, Eye, FileJson, History, ImageDown, Layers, Loader2, MoreHorizontal, Pencil, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/popover";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/menu";
 import { cn, timeAgo } from "@/lib/utils";
 import type { SaveStatus } from "./autosave";
 
@@ -80,7 +90,37 @@ export function Avatars({ people }: { people: { name: string; email: string }[] 
   );
 }
 
-export function ExportMenu({ onExport, trigger }: { onExport: (k: ExportKind) => void; trigger?: React.ReactNode }) {
+/** One submenu per saved view: the image or PDF of just that combination of layers. */
+export function ViewExportItems({ views, onExport }: { views: { id: string; name: string }[]; onExport: (k: ExportKind, viewId: string) => void }) {
+  if (!views.length) return null;
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>Exportar visão</DropdownMenuLabel>
+      {views.map((v) => (
+        <DropdownMenuSub key={v.id}>
+          <DropdownMenuSubTrigger>
+            <Layers /> <span className="max-w-[180px] truncate">{v.name}</span>
+            <ChevronRight className="ml-auto text-muted" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="min-w-[170px]">
+            <DropdownMenuItem onSelect={() => onExport("png", v.id)}>
+              <ImageDown /> Imagem PNG
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport("svg", v.id)}>
+              <Download /> Vetor SVG
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport("pdf", v.id)}>
+              <Printer /> PDF (imprimir)
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ))}
+    </>
+  );
+}
+
+export function ExportMenu({ onExport, trigger, views = [] }: { onExport: (k: ExportKind, viewId?: string) => void; trigger?: React.ReactNode; views?: { id: string; name: string }[] }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -105,6 +145,7 @@ export function ExportMenu({ onExport, trigger }: { onExport: (k: ExportKind) =>
         <DropdownMenuItem onSelect={() => onExport("json")}>
           <FileJson /> JSON
         </DropdownMenuItem>
+        <ViewExportItems views={views} onExport={onExport} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -132,7 +173,9 @@ export function EditorTopbar(props: {
   onPublish: () => void;
   publishing: boolean;
   people: { name: string; email: string }[];
-  onExport: (k: ExportKind) => void;
+  onExport: (k: ExportKind, viewId?: string) => void;
+  /** Saved views (export menu). */
+  views?: { id: string; name: string }[];
   /** Comments panel toggle. */
   comments?: React.ReactNode;
 }) {
@@ -222,7 +265,7 @@ export function EditorTopbar(props: {
         </span>
         {props.comments}
         <span className="hidden md:contents">
-          <ExportMenu onExport={props.onExport} />
+          <ExportMenu onExport={props.onExport} views={props.views} />
           <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
           <span className="hidden lg:contents">
             <Avatars people={props.people} />

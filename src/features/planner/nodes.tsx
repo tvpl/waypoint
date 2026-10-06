@@ -11,7 +11,7 @@ import { usePlanner } from "./context";
 import { KIND_LABEL, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { PlanIcon } from "./icons";
-import { HIGHLIGHTER_COLOR, inkPaths } from "./ink-geometry";
+import { HIGHLIGHTER_COLOR, inkFontSize, inkPaths, shapePath } from "./ink-geometry";
 
 type P = NodeProps<PlanFlowNode>;
 
@@ -442,7 +442,9 @@ export const TextNode = memo(function TextNode(p: P) {
  */
 export const InkNode = memo(function InkNode(p: P) {
   const ink = p.data.ink;
-  const paths = useMemo(() => (ink ? inkPaths(ink) : null), [ink]);
+  const paths = useMemo(() => (ink && !ink.shape ? inkPaths(ink) : null), [ink]);
+  if (ink?.shape === "text") return <InkText p={p} />;
+  if (ink?.shape) return <InkShape p={p} />;
   if (!ink || !paths) return null;
   const color = p.data.color ?? (ink.highlighter ? HIGHLIGHTER_COLOR : "var(--ink)");
   return (
@@ -469,6 +471,49 @@ export const InkNode = memo(function InkNode(p: P) {
     </Chrome>
   );
 });
+
+/** A drawn rectangle or ellipse: drawn at the node's real size, so resizing keeps the stroke even. */
+function InkShape({ p }: { p: P }) {
+  const ink = p.data.ink!;
+  const w = p.width ?? ink.w;
+  const h = p.height ?? ink.h;
+  const d = shapePath(ink.shape === "ellipse" ? "ellipse" : "rect", w, h, ink.size);
+  const color = p.data.color ?? "var(--ink)";
+  return (
+    <Chrome p={p} kind="ink" handles={false}>
+      <svg className="wp-ink" width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} overflow="visible" aria-label={ink.shape === "ellipse" ? "Elipse desenhada" : "Retângulo desenhado"}>
+        <path d={d} className="wp-ink-hit" fill="none" stroke="transparent" strokeWidth={ink.size + 12} />
+        <path d={d} className="wp-ink-stroke" fill="none" stroke={color} strokeWidth={ink.size} strokeLinejoin="round" />
+      </svg>
+    </Chrome>
+  );
+}
+
+/** Handwritten-style note on the canvas; the text is the node title (double-click to edit). */
+function InkText({ p }: { p: P }) {
+  const { ctx, editing } = useNodeState(p);
+  const ink = p.data.ink!;
+  const style: CSSProperties = { fontSize: inkFontSize(ink.size), color: p.data.color ?? "var(--ink)" };
+  return (
+    <Chrome p={p} kind="ink" handles={false} resizable={false}>
+      <div className="wp-ink wp-ink-text-box flex h-full w-full items-center">
+        {editing ? (
+          <InlineTitle id={p.id} value={p.data.title} className="wp-ink-text min-w-[160px] px-1" style={style} />
+        ) : p.data.title ? (
+          <span className="wp-ink-text wp-ink-stroke whitespace-pre px-1" style={style}>
+            {p.data.title}
+          </span>
+        ) : (
+          ctx.mode === "edit" && (
+            <span className="wp-ink-text wp-ink-stroke px-1 opacity-40" style={style}>
+              Texto
+            </span>
+          )
+        )}
+      </div>
+    </Chrome>
+  );
+}
 
 export const nodeTypes: NodeTypes = {
   block: BlockNode,

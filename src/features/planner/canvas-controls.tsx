@@ -1,5 +1,5 @@
 "use client";
-import { ArrowLeftRight, Grid3x3, Group, Hand, Magnet, Map as MapIcon, MousePointer2, Network, Trash2, Workflow, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUpRight, Eraser, Grid3x3, Group, Hand, Highlighter, Layers, Magnet, Map as MapIcon, MousePointer2, Network, PenLine, Trash2, Workflow, X } from "lucide-react";
 import { EDGE_KINDS } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
@@ -10,6 +10,7 @@ import { ConnectorIcon } from "./icons";
 import { EdgeSample } from "./edges";
 import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "./inspector";
 import { ZoomControls, pillBtn } from "./zoom-controls";
+import { HIGHLIGHTER_COLOR, INK_COLORS, INK_SIZES, type InkMode } from "./ink-geometry";
 
 const pillOn = "bg-accent-soft text-accent-ink hover:bg-accent-soft hover:text-accent-ink";
 
@@ -23,6 +24,8 @@ export function BottomPill() {
     { id: "select", label: "Selecionar (V)", icon: MousePointer2 },
     { id: "hand", label: "Mover canvas (H)", icon: Hand },
     { id: "connect", label: "Conectar (C)", icon: ConnectorIcon },
+    { id: "draw", label: "Desenhar (P)", icon: PenLine },
+    { id: "erase", label: "Borracha (E)", icon: Eraser },
   ] as const;
   return (
     <div
@@ -106,15 +109,131 @@ const barCls =
   "wp-no-print absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 text-body shadow-float animate-in";
 const barBtn = "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-1.5 text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4";
 
-/** Contextual floating toolbar: connect mode, multi-selection layout, or edge kind. */
+const INK_MODES: { id: InkMode; label: string; icon: typeof PenLine }[] = [
+  { id: "pen", label: "Caneta", icon: PenLine },
+  { id: "highlighter", label: "Marca-texto", icon: Highlighter },
+  { id: "arrow", label: "Seta", icon: ArrowUpRight },
+];
+
+/** Which layer new drawings and elements go to; switching it is one click away while drawing. */
+function ActiveLayerPicker() {
+  const ed = useEditor();
+  const layer = ed.layers.list.find((l) => l.id === ed.layers.active) ?? ed.layers.list[0];
+  return (
+    <DropdownMenu>
+      <Tooltip content="Camada onde o desenho entra">
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={cn(barBtn, "max-w-[160px] px-2")} aria-label={`Camada: ${layer.name}`}>
+            <Layers />
+            <span className="size-2 shrink-0 rounded-full" style={{ background: layer.color ?? "var(--muted)" }} aria-hidden />
+            <span className="truncate">{layer.name}</span>
+          </button>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent side="bottom" align="center" sideOffset={8} onCloseAutoFocus={(e) => e.preventDefault()}>
+        <DropdownMenuLabel>Desenhar na camada</DropdownMenuLabel>
+        {[...ed.layers.list].reverse().map((l) => (
+          <DropdownMenuItem key={l.id} onSelect={() => ed.layers.setActive(l.id)}>
+            <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color ?? "var(--muted)" }} aria-hidden />
+            {l.name}
+            {l.id === ed.layers.active && <span className="ml-auto text-caption text-accent-ink">ativa</span>}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem onSelect={ed.layers.add}>
+          <Layers /> Nova camada
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Pen, highlighter or arrow; color; thickness; target layer. */
+function InkBar() {
+  const ed = useEditor();
+  const { mode, color, size } = ed.ink;
+  const shown = color ?? (mode === "highlighter" ? HIGHLIGHTER_COLOR : undefined);
+  return (
+    <div className={barCls} role="toolbar" aria-label="Desenho">
+      <div role="radiogroup" aria-label="Ferramenta de desenho" className="flex items-center gap-0.5">
+        {INK_MODES.map((m) => (
+          <Tooltip key={m.id} content={m.label}>
+            <button type="button" role="radio" aria-checked={mode === m.id} aria-label={m.label} onClick={() => ed.setInk({ mode: m.id })} className={cn(barBtn, mode === m.id && pillOn)}>
+              <m.icon />
+            </button>
+          </Tooltip>
+        ))}
+      </div>
+      <Sep />
+      <div role="radiogroup" aria-label="Cor" className="flex items-center gap-1 px-1">
+        {INK_COLORS.map((c) => {
+          const on = (c.value ?? null) === (shown ?? null) || (!c.value && !shown);
+          return (
+            <Tooltip key={c.name} content={c.name}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={on}
+                aria-label={c.name}
+                onClick={() => ed.setInk({ color: c.value })}
+                className="size-5 rounded-full border-2 border-surface"
+                style={{ background: c.value ?? "var(--ink)", boxShadow: on ? "0 0 0 2px var(--accent)" : "0 0 0 1px var(--line-2)" }}
+              />
+            </Tooltip>
+          );
+        })}
+      </div>
+      <Sep />
+      <div role="radiogroup" aria-label="Espessura" className="flex items-center gap-0.5">
+        {INK_SIZES.map((n) => (
+          <Tooltip key={n} content={n === INK_SIZES[0] ? "Fina" : n === INK_SIZES[1] ? "Média" : "Grossa"}>
+            <button type="button" role="radio" aria-checked={size === n} aria-label={`Espessura ${n}`} onClick={() => ed.setInk({ size: n })} className={cn(barBtn, size === n && pillOn)}>
+              <span className="rounded-full bg-current" style={{ width: 4 + n * 1.2, height: 4 + n * 1.2 }} aria-hidden />
+            </button>
+          </Tooltip>
+        ))}
+      </div>
+      <Sep />
+      <ActiveLayerPicker />
+      <Sep />
+      <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Concluir desenho">
+        <X /> <span className="pr-1">Concluir</span>
+      </button>
+    </div>
+  );
+}
+
+/** Contextual floating toolbar: drawing, eraser, connect mode, multi-selection layout, or edge kind. */
 export function SelectionBar() {
   const ed = useEditor();
+  if (ed.tool === "draw") return <InkBar />;
+  if (ed.tool === "erase") {
+    return (
+      <div className={barCls} role="toolbar" aria-label="Borracha">
+        <span className="flex items-center gap-2 px-2 text-ink-2">
+          <Eraser className="size-4" /> Passe sobre os traços para apagar
+        </span>
+        <Sep />
+        <button type="button" className={barBtn} onClick={() => ed.setTool("draw")} aria-label="Voltar a desenhar">
+          <PenLine /> <span className="pr-1">Desenhar</span>
+        </button>
+        <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Sair da borracha">
+          <X /> <span className="pr-1">Concluir</span>
+        </button>
+      </div>
+    );
+  }
   if (ed.tool === "connect") {
     return (
       <div className={barCls} role="toolbar" aria-label="Conexão">
         <span className="px-2 text-ink-2">Clique na origem e depois no destino</span>
         <Sep />
         <KindPicker value={ed.connectKind} onChange={ed.setConnectKind} />
+        {ed.layers.list.length > 1 && (
+          <>
+            <Sep />
+            <ActiveLayerPicker />
+          </>
+        )}
         <Sep />
         <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Sair do modo conexão">
           <X /> <span className="pr-1">Concluir</span>

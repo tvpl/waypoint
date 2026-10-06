@@ -9,6 +9,18 @@ Waypoint tem dois módulos que compartilham workspace, tags, busca e compartilha
 
 Além do essencial, o Planner tem **layout automático** (vertical ou horizontal, também só para a seleção), **modo apresentação** (passo a passo por seções, em tela cheia, com teclado ou gesto no celular; `?present=1` abre direto) e **comentários** por plan ou por bloco, com respostas, @menções e resolução. Um plan novo pode partir de **modelos prontos** (roadmap, arquitetura, quadro de status, registro de decisão, retrospectiva); colar ou soltar uma URL no canvas cria um cartão de link já com título, descrição e capa; há **guias de alinhamento** ao arrastar (Alt desliga), **minimapa** (M) e o canvas reabre onde você parou. A Link Library verifica **links quebrados** e redirecionamentos, e uma **extensão de navegador** salva a página atual direto numa coleção.
 
+**Camadas e desenho.** Um plan pode ter várias **camadas** empilhadas: a base (o que existe hoje) e, por cima, fluxos alternativos, versões, complementos ou anotações. Cada camada pode ser:
+
+- ocultada (`⌥` + clique no olho mostra só ela);
+- travada, para desenhar por cima sem mexer na base;
+- esmaecida, para servir de contexto;
+- animada, com tracejado correndo nas conexões para mostrar o sentido do fluxo;
+- reordenada ou excluída (mantendo ou não os elementos).
+
+Elementos novos, conexões e desenhos entram na **camada ativa**, e uma conexão pode ligar blocos de camadas diferentes: assim se desenha um fluxo novo sobre a arquitetura atual. A ferramenta **Desenhar** (`P`) tem caneta, marca-texto e seta, com cores e espessuras; a **borracha** é `E`. Os traços nunca bloqueiam cliques nos elementos de baixo.
+
+**Visões** guardam combinações de camadas visíveis (ex.: "Hoje", "Com a proposta"). Quem lê o plan publicado alterna camadas e visões no botão **Camadas**, só para si. `?view=<id>` abre o link (ou a apresentação) direto numa visão.
+
 Qualquer bloco de um plan pode apontar para um **Resource**: uma URL, outro plan, um favorito, uma coleção, um arquivo ou uma página interna. É isso que transforma o desenho em uma porta de entrada para todo o contexto de um projeto.
 
 ## Stack

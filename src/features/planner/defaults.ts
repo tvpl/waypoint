@@ -10,6 +10,7 @@ export const KIND_DEFAULTS: Record<NodeKind, { width: number; height: number; ti
   section: { width: 520, height: 340, title: "Seção" },
   image: { width: 260, height: 190, title: "" },
   text: { width: 240, height: 44, title: "Texto" },
+  ink: { width: 40, height: 40, title: "" },
 };
 
 export const KIND_LABEL: Record<NodeKind, string> = {
@@ -20,6 +21,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   section: "Seção",
   image: "Imagem",
   text: "Texto",
+  ink: "Desenho",
 };
 
 /** Kinds that can hold children (drop target / group). */

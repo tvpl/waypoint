@@ -9,6 +9,7 @@ import { useEditor } from "./editor-context";
 import { KIND_LABEL } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
 import { ResourceRow, setDragPayload, useResourceSearch } from "./resource-picker";
+import { LayersPanel } from "./layers-panel";
 
 const SHELVES = [
   { value: "", label: "Tudo" },
@@ -18,13 +19,13 @@ const SHELVES = [
 ] as const;
 type Shelf = (typeof SHELVES)[number]["value"];
 
-const TILES: (NodeKind | "connector")[] = ["block", "container", "note", "link", "section", "image", "connector", "text"];
+const TILES: (NodeKind | "connector" | "draw")[] = ["block", "container", "note", "link", "section", "image", "text", "connector", "draw"];
 
 export function Toolbox() {
   const ed = useEditor();
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
-  const tiles = TILES.filter((t) => !query || (t === "connector" ? "conexão conexao" : KIND_LABEL[t].toLowerCase()).includes(query));
+  const tiles = TILES.filter((t) => !query || (t === "connector" ? "conexão conexao" : t === "draw" ? "desenhar desenho caneta marca-texto seta" : KIND_LABEL[t].toLowerCase()).includes(query));
   const [shelf, setShelf] = useState<Shelf>("");
   const { items, loading } = useResourceSearch(q.trim(), { limit: shelf ? 12 : 3, exclude: ed.planId, types: shelf || undefined });
 
@@ -42,6 +43,8 @@ export function Toolbox() {
         />
       </label>
 
+      <LayersPanel />
+
       <section className="flex flex-col gap-2.5">
         <SectionLabel>Elementos</SectionLabel>
         {tiles.length === 0 ? (
@@ -49,6 +52,25 @@ export function Toolbox() {
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {tiles.map((t) => {
+              if (t === "draw") {
+                const on = ed.tool === "draw";
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => ed.setTool(on ? "select" : "draw")}
+                    title="Desenhar à mão livre, destacar ou fazer setas (P)"
+                    className={cn(
+                      "flex h-[68px] flex-col items-center justify-center gap-1.5 rounded-control border text-xs transition-colors",
+                      on ? "border-accent-line bg-accent-soft text-accent-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2",
+                    )}
+                  >
+                    <KIND_ICON.ink className="size-5" strokeWidth={1.75} aria-hidden />
+                    <span>Desenhar</span>
+                  </button>
+                );
+              }
               if (t === "connector") {
                 const on = ed.tool === "connect";
                 return (
@@ -103,7 +125,7 @@ export function Toolbox() {
         </div>
       </section>
 
-      <Layers />
+      <Outline />
     </aside>
   );
 }
@@ -121,7 +143,8 @@ function ResourceSkeleton() {
   );
 }
 
-function Layers() {
+/** Every element as a tree (areas and what is inside them). */
+function Outline() {
   const ed = useEditor();
   const rows = useMemo(() => {
     const kids = new Map<string, typeof ed.nodes>();
@@ -145,11 +168,11 @@ function Layers() {
 
   return (
     <section className="flex flex-col gap-1.5">
-      <SectionLabel>Camadas</SectionLabel>
+      <SectionLabel>Estrutura</SectionLabel>
       {rows.length === 0 ? (
         <p className="text-xs text-muted">Os elementos do canvas aparecem aqui.</p>
       ) : (
-        <ul className="-mx-2 flex flex-col gap-px" role="tree" aria-label="Camadas">
+        <ul className="-mx-2 flex flex-col gap-px" role="tree" aria-label="Estrutura">
           {rows.map(({ node, depth }) => {
             const Icon = KIND_ICON[node.type as NodeKind] ?? KIND_ICON.block;
             const sel = !!node.selected;
@@ -166,7 +189,7 @@ function Layers() {
                     node.hidden && "opacity-55",
                   )}
                   style={{ paddingLeft: 8 + depth * 18 }}
-                  title={node.hidden ? `${label} (dentro de um container recolhido)` : label}
+                  title={node.hidden ? `${label} (oculto: camada desligada ou container recolhido)` : label}
                 >
                   <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
                   <span className="truncate">{label}</span>

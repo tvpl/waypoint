@@ -1,5 +1,6 @@
 import { COLLAPSED_HEIGHT, hiddenByCollapse } from "./canvas-adapter";
 import type { PlanDocument } from "./plan";
+import { hiddenByLayers, layerVisibility } from "./layers";
 
 /** Lightweight shape for list thumbnails. */
 export type ThumbNode = { x: number; y: number; w: number; h: number; color?: string; kind: string };
@@ -20,7 +21,9 @@ export function planThumb(doc: PlanDocument): Thumb {
   };
   // What the canvas shows: no children of collapsed areas, which shrink to their header.
   const hidden = hiddenByCollapse(doc);
-  const shown = doc.nodes.filter((n) => !hidden.has(n.id)).slice(0, THUMB_MAX_NODES);
+  // Nor what is on hidden layers; drawings are left out of the miniature.
+  for (const id of hiddenByLayers(doc, layerVisibility(doc)).nodes) hidden.add(id);
+  const shown = doc.nodes.filter((n) => !hidden.has(n.id) && n.kind !== "ink").slice(0, THUMB_MAX_NODES);
   const index = new Map(shown.map((n, i) => [n.id, i]));
   const nodes = shown.map((n) => {
     const p = abs(n.id);

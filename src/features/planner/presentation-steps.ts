@@ -4,10 +4,17 @@
  * node data (`data.presentation.order`).
  */
 import type { PlanDocument, PlanNode } from "@/domain/plan";
+import { layerIdOf, layerVisibility } from "@/domain/layers";
 import { absRect, childrenMap, descendants } from "./doc-ops";
 import { KIND_LABEL, PARENT_KINDS } from "./defaults";
 
-type Doc = Pick<PlanDocument, "nodes" | "edges">;
+type Doc = Pick<PlanDocument, "nodes" | "edges"> & Partial<Pick<PlanDocument, "layers">>;
+
+/** Nodes on layers that are switched off (document defaults plus a viewer's overrides) aren't steps. */
+function onVisibleLayer(doc: Doc, overrides?: Readonly<Record<string, boolean>>) {
+  const vis = layerVisibility(doc, overrides);
+  return (n: PlanNode) => vis.get(layerIdOf(n)) !== false;
+}
 
 export type PresentationStep = {
   /** null = overview (whole plan). */
@@ -34,19 +41,22 @@ function byReading(doc: Doc) {
 }
 
 /** Automatic order: top-level sections/containers, then the other top-level nodes, in reading order. */
-export function defaultStepNodes(doc: Doc): PlanNode[] {
+export function defaultStepNodes(doc: Doc, overrides?: Readonly<Record<string, boolean>>): PlanNode[] {
   const order = byReading(doc);
-  const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden);
+  const visible = onVisibleLayer(doc, overrides);
+  // Drawings are annotations, not steps.
+  const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden && n.kind !== "ink" && visible(n));
   const areas = top.filter((n) => PARENT_KINDS.has(n.kind)).sort(order);
   const rest = top.filter((n) => !PARENT_KINDS.has(n.kind)).sort(order);
   return [...areas, ...rest];
 }
 
 /** Custom order: nodes with `presentation.order` (any depth), ascending; ties by reading order. */
-export function customStepNodes(doc: Doc): PlanNode[] {
+export function customStepNodes(doc: Doc, overrides?: Readonly<Record<string, boolean>>): PlanNode[] {
   const order = byReading(doc);
+  const visible = onVisibleLayer(doc, overrides);
   return doc.nodes
-    .filter((n) => typeof n.data.presentation?.order === "number" && !n.data.presentation.hidden)
+    .filter((n) => typeof n.data.presentation?.order === "number" && !n.data.presentation.hidden && visible(n))
     .sort((a, b) => a.data.presentation!.order! - b.data.presentation!.order! || order(a, b));
 }
 
@@ -54,8 +64,8 @@ export function stepTitle(n: PlanNode) {
   return n.data.title.trim() || KIND_LABEL[n.kind];
 }
 
-export function presentationSteps(doc: Doc, planTitle: string): PresentationStep[] {
-  const nodes = hasCustomOrder(doc) ? customStepNodes(doc) : defaultStepNodes(doc);
+export function presentationSteps(doc: Doc, planTitle: string, overrides?: Readonly<Record<string, boolean>>): PresentationStep[] {
+  const nodes = hasCustomOrder(doc) ? customStepNodes(doc, overrides) : defaultStepNodes(doc, overrides);
   return [{ nodeId: null, title: planTitle || "Visão geral" }, ...nodes.map((n) => ({ nodeId: n.id, title: stepTitle(n) }))];
 }
 

@@ -1,12 +1,39 @@
 "use client";
 import { createContext, useContext } from "react";
-import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, ResourceRef } from "@/domain/plan";
+import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef } from "@/domain/plan";
 import type { PlanFlowEdge, PlanFlowNode } from "@/domain/canvas-adapter";
 import type { AlignMode } from "./doc-ops";
 import type { LayoutDirection } from "./auto-layout";
 import type { ResolvedResource } from "./resource-types";
+import type { InkMode, Point } from "./ink-geometry";
 
-export type Tool = "select" | "hand" | "connect";
+/** "draw": pen, highlighter or arrow (see `ink`); "erase": removes drawings under the pointer. */
+export type Tool = "select" | "hand" | "connect" | "draw" | "erase";
+
+export type InkSettings = { mode: InkMode; color: string | undefined; size: number };
+
+export type LayersApi = {
+  /** Bottom to top, base included. */
+  list: PlanLayer[];
+  views: PlanView[];
+  /** Where new elements, connections and drawings go. */
+  active: string;
+  setActive: (id: string) => void;
+  add: () => void;
+  update: (id: string, patch: Partial<Omit<PlanLayer, "id">>) => void;
+  move: (id: string, dir: "up" | "down") => void;
+  remove: (id: string, mode: "merge" | "delete") => void;
+  solo: (id: string) => void;
+  showAll: () => void;
+  /** Moves the selection (nodes with what is inside them, and edges) to a layer. */
+  assignSelection: (id: string) => void;
+  selectLayer: (id: string) => void;
+  saveView: (name: string) => void;
+  applyView: (id: string) => void;
+  removeView: (id: string) => void;
+  /** Elements per layer (top-level nodes and connections). */
+  counts: Map<string, number>;
+};
 export type InspectorTab = "content" | "appearance" | "action";
 
 export type PlanMeta = { title: string; description: string | null; tags: string[]; visibility: string };
@@ -50,6 +77,13 @@ export type EditorApi = {
 
   tool: Tool;
   setTool: (t: Tool) => void;
+  ink: InkSettings;
+  setInk: (patch: Partial<InkSettings>) => void;
+  /** Adds a stroke drawn on the canvas (canvas coordinates) to the active layer. */
+  addInk: (points: Point[], zoom: number) => void;
+  /** Removes drawings (eraser). One undo step. */
+  removeInk: (ids: string[]) => void;
+  layers: LayersApi;
   connectKind: EdgeKind;
   setConnectKind: (k: EdgeKind) => void;
   grid: boolean;

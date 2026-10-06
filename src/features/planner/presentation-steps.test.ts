@@ -53,3 +53,19 @@ describe("presentation steps", () => {
     expect([...activeIdsFor(sample(), "secA")!].sort()).toEqual(["inner", "secA"]);
   });
 });
+
+describe("presentation steps and layers", () => {
+  it("skips drawings and nodes on hidden layers (document or viewer)", () => {
+    const mk = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({ id, kind: "block", x: 0, y: 0, width: 100, height: 50, data: { title: id }, ...extra });
+    const doc = {
+      nodes: [mk("a"), mk("b", { x: 200, layer: "p" }), mk("ink", { kind: "ink", x: 400 })],
+      edges: [],
+      layers: [
+        { id: "base", name: "Base", visible: true },
+        { id: "p", name: "Proposta", visible: false },
+      ],
+    };
+    expect(presentationSteps(doc, "T").map((s) => s.nodeId)).toEqual([null, "a"]);
+    expect(presentationSteps(doc, "T", { p: true }).map((s) => s.nodeId)).toEqual([null, "a", "b"]);
+  });
+});

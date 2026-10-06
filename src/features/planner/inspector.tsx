@@ -48,6 +48,8 @@ import { EdgeSample } from "./edges";
 import { TagInput } from "./tag-input";
 import { ResourceIcon, ResourceRow, useResourceSearch } from "./resource-picker";
 import { parseUserUrl, fallbackResource } from "./resource-types";
+import { BASE_LAYER_ID } from "@/domain/layers";
+import { HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, INK_COLORS, INK_SIZES } from "./ink-geometry";
 
 const VISIBILITY_LABEL: Record<string, string> = {
   private: "Privado",
@@ -62,7 +64,8 @@ export function Inspector() {
   const nodes = ed.selectedNodes;
   const edges = ed.selectedEdges;
   let body: React.ReactNode;
-  if (nodes.length === 1) body = <NodeInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1 && nodes[0].type === "ink") body = <InkInspector key={nodes[0].id} node={nodes[0]} />;
+  else if (nodes.length === 1) body = <NodeInspector key={nodes[0].id} node={nodes[0]} />;
   else if (nodes.length > 1) body = <MultiInspector />;
   else if (edges.length === 1) body = <EdgeInspector key={edges[0].id} edge={edges[0]} />;
   else if (edges.length > 1) body = <MultiEdgeInspector />;
@@ -104,6 +107,98 @@ function F({ label, htmlFor, children, hint }: { label: string; htmlFor?: string
 }
 
 const smallInput = "h-[34px] rounded-lg text-body";
+
+/** Which layer the selection is on; changing it moves the selection (areas with their content). */
+function LayerField() {
+  const ed = useEditor();
+  const L = ed.layers;
+  if (L.list.length < 2) return null;
+  const ids = new Set([...ed.selectedNodes.map((n) => n.data._layer ?? BASE_LAYER_ID), ...ed.selectedEdges.map((e) => e.data?.layer ?? BASE_LAYER_ID)]);
+  const value = ids.size === 1 ? [...ids][0] : "";
+  const current = L.list.find((l) => l.id === value);
+  return (
+    <F label="Camada" htmlFor="insp-layer">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full" style={{ background: current?.color ?? "var(--muted)" }} aria-hidden />
+        <select id="insp-layer" className={cn(inputClass, "wp-select h-[34px] rounded-lg pl-7 pr-8 text-body")} value={value} onChange={(e) => e.target.value && L.assignSelection(e.target.value)}>
+          {!value && <option value="">Várias camadas</option>}
+          {[...L.list].reverse().map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+              {l.visible === false ? " (oculta)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+    </F>
+  );
+}
+
+/** A freehand stroke, highlight or arrow: color, thickness, layer, stacking. */
+function InkInspector({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const ink = node.data.ink!;
+  const kind = ink.arrow ? "Seta" : ink.highlighter ? "Destaque" : "Desenho";
+  const base = ink.highlighter ? ink.size / HIGHLIGHTER_SCALE : ink.size;
+  const shown = node.data.color ?? (ink.highlighter ? HIGHLIGHTER_COLOR : undefined);
+  const Icon = KIND_ICON.ink;
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle" style={{ color: shown ?? "var(--ink)" }}>
+            <Icon className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker="Desenho"
+        title={kind}
+      />
+      <div className="flex flex-col gap-2">
+        <Label>Cor</Label>
+        <div className="flex flex-wrap gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
+          {INK_COLORS.map((c) => {
+            const on = (c.value ?? null) === (shown ?? null);
+            return (
+              <Tooltip key={c.name} content={c.name}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-label={c.name}
+                  onClick={() => ed.updateNodeData(node.id, { color: c.value })}
+                  className="size-6 rounded-full border-2 border-surface"
+                  style={{ background: c.value ?? "var(--ink)", boxShadow: on ? "0 0 0 2px var(--accent)" : "0 0 0 1px var(--line-2)" }}
+                />
+              </Tooltip>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label>Espessura</Label>
+        <Segmented
+          label="Espessura"
+          className="self-start"
+          value={String(INK_SIZES.reduce((a, b) => (Math.abs(b - base) < Math.abs(a - base) ? b : a)))}
+          onChange={(v) => ed.updateNodeData(node.id, { ink: { ...ink, size: Number(v) * (ink.highlighter ? HIGHLIGHTER_SCALE : 1) } })}
+          options={INK_SIZES.map((n) => ({ value: String(n), label: n === INK_SIZES[0] ? "Fina" : n === INK_SIZES[1] ? "Média" : "Grossa" }))}
+        />
+      </div>
+      <LayerField />
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+          <BringToFront /> Frente
+        </Button>
+        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+          <SendToBack /> Trás
+        </Button>
+      </div>
+      <Button size="sm" variant="danger" onClick={ed.remove}>
+        <Trash2 /> Apagar desenho
+      </Button>
+    </Scroll>
+  );
+}
 
 // ------------------------------------------------------------------ node
 
@@ -206,6 +301,7 @@ function AppearanceTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
   const d = node.data;
   return (
     <>
+      <LayerField />
       {kind === "image" && <IconlessNote />}
       {kind !== "image" && kind !== "link" && (
         <div className="flex flex-col gap-2">
@@ -703,6 +799,7 @@ function EdgeInspector({ edge }: { edge: PlanFlowEdge }) {
         <F label="Descrição" htmlFor={`ed-${edge.id}`}>
           <Textarea id={`ed-${edge.id}`} rows={3} maxLength={2000} className="min-h-[72px] rounded-lg text-body" value={d.description ?? ""} onChange={(e) => ed.updateEdge(edge.id, { description: e.target.value }, `edesc:${edge.id}`)} />
         </F>
+        <LayerField />
         <div className="flex flex-col gap-1.5">
           <Label>Tipo</Label>
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Tipo de conexão">
@@ -784,6 +881,7 @@ function MultiInspector() {
         kicker="Seleção"
         title={`${n} elementos`}
       />
+      <LayerField />
       <div className="flex flex-col gap-1.5">
         <Label>Alinhar</Label>
         <div className="grid grid-cols-6 gap-1">

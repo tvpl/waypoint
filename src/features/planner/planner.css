@@ -362,3 +362,75 @@
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
+
+/* ---------------------------------------------------------------- layers */
+/* Faded layer: context for the layers above it. */
+.wp-flow .react-flow__node.wp-layer-dim,
+.wp-flow .react-flow__edge.wp-layer-dim {
+  opacity: 0.3;
+}
+/* Animated layer: dashes travel along its connections to show the direction of a flow. */
+.wp-flow .react-flow__edge.animated .wp-edge-path {
+  stroke-dasharray: 7 6;
+  animation: wp-flow-dash 0.9s linear infinite;
+}
+.wp-flow .react-flow__edge.animated .wp-edge-arrow {
+  stroke-dasharray: none;
+  animation: none;
+}
+@keyframes wp-flow-dash {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+/* ---------------------------------------------------------------- ink */
+/* Only the painted stroke takes the pointer: a drawing never blocks what is under its box. */
+.wp-flow .react-flow__node-ink {
+  pointer-events: none !important;
+}
+.wp-flow .react-flow__node-ink .wp-ink-hit {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.wp-flow .react-flow__node-ink .wp-ink-stroke {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+.wp-flow .react-flow__node-ink .react-flow__resize-control {
+  pointer-events: all;
+}
+.wp-ink.is-highlighter {
+  opacity: 0.4;
+}
+.wp-flow .react-flow__node-ink.selected .wp-ink-stroke {
+  filter: drop-shadow(0 0 1.5px var(--accent));
+}
+.wp-flow .react-flow__node-ink.is-erasing {
+  opacity: 0.2;
+}
+/* Drawing and erasing tools. */
+.wp-tool-draw .react-flow__pane,
+.wp-tool-draw .react-flow__node {
+  cursor: crosshair !important;
+}
+.wp-tool-erase .react-flow__pane,
+.wp-tool-erase .react-flow__node {
+  cursor: cell !important;
+}
+.wp-tool-draw .react-flow__node-ink .wp-ink-hit,
+.wp-tool-draw .react-flow__node-ink .wp-ink-stroke {
+  pointer-events: none;
+}
+/* No connection handles while drawing or erasing. */
+.wp-tool-draw .wp-handle,
+.wp-tool-erase .wp-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+/* Drawings are not interactive when reading a plan. */
+.wp-view .react-flow__node-ink .wp-ink-hit,
+.wp-view .react-flow__node-ink .wp-ink-stroke {
+  pointer-events: none;
+  cursor: default;
+}

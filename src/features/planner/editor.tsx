@@ -27,14 +27,28 @@ import {
 } from "@xyflow/react";
 import { CloudOff, MonitorSmartphone, MousePointerClick, Plus, RotateCcw, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
-import type { EdgeKind, NodeData, NodeKind, PlanDocument, ResourceRef } from "@/domain/plan";
+import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef } from "@/domain/plan";
+import {
+  addLayer,
+  applyView,
+  assignLayer,
+  BASE_LAYER_ID,
+  layerIdOf,
+  layersOf,
+  moveLayer,
+  removeLayer,
+  removeView,
+  saveView,
+  showAllLayers,
+  soloLayer,
+  updateLayer,
+} from "@/domain/layers";
 import {
   contentSignature,
   edgeMarker,
   flowFingerprint,
   fromFlow,
   sameFingerprint,
-  toFlowEdge,
   toFlowEdges,
   toFlowNodes,
   type PlanFlowEdge,
@@ -43,7 +57,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
-import { EditorContext, type EditorApi, type InspectorTab, type PlanMeta, type Tool } from "./editor-context";
+import { EditorContext, type EditorApi, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
+import { buildInk, INK_SIZES, type Point } from "./ink-geometry";
+import { InkCanvas } from "./ink-canvas";
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
 import { History } from "./history";
@@ -149,7 +165,14 @@ function writeViewport(planId: string, v: Viewport) {
   }
 }
 
-const normalizeForCanvas = (doc: PlanDocument) => fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport);
+const normalizeForCanvas = (doc: PlanDocument): PlanDocument => ({
+  ...fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport),
+  ...(doc.layers ? { layers: doc.layers } : {}),
+  ...(doc.views ? { views: doc.views } : {}),
+});
+
+type LayerState = { layers?: PlanLayer[]; views?: PlanView[] };
+const INK_KEY = "wp-planner-ink";
 
 function EditorShell(props: PlanEditorProps) {
   const planId = props.plan.id;
@@ -167,13 +190,41 @@ function EditorShell(props: PlanEditorProps) {
   edgesRef.current = edges;
   const viewportRef = useRef<Viewport>(initialDoc.viewport);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Layers and saved views live beside the React Flow state (they are document-level).
+  const [layerState, setLayerState] = useState<LayerState>(() => ({ layers: initialDoc.layers, views: initialDoc.views }));
+  const layerStateRef = useRef(layerState);
 
-  const docOf = useCallback(() => fromFlow(nodesRef.current, edgesRef.current, viewportRef.current), []);
+  const docOf = useCallback((): PlanDocument => {
+    const d = fromFlow(nodesRef.current, edgesRef.current, viewportRef.current);
+    const { layers, views } = layerStateRef.current;
+    return { ...d, ...(layers ? { layers } : {}), ...(views ? { views } : {}) };
+  }, []);
 
   // ---------------------------------------------------------------- ui state
   const [meta, setMeta] = useState<PlanMeta>({ title: props.plan.title, description: props.plan.description, tags: props.plan.tags, visibility: props.plan.visibility });
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [tool, setToolState] = useState<Tool>("select");
+  const [ink, setInkState] = useState<InkSettings>({ mode: "pen", color: undefined, size: INK_SIZES[1] });
+  const inkRef = useRef(ink);
+  inkRef.current = ink;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(INK_KEY) ?? "null") as Partial<InkSettings> | null;
+      if (saved) setInkState((cur) => ({ ...cur, ...saved }));
+    } catch {}
+  }, []);
+  const setInk = useCallback((patch: Partial<InkSettings>) => {
+    setInkState((cur) => {
+      const next = { ...cur, ...patch };
+      try {
+        localStorage.setItem(INK_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+  const [activeLayer, setActiveLayer] = useState<string>(BASE_LAYER_ID);
+  const activeLayerRef = useRef(activeLayer);
+  activeLayerRef.current = activeLayer;
   const [connectKind, setConnectKind] = useState<EdgeKind>("flow");
   const [connectSource, setConnectSource] = useState<string | null>(null);
   const connectOnce = useRef(false);
@@ -226,7 +277,7 @@ function EditorShell(props: PlanEditorProps) {
   useEffect(() => {
     if (nodes.some((n) => n.dragging || n.resizing)) return;
     // selection / hover updates don't touch content: skip the full serialization
-    const print = flowFingerprint(nodes, edges);
+    const print = [...flowFingerprint(nodes, edges), layerState];
     if (sameFingerprint(lastPrint.current, print)) {
       pendingKey.current = null;
       return;
@@ -246,7 +297,7 @@ function EditorShell(props: PlanEditorProps) {
       setUnpublished(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges]);
+  }, [nodes, edges, layerState]);
 
   // local safety-net copy newer than the server draft?
   useEffect(() => {
@@ -267,8 +318,33 @@ function EditorShell(props: PlanEditorProps) {
     const cur = selectedIds();
     const n = sel?.nodes ? new Set(sel.nodes) : cur.nodes;
     const e = sel?.edges ? new Set(sel.edges) : sel?.nodes ? new Set<string>() : cur.edges;
+    const ls: LayerState = { layers: doc.layers, views: doc.views };
+    layerStateRef.current = ls;
+    setLayerState(ls);
     setNodes(toFlowNodes(doc, { selected: n }));
     setEdges(toFlowEdges(doc, { selected: e }));
+  }, []);
+
+  /** Areas on hidden or locked layers don't take dropped elements. */
+  const canHold = useCallback((n: PlanNode) => {
+    const l = layersOf(layerStateRef.current).find((x) => x.id === layerIdOf(n));
+    return !l || (l.visible !== false && !l.locked);
+  }, []);
+
+  /**
+   * New elements go to the active layer; if it is hidden or locked, it is shown and unlocked
+   * so what was just added can be seen and edited.
+   */
+  const placeInActive = useCallback((doc: PlanDocument, nodeIds: string[], edgeIds: string[] = []): PlanDocument => {
+    const want = activeLayerRef.current;
+    const id = layersOf(doc).some((l) => l.id === want) ? want : BASE_LAYER_ID;
+    let next = assignLayer(doc, id, { nodes: nodeIds, edges: edgeIds });
+    const layer = layersOf(next).find((l) => l.id === id);
+    if (layer && (layer.visible === false || layer.locked)) {
+      next = updateLayer(next, id, { visible: true, locked: false });
+      toast(`A camada “${layer.name}” foi exibida e destravada para receber o novo elemento.`);
+    }
+    return next;
   }, []);
 
   const mutate = useCallback(
@@ -364,15 +440,15 @@ function EditorShell(props: PlanEditorProps) {
 
   const insert = useCallback(
     (node: ReturnType<typeof createNode>) => {
-      let doc = addNodes(docOf(), [node]);
+      let doc = placeInActive(addNodes(docOf(), [node]), [node.id]);
       if (!PARENT_KINDS.has(node.kind)) {
-        const target = findDropTarget(doc, node.id);
+        const target = findDropTarget(doc, node.id, canHold);
         if (target) doc = reparent(doc, node.id, target);
       }
       pendingKey.current = null;
       applyDoc(doc, { nodes: [node.id] });
     },
-    [docOf, applyDoc],
+    [docOf, applyDoc, placeInActive, canHold],
   );
 
   const addNode = useCallback(
@@ -430,7 +506,7 @@ function EditorShell(props: PlanEditorProps) {
           .catch(() => {});
       });
       pendingKey.current = null;
-      applyDoc(doc, { nodes: ids });
+      applyDoc(placeInActive(doc, ids), { nodes: ids });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [docOf, applyDoc, viewportCenter, cacheResource],
@@ -448,9 +524,9 @@ function EditorShell(props: PlanEditorProps) {
         doc = addNodes(doc, [node]);
       });
       pendingKey.current = null;
-      applyDoc(doc, { nodes: ids });
+      applyDoc(placeInActive(doc, ids), { nodes: ids });
     },
-    [docOf, applyDoc, viewportCenter],
+    [docOf, applyDoc, viewportCenter, placeInActive],
   );
 
   const uploadImage = useCallback(
@@ -533,11 +609,11 @@ function EditorShell(props: PlanEditorProps) {
       mutate((d) => {
         const r = pasteClip(d, clip, at ? { at } : { offset: { x: off, y: off } });
         created = r.ids;
-        return r.doc;
+        return placeInActive(r.doc, r.ids);
       });
       if (created.length) select(created);
     },
-    [mutate, select],
+    [mutate, select, placeInActive],
   );
 
   const group = useCallback(() => {
@@ -634,13 +710,92 @@ function EditorShell(props: PlanEditorProps) {
           }
         }
       }
-      const edge = toFlowEdge({ id: newId(), source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null, kind: connectKind });
+      // Through the document: the connection goes to the active layer (it can link elements of any layer).
+      const edge: PlanEdge = { id: newId(), source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null, kind: connectKind };
+      const base = docOf();
       pendingKey.current = null;
-      setEdges((list) => [...list.map((e) => (e.selected ? { ...e, selected: false } : e)), { ...edge, selected: true }]);
-      setNodes((list) => list.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      applyDoc(placeInActive({ ...base, edges: [...base.edges, edge] }, [], [edge.id]), { nodes: [], edges: [edge.id] });
     },
-    [rf, connectKind],
+    [rf, connectKind, docOf, applyDoc, placeInActive],
   );
+
+  // ---------------------------------------------------------------- drawing
+  const addInk = useCallback(
+    (points: Point[], zoom: number) => {
+      const s = inkRef.current;
+      const built = buildInk(points, { size: s.size, mode: s.mode, zoom });
+      if (!built) return;
+      const node: PlanNode = {
+        id: newId(),
+        kind: "ink",
+        x: built.x,
+        y: built.y,
+        width: built.width,
+        height: built.height,
+        data: { title: "", ink: built.ink, ...(s.color ? { color: s.color } : {}) },
+      };
+      pendingKey.current = null;
+      applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [] });
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
+  const removeInk = useCallback(
+    (ids: string[]) => {
+      const set = new Set(ids);
+      mutate((d) => {
+        const drop = d.nodes.filter((n) => set.has(n.id) && n.kind === "ink").map((n) => n.id);
+        return drop.length ? removeNodes(d, drop) : d;
+      });
+    },
+    [mutate],
+  );
+
+  // ---------------------------------------------------------------- layers
+  const layersApi: LayersApi = useMemo(() => {
+    const list = layersOf(layerState);
+    const counts = new Map<string, number>();
+    for (const n of nodes) if (!n.parentId) counts.set(n.data._layer ?? BASE_LAYER_ID, (counts.get(n.data._layer ?? BASE_LAYER_ID) ?? 0) + 1);
+    for (const e of edges) counts.set(e.data?.layer ?? BASE_LAYER_ID, (counts.get(e.data?.layer ?? BASE_LAYER_ID) ?? 0) + 1);
+    return {
+      list,
+      views: layerState.views ?? [],
+      active: list.some((l) => l.id === activeLayer) ? activeLayer : BASE_LAYER_ID,
+      setActive: setActiveLayer,
+      add: () => {
+        let id: string | null = null;
+        mutate((d) => {
+          const r = addLayer(d);
+          id = r.id;
+          return r.doc;
+        });
+        if (id) setActiveLayer(id);
+      },
+      update: (id, patch) => mutate((d) => updateLayer(d, id, patch), { key: patch.name !== undefined ? `layer-name:${id}` : undefined }),
+      move: (id, dir) => mutate((d) => moveLayer(d, id, dir)),
+      remove: (id, mode) => {
+        mutate((d) => removeLayer(d, id, mode), { select: [] });
+        if (activeLayerRef.current === id) setActiveLayer(BASE_LAYER_ID);
+      },
+      solo: (id) => mutate((d) => soloLayer(d, id)),
+      showAll: () => mutate((d) => showAllLayers(d)),
+      assignSelection: (id) => {
+        const ns = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+        const es = edgesRef.current.filter((e) => e.selected).map((e) => e.id);
+        if (!ns.length && !es.length) return;
+        mutate((d) => assignLayer(d, id, { nodes: ns, edges: es }));
+      },
+      selectLayer: (id) => {
+        const ns = nodesRef.current.filter((n) => !n.parentId && (n.data._layer ?? BASE_LAYER_ID) === id && !n.hidden && n.selectable !== false).map((n) => n.id);
+        const es = edgesRef.current.filter((e) => (e.data?.layer ?? BASE_LAYER_ID) === id && !e.hidden && e.selectable !== false).map((e) => e.id);
+        select(ns, es);
+      },
+      saveView: (name) => mutate((d) => saveView(d, name).doc),
+      applyView: (id) => mutate((d) => applyView(d, id)),
+      removeView: (id) => mutate((d) => removeView(d, id)),
+      counts,
+    };
+  }, [layerState, nodes, edges, activeLayer, mutate, select]);
 
   const focusNode = useCallback(
     (id: string) => {
@@ -690,13 +845,18 @@ function EditorShell(props: PlanEditorProps) {
     swapEdge: (id) => mutate((d) => swapEdge(d, id)),
     autoArrange,
     select,
-    selectAll: () => select(nodesRef.current.filter((n) => !n.hidden).map((n) => n.id)),
+    selectAll: () => select(nodesRef.current.filter((n) => !n.hidden && n.selectable !== false).map((n) => n.id)),
     focusNode,
     toggleCollapsed: (id) => mutate((d) => setCollapsed(d, id, !d.nodes.find((n) => n.id === id)?.data.collapsed)),
     startEditing,
     startConnectFrom,
     tool,
     setTool,
+    ink,
+    setInk,
+    addInk,
+    removeInk,
+    layers: layersApi,
     connectKind,
     setConnectKind,
     grid,
@@ -793,12 +953,14 @@ function EditorShell(props: PlanEditorProps) {
       if (k === "delete" || k === "backspace") return run(a.remove);
       if (k === "escape") {
         setEditingId(null);
-        if (a.tool === "connect") return run(() => a.setTool("select"));
+        if (a.tool === "connect" || a.tool === "draw" || a.tool === "erase") return run(() => a.setTool("select"));
         return run(() => a.select([]));
       }
       if (k === "enter" && a.selectedNodes.length === 1) return run(() => a.startEditing(a.selectedNodes[0].id));
       if (k === "v") return run(() => a.setTool("select"));
       if (k === "h") return run(() => a.setTool("hand"));
+      if (k === "p") return run(() => a.setTool(a.tool === "draw" ? "select" : "draw"));
+      if (k === "e") return run(() => a.setTool(a.tool === "erase" ? "select" : "erase"));
       if (k === "c") return run(() => (a.selectedNodes.length === 1 ? a.startConnectFrom(a.selectedNodes[0].id) : a.setTool("connect")));
       if (k === "+" || k === "=") return run(() => rf.zoomIn({ duration: motionMs(150) }));
       if (k === "-" || k === "_") return run(() => rf.zoomOut({ duration: motionMs(150) }));
@@ -932,10 +1094,10 @@ function EditorShell(props: PlanEditorProps) {
         [],
         viewportRef.current,
       );
-      const target = findDropTarget(doc, node.id) ?? null;
+      const target = findDropTarget(doc, node.id, canHold) ?? null;
       setDropTarget(target !== (node.parentId ?? null) ? target : null);
     },
-    [],
+    [canHold],
   );
 
   const onNodeDragStop: OnNodeDrag<PlanFlowNode> = useCallback((_e, _node, dragged) => {
@@ -944,17 +1106,17 @@ function EditorShell(props: PlanEditorProps) {
     const ids = dragged.map((d) => d.id);
     // functional update: runs after React Flow's final position change in the same batch
     setNodes((prev) => {
-      const base = fromFlow(prev, [], viewportRef.current);
+      const base: PlanDocument = { ...fromFlow(prev, [], viewportRef.current), ...(layerStateRef.current.layers ? { layers: layerStateRef.current.layers } : {}) };
       let doc = base;
       for (const id of selectionRoots(base, ids)) {
-        const target = findDropTarget(doc, id);
+        const target = findDropTarget(doc, id, canHold);
         const cur = doc.nodes.find((n) => n.id === id)?.parentId;
         if (target !== cur) doc = reparent(doc, id, target);
       }
       if (doc === base) return prev;
       return toFlowNodes(doc, { selected: new Set(prev.filter((n) => n.selected).map((n) => n.id)) });
     });
-  }, []);
+  }, [canHold]);
 
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: PlanFlowNode) => {
@@ -1271,7 +1433,8 @@ function EditorShell(props: PlanEditorProps) {
                     selectionMode={SelectionMode.Partial}
                     panOnDrag={tool === "hand" ? true : [1]}
                     panOnScroll
-                    nodesDraggable={tool !== "hand"}
+                    nodesDraggable={tool !== "hand" && tool !== "draw" && tool !== "erase"}
+                    elementsSelectable={tool !== "draw" && tool !== "erase"}
                     zoomOnDoubleClick={false}
                     elevateNodesOnSelect={false}
                     proOptions={{ hideAttribution: true }}
@@ -1317,6 +1480,7 @@ function EditorShell(props: PlanEditorProps) {
                       </div>
                     </div>
                   )}
+                  {(tool === "draw" || tool === "erase") && <InkCanvas wrapRef={wrapRef} />}
                   <SelectionBar />
                   <BottomPill />
                   <div className="wp-no-print absolute left-3 top-3 z-10 flex gap-2 md:hidden">

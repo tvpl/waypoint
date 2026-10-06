@@ -1,6 +1,7 @@
 "use client";
 import { ContextMenu as CM } from "radix-ui";
-import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Link2, MessageSquarePlus, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
+import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Layers, Link2, MessageSquarePlus, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
+import { BASE_LAYER_ID } from "@/domain/layers";
 import { EDGE_KINDS, NODE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import {
@@ -30,6 +31,25 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
   const multi = ed.selectedNodes.length > 1;
   const canUngroup = ed.selectedNodes.some((n) => PARENT_KINDS.has(n.type as NodeKind));
   const canArrangeSel = multi || canUngroup;
+  // "Mover para camada" (nodes with what is inside them, and selected connections)
+  const current = new Set([...ed.selectedNodes.map((n) => n.data._layer ?? BASE_LAYER_ID), ...ed.selectedEdges.map((e) => e.data?.layer ?? BASE_LAYER_ID)]);
+  const toLayer =
+    ed.layers.list.length > 1 ? (
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>
+          <Layers /> Mover para camada
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent className="min-w-[200px]">
+          {[...ed.layers.list].reverse().map((l) => (
+            <ContextMenuItem key={l.id} onSelect={() => ed.layers.assignSelection(l.id)}>
+              <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color ?? "var(--muted)" }} aria-hidden />
+              {l.name}
+              {current.size === 1 && current.has(l.id) && <Check className="ml-auto" />}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+    ) : null;
   const arrange = (title: string, all = false) => (
     <ContextMenuSub>
       <ContextMenuSubTrigger>
@@ -95,6 +115,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
               </ContextMenuItem>
             )}
             {canArrangeSel && arrange(multi ? "Organizar seleção" : "Organizar interior")}
+            {toLayer}
             <ContextMenuSeparator />
             <ContextMenuItem danger onSelect={ed.remove} shortcut="⌫">
               <Trash2 /> Excluir
@@ -114,6 +135,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
             <ContextMenuItem onSelect={() => ed.swapEdge(edge.id)}>
               <ArrowLeftRight /> Inverter direção
             </ContextMenuItem>
+            {toLayer}
             <ContextMenuItem danger onSelect={ed.remove} shortcut="⌫">
               <Trash2 /> Excluir conexão
             </ContextMenuItem>
@@ -122,7 +144,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
         {target?.type === "pane" && (
           <>
             <CM.Label className={label}>Adicionar aqui</CM.Label>
-            {NODE_KINDS.map((k) => {
+            {NODE_KINDS.filter((k) => k !== "ink").map((k) => {
               const Icon = KIND_ICON[k];
               return (
                 <ContextMenuItem key={k} onSelect={() => ed.addNode(k, { at: target.at })}>

@@ -43,6 +43,13 @@
       "when": 1790933609370,
       "tag": "0005_link_notes_inbox_enrich",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791254057235,
+      "tag": "0006_plan_layers",
+      "breakpoints": true
     }
   ]
 }

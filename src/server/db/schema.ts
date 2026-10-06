@@ -109,6 +109,8 @@ export const planDocuments = sqliteTable("plan_documents", {
   nodesJson: text("nodes_json").notNull().default("[]"),
   edgesJson: text("edges_json").notNull().default("[]"),
   viewportJson: text("viewport_json").notNull().default('{"x":0,"y":0,"zoom":1}'),
+  /** Layers and saved views ({ layers?, views? }); null when the plan has none (src/domain/layers.ts). */
+  layersJson: text("layers_json"),
   updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: updatedAt(),
 });

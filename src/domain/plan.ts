@@ -7,6 +7,7 @@
  * format never leaks library internals and can be migrated via schemaVersion.
  */
 import { z } from "zod";
+import { syncNodeLayers } from "./layers";
 
 export const PLAN_SCHEMA_VERSION = 1;
 
@@ -28,13 +29,29 @@ export type OpenIn = (typeof OPEN_IN)[number];
 
 // ------------------------------------------------------------------ nodes
 
-export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text"] as const;
+export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 
 export const NODE_STATUSES = ["none", "idea", "planned", "in-progress", "production", "deprecated"] as const;
 export type NodeStatus = (typeof NODE_STATUSES)[number];
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+/**
+ * A freehand stroke ("ink" node). Points are x,y pairs relative to the node, in the box it was
+ * drawn in (`w` × `h`); the canvas scales them when the node is resized.
+ */
+export const inkSchema = z.object({
+  points: z.array(z.number().finite()).min(2).max(4000),
+  w: z.number().finite().positive().max(20000),
+  h: z.number().finite().positive().max(20000),
+  size: z.number().finite().min(0.5).max(80),
+  /** Wide translucent marker. */
+  highlighter: z.boolean().optional(),
+  /** Straight line with an arrowhead at the end. */
+  arrow: z.boolean().optional(),
+});
+export type Ink = z.infer<typeof inkSchema>;
 
 export const nodeDataSchema = z.object({
   title: z.string().max(300).default(""),
@@ -47,6 +64,7 @@ export const nodeDataSchema = z.object({
   resource: resourceRefSchema.nullable().optional(),
   openIn: z.enum(OPEN_IN).optional(),
   collapsed: z.boolean().optional(),
+  ink: inkSchema.optional(),
   /**
    * Presentation mode. Without any `order` in the plan, steps are the
    * top-level areas then the other top-level nodes (reading order) minus
@@ -71,6 +89,8 @@ export const planNodeSchema = z.object({
   /** Parent container/section. Child x/y are relative to the parent. */
   parentId: z.string().max(64).optional(),
   z: z.number().int().optional(),
+  /** Layer (see src/domain/layers.ts); missing = the base layer. Children follow their top-level ancestor. */
+  layer: z.string().max(64).optional(),
   data: nodeDataSchema,
 });
 export type PlanNode = z.infer<typeof planNodeSchema>;
@@ -89,6 +109,7 @@ export const planEdgeSchema = z.object({
   kind: z.enum(EDGE_KINDS).default("flow"),
   label: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
+  layer: z.string().max(64).optional(),
 });
 export type PlanEdge = z.infer<typeof planEdgeSchema>;
 
@@ -101,11 +122,42 @@ export const viewportSchema = z.object({
 });
 export type Viewport = z.infer<typeof viewportSchema>;
 
+// ------------------------------------------------------------------ layers & views
+
+/**
+ * Layers stack the drawing: later layers render above earlier ones. Each can be hidden, locked
+ * or have its connections animated, so one plan can carry alternative flows, versions or
+ * annotations over the same base. The base layer is implicit until edited (src/domain/layers.ts).
+ */
+export const planLayerSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().max(80),
+  color: hexColor.optional(),
+  visible: z.boolean().default(true),
+  locked: z.boolean().optional(),
+  /** Moving dashes on this layer's connections, to show a flow. */
+  animate: z.boolean().optional(),
+  /** Shown faded (context for the other layers). */
+  dimmed: z.boolean().optional(),
+  description: z.string().max(500).optional(),
+});
+export type PlanLayer = z.infer<typeof planLayerSchema>;
+
+/** A saved combination of visible layers ("Fluxo atual", "Proposta v2"…). */
+export const planViewSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().max(80),
+  layers: z.array(z.string().max(64)).max(50),
+});
+export type PlanView = z.infer<typeof planViewSchema>;
+
 export const planDocumentSchema = z.object({
   schemaVersion: z.literal(PLAN_SCHEMA_VERSION).default(PLAN_SCHEMA_VERSION),
   nodes: z.array(planNodeSchema).max(5000),
   edges: z.array(planEdgeSchema).max(10000),
   viewport: viewportSchema,
+  layers: z.array(planLayerSchema).max(50).optional(),
+  views: z.array(planViewSchema).max(30).optional(),
 });
 export type PlanDocument = z.infer<typeof planDocumentSchema>;
 
@@ -124,9 +176,24 @@ export const EMPTY_DOCUMENT: PlanDocument = {
 export function normalizeDocument(input: unknown): PlanDocument {
   const doc = planDocumentSchema.parse(input);
   const ids = new Set(doc.nodes.map((n) => n.id));
-  const nodes = doc.nodes.map((n) => (n.parentId && !ids.has(n.parentId) ? { ...n, parentId: undefined } : n));
-  const edges = doc.edges.filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
-  return { ...doc, nodes: sortParentsFirst(nodes), edges };
+  // Layers: unique ids; nodes, edges and views only point at layers that exist.
+  const seenLayers = new Set<string>();
+  const layers = doc.layers?.filter((l) => !seenLayers.has(l.id) && seenLayers.add(l.id));
+  const layerIds = new Set(layers?.map((l) => l.id));
+  const knownLayer = <T extends { layer?: string }>(x: T): T => {
+    if (x.layer === undefined || layerIds.has(x.layer)) return x;
+    const { layer: _l, ...rest } = x;
+    return rest as T;
+  };
+  const nodes = doc.nodes.map((n) => knownLayer(n.parentId && !ids.has(n.parentId) ? { ...n, parentId: undefined } : n));
+  const edges = doc.edges.filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target).map(knownLayer);
+  const views = doc.views?.map((v) => ({ ...v, layers: v.layers.filter((id) => layerIds.has(id) || id === "base") }));
+  const out: PlanDocument = { ...doc, nodes: syncNodeLayers(sortParentsFirst(nodes), layerIds), edges };
+  if (layers?.length) out.layers = layers;
+  else delete out.layers;
+  if (views?.length) out.views = views;
+  else delete out.views;
+  return out;
 }
 
 /** React Flow requires parents to appear before their children. */

@@ -2,7 +2,7 @@
 import "@xyflow/react/dist/style.css";
 import "./planner.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ConnectionMode, ReactFlow, ReactFlowProvider, useReactFlow, type Node } from "@xyflow/react";
 import { ArrowUpRight, ExternalLink, Loader2, PanelRight, X } from "lucide-react";
@@ -20,6 +20,8 @@ import { ZoomControls } from "./zoom-controls";
 import { fallbackResource, type ResolvedResource } from "./resource-types";
 import { ResourceIcon } from "./resource-picker";
 import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
+import { viewVisibility } from "@/domain/layers";
+import { ViewLayers } from "./view-layers";
 import type { ExportKind } from "./topbar";
 
 export type ViewerExport = (kind: ExportKind) => Promise<void>;
@@ -84,6 +86,9 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   });
   const [highlight, setHighlight] = useState<string | null>(focusExists ? focusNodeId! : null);
   const [hover, setHover] = useState<Hover | null>(null);
+  // Layers this reader turned on/off (or a saved view from ?view=…); the document keeps its defaults.
+  const viewParam = useSearchParams()?.get("view");
+  const [layerOverrides, setLayerOverrides] = useState<Record<string, boolean>>(() => (viewParam && viewVisibility(doc, viewParam)) || {});
   const [details, setDetails] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ res: ResolvedResource; title: string } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,18 +102,18 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   );
   const active = stage?.activeIds ?? null;
   const nodes = useMemo(() => {
-    const list = toFlowNodes(viewDoc, { readOnly: true });
+    const list = toFlowNodes(viewDoc, { readOnly: true, layerVisibility: layerOverrides });
     if (!stage) return list;
-    return list.map((n) => ({ ...n, className: cn("wp-stage-node", active && !active.has(n.id) && "wp-dim") }));
-  }, [viewDoc, stage, active]);
+    return list.map((n) => ({ ...n, className: cn(n.className, "wp-stage-node", active && !active.has(n.id) && "wp-dim") }));
+  }, [viewDoc, stage, active, layerOverrides]);
   const edges = useMemo(() => {
-    const list = toFlowEdges(viewDoc, { readOnly: true });
+    const list = toFlowEdges(viewDoc, { readOnly: true, layerVisibility: layerOverrides });
     if (!stage) return list;
     return list.map((e) => {
       const dim = !!active && !(active.has(e.source) && active.has(e.target));
-      return { ...e, className: cn("wp-stage-edge", dim && "wp-dim"), data: { ...e.data!, _dim: dim } };
+      return { ...e, className: cn(e.className, "wp-stage-edge", dim && "wp-dim"), data: { ...e.data!, _dim: dim } };
     });
-  }, [viewDoc, stage, active]);
+  }, [viewDoc, stage, active, layerOverrides]);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
   const resourceFor = useCallback(
@@ -312,6 +317,7 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
             if (touch) setHover(null);
           }}
         />
+        {!stage && <ViewLayers doc={doc} overrides={layerOverrides} onChange={setLayerOverrides} />}
         {doc.nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <p className="rounded-xl border border-dashed border-line-2 bg-surface/80 px-5 py-4 text-sm text-muted">Este plan ainda está vazio.</p>

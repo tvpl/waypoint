@@ -41,14 +41,22 @@ function uniqueSlug(workspaceId: string, base: string, exceptId?: string) {
   }
 }
 
-function parseDoc(row: { nodesJson: string; edgesJson: string; viewportJson: string }): PlanDocument {
+type DocRow = { nodesJson: string; edgesJson: string; viewportJson: string; layersJson?: string | null };
+
+function parseDoc(row: DocRow): PlanDocument {
+  const extra = row.layersJson ? (JSON.parse(row.layersJson) as Pick<PlanDocument, "layers" | "views">) : {};
   return normalizeDocument({
     schemaVersion: 1,
     nodes: JSON.parse(row.nodesJson),
     edges: JSON.parse(row.edgesJson),
     viewport: JSON.parse(row.viewportJson),
+    ...(extra.layers ? { layers: extra.layers } : {}),
+    ...(extra.views ? { views: extra.views } : {}),
   });
 }
+
+/** Layers and views stored beside the nodes (null when the plan uses neither). */
+const layersJsonOf = (doc: PlanDocument) => (doc.layers || doc.views ? JSON.stringify({ layers: doc.layers, views: doc.views }) : null);
 
 export type { Thumb, ThumbNode } from "@/domain/plan-thumb";
 
@@ -92,6 +100,7 @@ export function listPlans(userId: string, workspaceId: string, filter: PlanListF
       nodesJson: schema.planDocuments.nodesJson,
       edgesJson: schema.planDocuments.edgesJson,
       viewportJson: schema.planDocuments.viewportJson,
+      layersJson: schema.planDocuments.layersJson,
       publishedVersion: schema.planVersions.version,
     })
     .from(schema.plans)
@@ -108,7 +117,7 @@ export function listPlans(userId: string, workspaceId: string, filter: PlanListF
     tags: tagMap.get(r.plan.id) ?? [],
     publishedVersion: r.publishedVersion ?? null,
     access: planAccess(userId, r.plan) as Access,
-    thumbnail: r.nodesJson ? planThumb(parseDoc(r as { nodesJson: string; edgesJson: string; viewportJson: string })) : { nodes: [], edges: [] },
+    thumbnail: r.nodesJson ? planThumb(parseDoc(r as DocRow)) : { nodes: [], edges: [] },
   }));
 }
 
@@ -193,6 +202,7 @@ export function createPlan(input: {
         nodesJson: JSON.stringify(doc.nodes),
         edgesJson: JSON.stringify(doc.edges),
         viewportJson: JSON.stringify(doc.viewport),
+        layersJson: layersJsonOf(doc),
         updatedBy: input.userId,
       })
       .run();
@@ -246,6 +256,7 @@ export function saveDraft(planId: string, userId: string, expectedVersion: numbe
       nodesJson: JSON.stringify(doc.nodes),
       edgesJson: JSON.stringify(doc.edges),
       viewportJson: JSON.stringify(doc.viewport),
+      layersJson: layersJsonOf(doc),
       version: sql`${schema.planDocuments.version} + 1`,
       updatedBy: userId,
       updatedAt: now,

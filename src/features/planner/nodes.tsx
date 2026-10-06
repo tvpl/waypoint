@@ -1,5 +1,5 @@
 "use client";
-import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Handle, NodeResizer, Position, type NodeProps, type NodeTypes } from "@xyflow/react";
 import { ArrowUpRight, ChevronDown, ChevronRight, ExternalLink, ImagePlus, Link2, MessageSquare } from "lucide-react";
 import type { NodeKind } from "@/domain/plan";
@@ -11,6 +11,7 @@ import { usePlanner } from "./context";
 import { KIND_LABEL, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { PlanIcon } from "./icons";
+import { HIGHLIGHTER_COLOR, inkPaths } from "./ink-geometry";
 
 type P = NodeProps<PlanFlowNode>;
 
@@ -29,6 +30,7 @@ const MIN: Record<NodeKind, [number, number]> = {
   section: [160, 100],
   image: [80, 60],
   text: [40, 24],
+  ink: [6, 6],
 };
 
 function Handles({ connectable }: { connectable: boolean }) {
@@ -42,7 +44,7 @@ function Handles({ connectable }: { connectable: boolean }) {
 }
 
 /** Resizer, handles and selection badge shared by every node kind. */
-function Chrome({ p, kind, children, resizable = true }: { p: P; kind: NodeKind; children: ReactNode; resizable?: boolean }) {
+function Chrome({ p, kind, children, resizable = true, handles = true }: { p: P; kind: NodeKind; children: ReactNode; resizable?: boolean; handles?: boolean }) {
   const { mode, singleSelectedId, commentCount, openNodeComments } = usePlanner();
   const comments = commentCount?.(p.id) ?? 0;
   const edit = mode === "edit";
@@ -74,7 +76,7 @@ function Chrome({ p, kind, children, resizable = true }: { p: P; kind: NodeKind;
           {comments > 99 ? "99+" : comments}
         </button>
       )}
-      <Handles connectable={edit && p.isConnectable} />
+      {handles && <Handles connectable={edit && p.isConnectable} />}
     </>
   );
 }
@@ -432,6 +434,42 @@ export const TextNode = memo(function TextNode(p: P) {
   );
 });
 
+// ------------------------------------------------------------------ ink (freehand drawing)
+
+/**
+ * A freehand stroke, arrow or highlight. Only the painted stroke takes clicks (planner.css), so
+ * drawings on upper layers never block the elements under them.
+ */
+export const InkNode = memo(function InkNode(p: P) {
+  const ink = p.data.ink;
+  const paths = useMemo(() => (ink ? inkPaths(ink) : null), [ink]);
+  if (!ink || !paths) return null;
+  const color = p.data.color ?? (ink.highlighter ? HIGHLIGHTER_COLOR : "var(--ink)");
+  return (
+    <Chrome p={p} kind="ink" handles={false}>
+      <svg
+        className={cn("wp-ink", ink.highlighter && "is-highlighter")}
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${ink.w} ${ink.h}`}
+        preserveAspectRatio="none"
+        overflow="visible"
+        aria-label={ink.arrow ? "Seta desenhada" : ink.highlighter ? "Destaque" : "Desenho"}
+      >
+        <path d={paths.line} className="wp-ink-hit" fill="none" stroke="transparent" strokeWidth={ink.size + 12} strokeLinecap="round" strokeLinejoin="round" />
+        {ink.arrow ? (
+          <>
+            <path d={paths.line} className="wp-ink-stroke" fill="none" stroke={color} strokeWidth={ink.size} strokeLinecap="round" />
+            <path d={paths.head} className="wp-ink-stroke" fill={color} stroke={color} strokeWidth={Math.max(1, ink.size / 2)} strokeLinejoin="round" />
+          </>
+        ) : (
+          <path d={paths.fill} className="wp-ink-stroke" fill={color} />
+        )}
+      </svg>
+    </Chrome>
+  );
+});
+
 export const nodeTypes: NodeTypes = {
   block: BlockNode,
   container: ContainerNode,
@@ -440,4 +478,5 @@ export const nodeTypes: NodeTypes = {
   link: LinkNode,
   image: ImageNode,
   text: TextNode,
+  ink: InkNode,
 };

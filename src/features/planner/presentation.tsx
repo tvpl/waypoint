@@ -14,7 +14,9 @@ import { ChevronLeft, ChevronRight, Maximize, Minimize, X } from "lucide-react";
 import type { PlanDocument } from "@/domain/plan";
 import { cn, motionMs } from "@/lib/utils";
 import { childrenMap } from "./doc-ops";
+import { useSearchParams } from "next/navigation";
 import { PlanCanvasView } from "./viewer";
+import { viewVisibility } from "@/domain/layers";
 import { activeIdsFor, presentationSteps, type PresentationStep } from "./presentation-steps";
 import type { ResolvedResource } from "./resource-types";
 
@@ -35,7 +37,9 @@ export function PresentationMode({
   onExit: () => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
-  const steps = useMemo(() => presentationSteps(doc, title), [doc, title]);
+  // ?view=… presents a saved view (the canvas reads the same parameter).
+  const viewParam = useSearchParams()?.get("view");
+  const steps = useMemo(() => presentationSteps(doc, title, (viewParam && viewVisibility(doc, viewParam)) || undefined), [doc, title, viewParam]);
   const kids = useMemo(() => childrenMap(doc), [doc]);
   const [index, setIndex] = useState(0);
   const [idle, setIdle] = useState(false);

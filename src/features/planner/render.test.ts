@@ -132,6 +132,16 @@ describe("planner SSR", () => {
       edges,
       meta: { title: "Plan", description: null, tags: ["a"], visibility: "link" },
       tool: "select",
+      ink: { mode: "pen", color: undefined, size: 4 },
+      layers: {
+        list: [
+          { id: "base", name: "Base", visible: true },
+          { id: "p", name: "Proposta", visible: true, color: "#E5484D" },
+        ],
+        views: [],
+        active: "base",
+        counts: new Map(),
+      },
       connectKind: "flow",
       grid: true,
       snap: false,
@@ -154,6 +164,12 @@ describe("planner SSR", () => {
     expect(render({ selectedNodes: nodes.slice(0, 3), selectedEdges: [] })).toContain("Agrupar");
     expect(render({ selectedNodes: [], selectedEdges: [] })).toContain("Qualquer pessoa com o link");
     expect(render({ selectedNodes: [], selectedEdges: [], tool: "connect" })).toContain("Clique na origem");
+    // layers: the selection's layer, drawing tools and a drawn stroke
+    expect(render({ selectedNodes: nodes.slice(0, 1), selectedEdges: [], inspectorTab: "appearance" })).toContain("Proposta");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "draw" })).toContain("Marca-texto");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "erase" })).toContain("Passe sobre os traços");
+    const [ink] = toFlowNodes({ nodes: [{ id: "ink1", kind: "ink", x: 0, y: 0, width: 40, height: 20, data: { title: "", ink: { points: [2, 2, 38, 18], w: 40, h: 20, size: 2, arrow: true } } }] });
+    expect(render({ selectedNodes: [ink], selectedEdges: [] })).toContain("Apagar desenho");
   });
 
   it("renders the plans list", async () => {

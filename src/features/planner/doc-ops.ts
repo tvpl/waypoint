@@ -5,6 +5,7 @@
  */
 import { sortParentsFirst, type PlanDocument, type PlanEdge, type PlanNode, type NodeData } from "@/domain/plan";
 import { COLLAPSED_HEIGHT } from "@/domain/canvas-adapter";
+import { syncNodeLayers } from "@/domain/layers";
 import { newId } from "@/lib/utils";
 import { createNode, PARENT_KINDS } from "./defaults";
 
@@ -90,7 +91,8 @@ export function selectionRoots(doc: Doc, ids: Iterable<string>): string[] {
 }
 
 function finish<T extends Doc>(doc: T, nodes: PlanNode[], edges: PlanEdge[] = doc.edges): T {
-  return { ...doc, nodes: sortParentsFirst(nodes), edges };
+  // Nodes follow the layer of the area they are in.
+  return { ...doc, nodes: syncNodeLayers(sortParentsFirst(nodes)), edges };
 }
 
 // ------------------------------------------------------------------ add / remove
@@ -234,11 +236,14 @@ export function reparent<T extends Doc>(doc: T, id: string, parentId: string | u
   );
 }
 
-/** Deepest (smallest) container/section whose area contains the node's center. */
-export function findDropTarget(doc: Doc, id: string): string | undefined {
+/**
+ * Deepest (smallest) container/section whose area contains the node's center. Drawings stay
+ * free; `canHold` rules out areas on hidden or locked layers.
+ */
+export function findDropTarget(doc: Doc, id: string, canHold?: (n: PlanNode) => boolean): string | undefined {
   const byId = byIdOf(doc);
   const node = byId.get(id);
-  if (!node) return undefined;
+  if (!node || node.kind === "ink") return undefined;
   const r = absRect(doc, id, byId);
   const cx = r.x + r.width / 2;
   const cy = r.y + r.height / 2;
@@ -246,7 +251,7 @@ export function findDropTarget(doc: Doc, id: string): string | undefined {
   banned.add(id);
   let best: { id: string; area: number } | undefined;
   for (const n of doc.nodes) {
-    if (banned.has(n.id) || !PARENT_KINDS.has(n.kind) || n.data.collapsed) continue;
+    if (banned.has(n.id) || !PARENT_KINDS.has(n.kind) || n.data.collapsed || (canHold && !canHold(n))) continue;
     const pr = absRect(doc, n.id, byId);
     if (cx < pr.x || cx > pr.x + pr.width || cy < pr.y || cy > pr.y + pr.height) continue;
     const area = pr.width * pr.height;
@@ -277,6 +282,9 @@ export function groupNodes<T extends Doc>(doc: T, ids: Iterable<string>, title =
   group.width = Math.round(maxX - minX);
   group.height = Math.round(maxY - minY);
   if (common) group.parentId = common;
+  // The new area lives on the layer of the first grouped element.
+  const firstLayer = byId.get(roots[0])!.layer;
+  if (firstLayer) group.layer = firstLayer;
   const rootSet = new Set(roots);
   const nodes = doc.nodes.map((n) => {
     if (!rootSet.has(n.id)) return n;

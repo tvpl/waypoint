@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlignCenterHorizontal,
@@ -30,6 +30,11 @@ import {
   PanelRightOpen,
   Pin,
   PinOff,
+  Library,
+  RefreshCw,
+  Unlink,
+  Plus,
+  Replace,
   Lock,
   EyeOff,
   RotateCcw,
@@ -69,6 +74,8 @@ import { parseUserUrl, fallbackResource } from "./resource-types";
 import { BASE_LAYER_ID } from "@/domain/layers";
 import { HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, INK_COLORS, INK_SIZES, textBox } from "./ink-geometry";
 import { styleOfSelection } from "./shape-style";
+import { colorsInUse } from "./doc-ops";
+import type { LinkedCopy } from "./library-links";
 import { DEFAULT_STYLE, measureText } from "./shape-geometry";
 import {
   AlignPicker,
@@ -82,6 +89,7 @@ import {
   RoutingPicker,
   SizePicker,
   StrokeColors,
+  PlanColors,
   StrokeStylePicker,
   ValueSlider,
   WidthPicker,
@@ -101,32 +109,113 @@ function InspectorBody({ empty }: { empty?: React.ReactNode }) {
   const nodes = ed.selectedNodes;
   const locked = nodes.filter((n) => n.data.locked);
   const hidden = nodes.filter((n) => n.data.hidden);
-  if (!locked.length && !hidden.length) return <InspectorFor empty={empty} />;
+  const copies = [...new Set(nodes.map((n) => ed.libraryLinks.copyOf(n.id)).filter((c) => !!c))];
+  const copy = copies.length === 1 ? copies[0] : null;
+  if (!locked.length && !hidden.length && !copy) return <InspectorFor empty={empty} />;
   const ids = (list: PlanFlowNode[]) => list.map((n) => n.id);
   return (
     <>
-      <div className="mx-3 mt-3 flex shrink-0 flex-col gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-body text-ink-2">
-        {locked.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Lock className="size-3.5 shrink-0" aria-hidden />
-            <span className="flex-1">{locked.length === 1 && nodes.length === 1 ? "Travado no canvas" : `${locked.length} travados`}</span>
-            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setLocked(false, ids(locked))}>
-              Destravar
-            </Button>
-          </div>
-        )}
-        {hidden.length > 0 && (
-          <div className="flex items-center gap-2">
-            <EyeOff className="size-3.5 shrink-0" aria-hidden />
-            <span className="flex-1">{hidden.length === 1 && nodes.length === 1 ? "Oculto" : `${hidden.length} ocultos`}</span>
-            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setHidden(false, ids(hidden))}>
-              Mostrar
-            </Button>
-          </div>
-        )}
-      </div>
+      {copy && <LibraryCopyBanner copy={copy} />}
+      {(locked.length > 0 || hidden.length > 0) && (
+        <div className="mx-3 mt-3 flex shrink-0 flex-col gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-body text-ink-2">
+          {locked.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Lock className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">{locked.length === 1 && nodes.length === 1 ? "Travado no canvas" : `${locked.length} travados`}</span>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setLocked(false, ids(locked))}>
+                Destravar
+              </Button>
+            </div>
+          )}
+          {hidden.length > 0 && (
+            <div className="flex items-center gap-2">
+              <EyeOff className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">{hidden.length === 1 && nodes.length === 1 ? "Oculto" : `${hidden.length} ocultos`}</span>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setHidden(false, ids(hidden))}>
+                Mostrar
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       <InspectorFor empty={empty} />
     </>
+  );
+}
+
+const COPY_STATE: Record<LinkedCopy["state"], string> = {
+  current: "Igual ao item da biblioteca",
+  behind: "O item mudou na biblioteca",
+  edited: "Alterado neste plan",
+  both: "Alterado aqui e na biblioteca",
+  missing: "O item saiu da biblioteca",
+};
+
+/** A linked copy of a library item: where it stands and what can be done with it. */
+function LibraryCopyBanner({ copy }: { copy: LinkedCopy }) {
+  const ed = useEditor();
+  const L = ed.libraryLinks;
+  const [busy, setBusy] = useState(false);
+  const push = async () => {
+    setBusy(true);
+    try {
+      await L.push(copy.instance);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const tone = copy.state === "current" ? "text-muted" : copy.state === "missing" ? "text-danger" : "text-accent-ink";
+  return (
+    <div className="mx-3 mt-3 flex shrink-0 flex-col gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-body" aria-label="Item da biblioteca">
+      <div className="flex items-center gap-2">
+        <Library className="size-3.5 shrink-0 text-ink-2" aria-hidden />
+        <span className="min-w-0 flex-1 truncate font-medium text-ink">{copy.name || "Item da biblioteca"}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-label="Opções da cópia" className="inline-flex size-6 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-3.5">
+              <Ellipsis />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[230px]">
+            {copy.state !== "missing" && (
+              <DropdownMenuItem onSelect={() => L.update(copy.instance)} disabled={copy.state === "current"}>
+                <RefreshCw /> Igualar ao item da biblioteca
+              </DropdownMenuItem>
+            )}
+            {copy.state !== "missing" && (
+              <DropdownMenuItem onSelect={() => void push()} disabled={copy.state === "current"}>
+                <Upload /> Enviar estas alterações ao item
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => L.unlink(copy.instance)}>
+              <Unlink /> Desvincular da biblioteca
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <span className={cn("text-caption", tone)}>{COPY_STATE[copy.state]}</span>
+      {copy.state === "behind" && (
+        <Button size="sm" variant="soft" onClick={() => L.update(copy.instance)}>
+          <RefreshCw /> Atualizar esta cópia
+        </Button>
+      )}
+      {copy.state === "edited" && (
+        <Button size="sm" variant="soft" disabled={busy} onClick={() => void push()}>
+          <Upload /> Enviar ao item da biblioteca
+        </Button>
+      )}
+      {copy.state === "both" && (
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={() => L.update(copy.instance)} title="Descarta as alterações feitas aqui">
+            Usar a da biblioteca
+          </Button>
+          <Button size="sm" variant="secondary" className="flex-1" disabled={busy} onClick={() => void push()} title="Substitui o item da biblioteca">
+            Manter a daqui
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -599,6 +688,10 @@ function TransformSection({ radius }: { radius: boolean }) {
         </Row>
       )}
       <div className="flex items-center justify-between gap-3">
+        <span className="text-body text-ink-2">Manter proporção ao redimensionar</span>
+        <Switch checked={!!first.lockRatio} onChange={(lockRatio) => ed.setShapeProps({ lockRatio })} label="Manter proporção ao redimensionar" />
+      </div>
+      <div className="flex items-center justify-between gap-3">
         <span className="text-body text-ink-2">Sombra suave</span>
         <Switch checked={!!first.shadow} onChange={(shadow) => ed.setShapeProps({ shadow })} label="Sombra suave" />
       </div>
@@ -682,7 +775,7 @@ function InkInspector({ node }: { node: PlanFlowNode }) {
       />
       <div className="flex flex-col gap-2">
         <Label>Cor</Label>
-        <div className="flex flex-wrap gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
+        <div className="relative flex flex-wrap items-center gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
           {INK_COLORS.map((c) => {
             const on = (c.value ?? null) === (shown ?? null);
             return (
@@ -1196,7 +1289,7 @@ function StatusField({ value, onChange }: { value?: NodeData["status"]; onChange
 function ColorSwatches({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
   const cur = value?.toUpperCase();
   return (
-    <div className="flex flex-wrap gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
+    <div className="relative flex flex-wrap items-center gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
       {NODE_PALETTE.map((c) => {
         const on = c.value === "#FFFFFF" ? !cur || cur === "#FFFFFF" : cur === c.value;
         return (
@@ -1213,6 +1306,7 @@ function ColorSwatches({ value, onChange }: { value?: string; onChange: (v: stri
           </Tooltip>
         );
       })}
+      <PlanColors value={cur} onChange={onChange} size={24} />
     </div>
   );
 }
@@ -1479,6 +1573,89 @@ function MultiInspector() {
 
 // ------------------------------------------------------------------ plan
 
+/**
+ * The plan's palette (offered first in every color picker) and the colors the drawing uses: any
+ * of them can be swapped for another everywhere at once.
+ */
+function PlanPalette() {
+  const ed = useEditor();
+  const used = useMemo(() => colorsInUse(fromFlow(ed.nodes, ed.edges, { x: 0, y: 0, zoom: 1 })), [ed.nodes, ed.edges]);
+  const input = useRef<HTMLInputElement>(null);
+  const target = useRef<{ mode: "add" } | { mode: "swap"; from: string }>({ mode: "add" });
+  const open = (t: typeof target.current, start: string) => {
+    target.current = t;
+    if (!input.current) return;
+    input.current.value = start;
+    input.current.click();
+  };
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const done = () => {
+      const hex = el.value.toUpperCase();
+      const t = target.current;
+      if (t.mode === "swap") ed.replaceColor(t.from, hex);
+      ed.setPalette([hex, ...ed.palette]);
+    };
+    el.addEventListener("change", done);
+    return () => el.removeEventListener("change", done);
+  }, [ed]);
+  const swatch = (c: string, inPalette: boolean) => (
+    <DropdownMenu key={`${inPalette}:${c}`}>
+      <Tooltip content={c}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label={`Cor ${c}`} className="size-6 rounded-full border-2 border-surface" style={{ background: c, boxShadow: "0 0 0 1px var(--line-2)" }} />
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent align="start" className="min-w-[220px]">
+        <DropdownMenuItem onSelect={() => open({ mode: "swap", from: c }, c)}>
+          <Replace /> Trocar no desenho inteiro…
+        </DropdownMenuItem>
+        {inPalette ? (
+          <DropdownMenuItem danger onSelect={() => ed.setPalette(ed.palette.filter((x) => x !== c))}>
+            <X /> Tirar da paleta
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => ed.setPalette([c, ...ed.palette])}>
+            <Plus /> Pôr na paleta
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  return (
+    <div className="relative flex flex-col gap-3 rounded-lg border border-line px-3 py-2.5">
+      <input ref={input} type="color" tabIndex={-1} aria-hidden className="pointer-events-none absolute size-0 opacity-0" />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Paleta do plan</span>
+        <Tooltip content="Nova cor na paleta">
+          <Button size="icon-sm" variant="ghost" aria-label="Nova cor na paleta" onClick={() => open({ mode: "add" }, "#2F4FD8")}>
+            <Plus />
+          </Button>
+        </Tooltip>
+      </div>
+      {ed.palette.length ? (
+        <div className="flex flex-wrap gap-2">{ed.palette.map((c) => swatch(c, true))}</div>
+      ) : (
+        <p className="text-caption text-muted">As cores que você escolher com + ou com o conta-gotas aparecem aqui e em todos os seletores de cor deste plan.</p>
+      )}
+      {used.length > 0 && (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-caption text-muted">No desenho</span>
+            {used.some((c) => !ed.palette.includes(c)) && (
+              <button type="button" className="text-caption font-medium text-accent-ink hover:underline" onClick={() => ed.setPalette([...ed.palette, ...used])}>
+                Usar como paleta
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">{used.slice(0, 18).map((c) => swatch(c, ed.palette.includes(c)))}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PlanInspector() {
   const ed = useEditor();
   const m = ed.meta;
@@ -1510,6 +1687,7 @@ function PlanInspector() {
           Alterar
         </Button>
       </div>
+      <PlanPalette />
       <p className="text-xs text-muted">
         {nodeCount} {nodeCount === 1 ? "elemento" : "elementos"} · {edgeCount} {edgeCount === 1 ? "conexão" : "conexões"}
       </p>

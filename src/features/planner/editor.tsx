@@ -76,7 +76,10 @@ import { buildInk, buildTextInk, INK_SIZES, textBox, type Point } from "./ink-ge
 import { clearSteps as clearFlowSteps, numberFlow, stepTargets } from "./flow-steps";
 import { InkCanvas } from "./ink-canvas";
 import { nodeTypes } from "./nodes";
-import { edgeTypes } from "./edges";
+import { edgeTypes, useAvoidance } from "./edges";
+import { PaletteContext } from "./style-controls";
+import { useLibraryLinks } from "./library-links";
+import { contentRev } from "@/domain/library";
 import { History } from "./history";
 import {
   absRect,
@@ -86,6 +89,7 @@ import {
   copySubgraph,
   distributeNodes,
   duplicateNodes,
+  replaceColor,
   findDropTarget,
   groupNodes,
   pasteClip,
@@ -197,9 +201,11 @@ const normalizeForCanvas = (doc: PlanDocument): PlanDocument => ({
   ...fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport),
   ...(doc.layers ? { layers: doc.layers } : {}),
   ...(doc.views ? { views: doc.views } : {}),
+  ...(doc.palette?.length ? { palette: doc.palette } : {}),
 });
 
-type LayerState = { layers?: PlanLayer[]; views?: PlanView[] };
+/** Document-level state beside the React Flow state: layers, saved views and the plan's palette. */
+type LayerState = { layers?: PlanLayer[]; views?: PlanView[]; palette?: string[] };
 const INK_KEY = "wp-planner-ink";
 const STYLE_KEY = "wp-planner-style";
 
@@ -232,13 +238,13 @@ function EditorShell(props: PlanEditorProps) {
   const viewportRef = useRef<Viewport>(initialDoc.viewport);
   const wrapRef = useRef<HTMLDivElement>(null);
   // Layers and saved views live beside the React Flow state (they are document-level).
-  const [layerState, setLayerState] = useState<LayerState>(() => ({ layers: initialDoc.layers, views: initialDoc.views }));
+  const [layerState, setLayerState] = useState<LayerState>(() => ({ layers: initialDoc.layers, views: initialDoc.views, palette: initialDoc.palette }));
   const layerStateRef = useRef(layerState);
 
   const docOf = useCallback((): PlanDocument => {
     const d = fromFlow(nodesRef.current, edgesRef.current, viewportRef.current);
-    const { layers, views } = layerStateRef.current;
-    return { ...d, ...(layers ? { layers } : {}), ...(views ? { views } : {}) };
+    const { layers, views, palette } = layerStateRef.current;
+    return { ...d, ...(layers ? { layers } : {}), ...(views ? { views } : {}), ...(palette?.length ? { palette } : {}) };
   }, []);
 
   // ---------------------------------------------------------------- ui state
@@ -291,7 +297,8 @@ function EditorShell(props: PlanEditorProps) {
     [nodes, annotationView],
   );
   const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...shownNodes] : shownNodes), [overlay.nodes, shownNodes]);
-  const renderEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
+  const allEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
+  const renderEdges = useAvoidance(renderNodes, allEdges);
   const isolateRef = useRef<string | null>(null);
   // Element hovered in the layers panel, outlined on the canvas.
   const [hoverId, setHoverId] = useState<string | null>(null);
@@ -393,11 +400,16 @@ function EditorShell(props: PlanEditorProps) {
     const cur = selectedIds();
     const n = sel?.nodes ? new Set(sel.nodes) : cur.nodes;
     const e = sel?.edges ? new Set(sel.edges) : sel?.nodes ? new Set<string>() : cur.edges;
-    const ls: LayerState = { layers: doc.layers, views: doc.views };
+    const ls: LayerState = { layers: doc.layers, views: doc.views, palette: doc.palette };
     layerStateRef.current = ls;
     setLayerState(ls);
-    setNodes(toFlowNodes(doc, { selected: n, isolate: isolateRef.current }));
-    setEdges(toFlowEdges(doc, { selected: e, isolate: isolateRef.current }));
+    // The refs move now, so a second change in the same tick builds on this one.
+    const ns = toFlowNodes(doc, { selected: n, isolate: isolateRef.current });
+    const es = toFlowEdges(doc, { selected: e, isolate: isolateRef.current });
+    nodesRef.current = ns;
+    edgesRef.current = es;
+    setNodes(ns);
+    setEdges(es);
   }, []);
 
   const setIsolated = useCallback(
@@ -556,7 +568,7 @@ function EditorShell(props: PlanEditorProps) {
       else if (kind === "image") setInspectorTab("content");
       else {
         setInspectorTab("content");
-        setTimeout(() => setEditingId(node.id), 30);
+        setEditingId(node.id);
       }
     },
     [insert, viewportCenter, snap],
@@ -960,6 +972,21 @@ function EditorShell(props: PlanEditorProps) {
     [mutate],
   );
 
+  // The plan's palette: colors picked with "+" or the eyedropper, most recent first.
+  const palette = layerState.palette;
+  const setPalette = useCallback(
+    (colors: string[]) => mutate((d) => {
+      const next = [...new Set(colors.map((c) => c.toUpperCase()))].slice(0, 24);
+      const { palette: _p, ...rest } = d;
+      return next.length ? { ...rest, palette: next } : rest;
+    }, { key: "palette" }),
+    [mutate],
+  );
+  const paletteCtx = useMemo(
+    () => ({ colors: palette ?? [], add: (hex: string) => setPalette([hex, ...(layerStateRef.current.palette ?? [])]) }),
+    [palette, setPalette],
+  );
+
   const setShapeProps = useCallback(
     (patch: ShapeProps) => {
       const ids = new Set(nodesRef.current.filter((n) => n.selected && n.data.shape).map((n) => n.id));
@@ -1077,7 +1104,7 @@ function EditorShell(props: PlanEditorProps) {
       // New annotations are shown even when that category was filtered out.
       setAnnotationViewState((v) => (v.show && v.categories.has(category) ? v : { ...v, show: true, categories: new Set([...v.categories, category]) }));
       setToolState("select");
-      setTimeout(() => setEditingId(id), 30);
+      setEditingId(id);
     },
     [docOf, applyDoc, placeInActive],
   );
@@ -1113,7 +1140,7 @@ function EditorShell(props: PlanEditorProps) {
       if (parent) doc = reparent(doc, id, parent);
       applyDoc(doc, { nodes: [id] });
       setToolState("select");
-      if (type === "text") setTimeout(() => setEditingId(id), 30);
+      if (type === "text") setEditingId(id);
     },
     [docOf, applyDoc, placeInActive, canHold, snap],
   );
@@ -1167,8 +1194,8 @@ function EditorShell(props: PlanEditorProps) {
   );
 
   const insertFragment = useCallback(
-    (content: LibraryContent, at?: { x: number; y: number }) => {
-      const c = instantiateLibraryContent(content, at ?? viewportCenter(), newId);
+    (content: LibraryContent, at?: { x: number; y: number }, link?: { item: string; rev: string }) => {
+      const c = instantiateLibraryContent(content, at ?? viewportCenter(), newId, link);
       const ids = new Set(c.nodes.map((n) => n.id));
       const top = c.nodes.filter((n) => !n.parentId || !ids.has(n.parentId)).map((n) => n.id);
       pendingKey.current = null;
@@ -1177,6 +1204,8 @@ function EditorShell(props: PlanEditorProps) {
     },
     [docOf, applyDoc, placeInActive, viewportCenter],
   );
+
+  const libraryLinks = useLibraryLinks({ nodes, docOf, mutate, canEdit: true });
 
   const selectionFragment = useCallback((): LibraryContent | null => {
     const sel = selectedIds();
@@ -1226,7 +1255,7 @@ function EditorShell(props: PlanEditorProps) {
       };
       pendingKey.current = null;
       applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [] });
-      setTimeout(() => setEditingId(node.id), 30);
+      setEditingId(node.id);
     },
     [docOf, applyDoc, placeInActive],
   );
@@ -1427,6 +1456,10 @@ function EditorShell(props: PlanEditorProps) {
     shapeType,
     setShapeType,
     setShapeProps,
+    libraryLinks,
+    palette: palette ?? [],
+    setPalette,
+    replaceColor: (from: string, to: string) => mutate((d) => replaceColor(d, from, to)),
     setLocked: (on: boolean, ids?: string[] | null) => setFlag("locked", on, ids),
     setHidden: (on: boolean, ids?: string[] | null) => setFlag("hidden", on, ids),
     annotStyle,
@@ -1503,6 +1536,18 @@ function EditorShell(props: PlanEditorProps) {
         else updateNodeData(id, { title });
       },
       commitEdgeLabel: (id, label) => updateEdge(id, { label: label.trim() || undefined }),
+      moveEdgeLabel: (id, pos) => {
+        pendingKey.current = `label-pos:${id}`;
+        setEdges((list) =>
+          list.map((e) => {
+            if (e.id !== id) return e;
+            const data = { ...(e.data ?? { kind: "flow" as const }) };
+            if (pos === null || Math.abs(pos - 0.5) < 0.02) delete data.labelPos;
+            else data.labelPos = Math.round(pos * 1000) / 1000;
+            return { ...e, data };
+          }),
+        );
+      },
       bendEdge: (id, bend) => {
         pendingKey.current = `bend:${id}`;
         setEdges((list) =>
@@ -1738,6 +1783,7 @@ function EditorShell(props: PlanEditorProps) {
           setGuides({
             vertical: g.vertical && { x: g.vertical.x + ox, y1: g.vertical.y1 + oy, y2: g.vertical.y2 + oy },
             horizontal: g.horizontal && { y: g.horizontal.y + oy, x1: g.horizontal.x1 + ox, x2: g.horizontal.x2 + ox },
+            spacing: g.spacing?.map((sp) => (sp.axis === "x" ? { ...sp, from: sp.from + ox, to: sp.to + ox, at: sp.at + oy } : { ...sp, from: sp.from + oy, to: sp.to + oy, at: sp.at + ox })),
           });
         }
       } else if (ch?.type === "position" && !ch.dragging) setGuides(null);
@@ -1849,7 +1895,10 @@ function EditorShell(props: PlanEditorProps) {
         if (typeof p.pack === "string" && typeof p.component === "string") addComponent(p.pack, p.component, at);
       } else if (p.type === "fragment") {
         const content = libraryContentSchema.safeParse(p.content);
-        if (content.success) insertFragment(normalizeLibraryContent(content.data), at);
+        if (content.success) {
+          const c = normalizeLibraryContent(content.data);
+          insertFragment(c, at, typeof p.item === "string" && p.item.length <= 64 ? { item: p.item, rev: contentRev(c) } : undefined);
+        }
       }
       return;
     }
@@ -2015,6 +2064,7 @@ function EditorShell(props: PlanEditorProps) {
 
   return (
     <EditorContext.Provider value={api}>
+      <PaletteContext.Provider value={paletteCtx}>
       <PlannerContext.Provider value={plannerCtx}>
         <div className="flex h-app flex-col overflow-hidden bg-bg text-ink">
           <input
@@ -2234,8 +2284,17 @@ function EditorShell(props: PlanEditorProps) {
                         maskColor="var(--minimap-mask)"
                       />
                     )}
-                    {guides && (guides.vertical || guides.horizontal) && (
+                    {guides && (guides.vertical || guides.horizontal || guides.spacing) && (
                       <ViewportPortal>
+                        {guides.spacing?.map((sp, i) => (
+                          <div
+                            key={i}
+                            className={cn("wp-spacing pointer-events-none absolute", sp.axis === "x" ? "is-x" : "is-y")}
+                            style={sp.axis === "x" ? { left: sp.from, top: sp.at, width: sp.to - sp.from } : { top: sp.from, left: sp.at, height: sp.to - sp.from }}
+                          >
+                            <span>{sp.gap}</span>
+                          </div>
+                        ))}
                         {guides.vertical && (
                           <div
                             className="wp-guide pointer-events-none absolute"
@@ -2328,6 +2387,7 @@ function EditorShell(props: PlanEditorProps) {
           onVisibility={(visibility) => setMeta((m) => ({ ...m, visibility }))}
         />
       </PlannerContext.Provider>
+      </PaletteContext.Provider>
     </EditorContext.Provider>
   );
 }

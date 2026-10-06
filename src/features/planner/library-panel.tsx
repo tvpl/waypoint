@@ -395,8 +395,8 @@ function LibraryCard({ item, lib }: { item: LibraryItem; lib: Lib }) {
       <button
         type="button"
         draggable
-        onDragStart={(e) => setDragPayload(e, { type: "fragment", content: item.content })}
-        onClick={() => ed.insertFragment(item.content)}
+        onDragStart={(e) => setDragPayload(e, { type: "fragment", content: item.content, item: item.id })}
+        onClick={() => ed.insertFragment(item.content, undefined, { item: item.id, rev: item.rev })}
         title={item.name ? `${item.name} — clique ou arraste para o canvas` : "Clique ou arraste para o canvas"}
         className="flex w-full cursor-grab flex-col overflow-hidden rounded-lg border border-line bg-surface text-left transition-colors hover:border-line-2 hover:bg-surface-2 active:cursor-grabbing"
       >

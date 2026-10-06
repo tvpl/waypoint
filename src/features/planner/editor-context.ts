@@ -11,6 +11,7 @@ import type { DrawStyle, Pt } from "./shape-geometry";
 import type { Panels } from "./panels";
 import type { ConvertTarget } from "./convert";
 import type { AnnotationView } from "./annotations";
+import type { LibraryLinks } from "./library-links";
 
 /**
  * "draw": pen or highlighter (see `ink`); "erase": removes drawings under the pointer; the shape
@@ -18,7 +19,7 @@ import type { AnnotationView } from "./annotations";
  * free line); "text" places a text where you click.
  */
 /** Per-shape geometry that is not part of the drawing style carried to the next shape. */
-export type ShapeProps = Partial<Pick<Shape, "rotation" | "flipX" | "flipY" | "shadow" | "radius">>;
+export type ShapeProps = Partial<Pick<Shape, "rotation" | "flipX" | "flipY" | "shadow" | "radius" | "lockRatio">>;
 
 export type Tool = "select" | "hand" | "connect" | "draw" | "erase" | "rect" | "diamond" | "ellipse" | "arrow" | "line" | "text" | "frame" | "annotate" | "shape";
 
@@ -147,6 +148,11 @@ export type EditorApi = {
   /** Locks or hides elements (the selection by default); `null` ids = every element (unlock all, show all). */
   setLocked: (on: boolean, ids?: string[] | null) => void;
   setHidden: (on: boolean, ids?: string[] | null) => void;
+  /** The plan's own colors (offered in every color picker). */
+  palette: string[];
+  setPalette: (colors: string[]) => void;
+  /** Swaps one color for another in the whole drawing. */
+  replaceColor: (from: string, to: string) => void;
   /** Rotation, mirroring, shadow and corner radius of the selected shapes. */
   setShapeProps: (patch: ShapeProps) => void;
   /** The kind and category the annotation tool (N) adds. */
@@ -165,8 +171,10 @@ export type EditorApi = {
   addComponent: (pack: string, type: string, at?: Pt) => void;
   /** An icon from the library (canvas point; default the view's center). */
   addIcon: (icon: IconPick, at?: Pt) => void;
-  /** A library item: a fresh copy centered on the point (default the view's center). */
-  insertFragment: (content: LibraryContent, at?: Pt) => void;
+  /** A library item: a fresh copy centered on the point (default the view's center), linked to its item with `link`. */
+  insertFragment: (content: LibraryContent, at?: Pt, link?: { item: string; rev: string }) => void;
+  /** Linked copies of library items in this plan (update, send back, unlink). */
+  libraryLinks: LibraryLinks;
   /** The selection as a library item (elements inside it and the connections among them). */
   selectionFragment: () => LibraryContent | null;
   /** An arrow or line: connects the elements it starts and ends on, else it is a free line. */

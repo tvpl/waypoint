@@ -684,3 +684,71 @@
   opacity: 0.3;
   filter: saturate(0.4);
 }
+
+/* A label that slides along its connection (editor). */
+.wp-edge-label.is-movable {
+  cursor: grab;
+}
+.wp-edge-label.is-movable:active {
+  cursor: grabbing;
+}
+
+/* Equal-spacing guides: a measured span between two elements, with its size. */
+.wp-spacing {
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e5484d;
+}
+.wp-spacing.is-x {
+  height: 0;
+  border-top: 1px solid currentColor;
+}
+.wp-spacing.is-y {
+  width: 0;
+  border-left: 1px solid currentColor;
+}
+.wp-spacing.is-x::before,
+.wp-spacing.is-x::after,
+.wp-spacing.is-y::before,
+.wp-spacing.is-y::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+.wp-spacing.is-x::before,
+.wp-spacing.is-x::after {
+  top: -5px;
+  width: 1px;
+  height: 9px;
+}
+.wp-spacing.is-x::before {
+  left: 0;
+}
+.wp-spacing.is-x::after {
+  right: 0;
+}
+.wp-spacing.is-y::before,
+.wp-spacing.is-y::after {
+  left: -5px;
+  height: 1px;
+  width: 9px;
+}
+.wp-spacing.is-y::before {
+  top: 0;
+}
+.wp-spacing.is-y::after {
+  bottom: 0;
+}
+.wp-spacing span {
+  position: absolute;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  white-space: nowrap;
+}

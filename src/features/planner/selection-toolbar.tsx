@@ -17,6 +17,7 @@ import {
   FillColors,
   FillStylePicker,
   FontPicker,
+  PlanColors,
   RoughnessPicker,
   SizePicker,
   StrokeColors,
@@ -158,7 +159,7 @@ export function SelectionToolbar() {
         {plain && (
           <Pop label="Cor" trigger={<Swatch color={nodeColor} />} width={212}>
             <Field label="Cor">
-              <div className="grid grid-cols-6 gap-1.5">
+              <div className="relative flex flex-wrap items-center gap-1.5">
                 {NODE_PALETTE.map((c) => (
                   <button
                     key={c.value}
@@ -170,6 +171,7 @@ export function SelectionToolbar() {
                     style={{ background: c.value }}
                   />
                 ))}
+                <PlanColors value={nodeColor} onChange={(color) => nodes.forEach((n) => ed.updateNodeData(n.id, { color }, "quick-color"))} size={24} />
               </div>
             </Field>
           </Pop>

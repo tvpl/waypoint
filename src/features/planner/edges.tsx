@@ -1,11 +1,124 @@
 "use client";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, useInternalNode, useReactFlow, type EdgeProps, type EdgeTypes, type InternalNode } from "@xyflow/react";
 import { EDGE_KINDS, type EdgeKind, type EdgeStyle } from "@/domain/plan";
 import { arrowheadPath, bendThrough, curveApex, curveControl, dashFor, DEFAULT_BEND, DEFAULT_STYLE, endTangent, floatingEnds, headInset, linkPaths, seedOf, type Pt } from "./shape-geometry";
 import { EDGE_APPEARANCE, type PlanFlowEdge } from "@/domain/canvas-adapter";
 import { cn } from "@/lib/utils";
 import { usePlanner } from "./context";
+import { avoidanceBoxes, orthoRoute, plainElbow, polylineHits, roundedPath, type Box, type Side } from "./edge-routing";
+
+type Avoid = { boxes: Box[]; source: Box; target: Box };
+
+/** A hidden path used to measure SVG paths (point at a length, nearest point). */
+let probe: SVGPathElement | null = null;
+function measure(d: string): SVGPathElement | null {
+  if (typeof document === "undefined") return null;
+  if (!probe || !probe.isConnected) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none";
+    probe = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    svg.appendChild(probe);
+    document.body.appendChild(svg);
+  }
+  probe.setAttribute("d", d);
+  return probe;
+}
+
+/** The point `t` (0–1) of the way along a path. */
+function pointOnPath(d: string, t: number): Pt | null {
+  const el = measure(d);
+  if (!el) return null;
+  const q = el.getPointAtLength(el.getTotalLength() * t);
+  return { x: q.x, y: q.y };
+}
+
+/** How far along a path (0–1) the point nearest to `p` is. */
+function nearestOnPath(d: string, p: Pt): number {
+  const el = measure(d);
+  if (!el) return 0.5;
+  const len = el.getTotalLength() || 1;
+  let best = 0.5;
+  let bestD = Infinity;
+  for (let i = 0; i <= 100; i++) {
+    const q = el.getPointAtLength((len * i) / 100);
+    const dd = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+    if (dd < bestD) {
+      bestD = dd;
+      best = i / 100;
+    }
+  }
+  return best;
+}
+
+/**
+ * Where a connection's label goes: its own spot along the line, or the default. In the editor,
+ * dragging the label slides it along the line (a double click brings it back to the middle).
+ */
+function useEdgeLabel(id: string, d: string, pos: number | undefined, fallback: Pt) {
+  const { mode, moveEdgeLabel } = usePlanner();
+  const rf = useReactFlow();
+  const at = useMemo(() => (pos === undefined ? fallback : (pointOnPath(d, pos) ?? fallback)), [d, pos, fallback.x, fallback.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  const canMove = mode === "edit" && !!moveEdgeLabel;
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (!canMove || e.button !== 0) return;
+    const el = e.currentTarget as HTMLElement;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      if (!moved) {
+        moved = true;
+        el.setPointerCapture(ev.pointerId);
+      }
+      moveEdgeLabel!(id, nearestOnPath(d, rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY })));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  const handlers = canMove
+    ? {
+        onPointerDown,
+        onDoubleClick: (e: React.MouseEvent) => {
+          if (pos === undefined) return;
+          e.stopPropagation();
+          moveEdgeLabel!(id, null);
+        },
+      }
+    : {};
+  return { at, handlers, movable: canMove };
+}
+
+/**
+ * The connections to draw, with what each elbow connection must go around (`_avoid`). Unchanged
+ * connections keep their object, so only the ones whose surroundings moved redraw.
+ */
+export function useAvoidance(nodes: Parameters<typeof avoidanceBoxes>[0], edges: PlanFlowEdge[]): PlanFlowEdge[] {
+  const cache = useRef(new Map<string, { key: string; edge: PlanFlowEdge; out: PlanFlowEdge }>());
+  return useMemo(() => {
+    const found = avoidanceBoxes(nodes, edges);
+    const next = new Map<string, { key: string; edge: PlanFlowEdge; out: PlanFlowEdge }>();
+    const list = edges.map((e) => {
+      const a = found.get(e.id);
+      if (!a) return e;
+      const key = JSON.stringify(a);
+      const prev = cache.current.get(e.id);
+      const out = prev && prev.key === key && prev.edge === e ? prev.out : { ...e, data: { ...(e.data ?? { kind: "flow" as const }), _avoid: a } };
+      next.set(e.id, { key, edge: e, out });
+      return out;
+    });
+    cache.current = next;
+    return list;
+  }, [nodes, edges]);
+}
 
 /** Direction (degrees) an edge travels when it enters a handle on each side of the target. */
 const ENTRY_ANGLE: Record<Position, number> = {
@@ -38,13 +151,17 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
  * curved), with its own color, width, dash, hand-drawn wobble and arrowheads at either end.
  */
 function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
-  const st = p.edgeStyle;
   const src = useInternalNode(p.source);
   const tgt = useInternalNode(p.target);
+  if (!src || !tgt) return null;
+  return <StyledEdgeBody {...p} src={src} tgt={tgt} />;
+}
+
+function StyledEdgeBody({ src, tgt, ...p }: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle; src: InternalNode; tgt: InternalNode }) {
+  const st = p.edgeStyle;
   const { mode, editingId, setEditingId, commitEdgeLabel, bendEdge } = usePlanner();
   const rf = useReactFlow();
   const editing = mode === "edit" && editingId === p.id && !!commitEdgeLabel;
-  if (!src || !tgt) return null;
   const width = st.strokeWidth ?? DEFAULT_STYLE.strokeWidth;
   const roughness = st.roughness ?? (p.data?._sketch ? 1 : 0);
   const curve = st.routing === "curve";
@@ -67,7 +184,9 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
   ];
   const color = st.stroke ?? "var(--wp-edge-ink)";
   const mid = curve ? curveControl(start, end, bend) : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-  const labelAt = curve ? curveApex(start, end, bend) : mid;
+  const handleAt = curve ? curveApex(start, end, bend) : mid;
+  const linePath = `M${start.x} ${start.y} ${curve ? `Q${mid.x} ${mid.y}` : "L"} ${end.x} ${end.y}`;
+  const { at: labelAt, handlers: labelHandlers, movable } = useEdgeLabel(p.id, linePath, p.data?.labelPos, handleAt);
   // Drag the middle handle to bend the line through the pointer (back near the middle: straight).
   const onBend = (e: React.PointerEvent) => {
     if (!bendEdge || e.button !== 0) return;
@@ -97,8 +216,8 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
   return (
     <g style={faded} className="wp-styled-edge">
       {/* wide invisible path for hover and clicks */}
-      <path d={`M${start.x} ${start.y} ${curve ? `Q${mid.x} ${mid.y}` : "L"} ${end.x} ${end.y}`} fill="none" stroke="transparent" strokeWidth={18} className="react-flow__edge-interaction" />
-      {p.selected && <path d={`M${start.x} ${start.y} ${curve ? `Q${mid.x} ${mid.y}` : "L"} ${end.x} ${end.y}`} fill="none" stroke="var(--accent)" strokeOpacity={0.28} strokeWidth={width + 8} strokeLinecap="round" />}
+      <path d={linePath} fill="none" stroke="transparent" strokeWidth={18} className="react-flow__edge-interaction" />
+      {p.selected && <path d={linePath} fill="none" stroke="var(--accent)" strokeOpacity={0.28} strokeWidth={width + 8} strokeLinecap="round" />}
       {lines.map((d, i) => (
         <path key={i} d={d} fill="none" className="wp-edge-path" style={{ stroke: color, strokeWidth: width, strokeDasharray: dashFor(st.strokeStyle ?? "solid", width) }} strokeLinecap="round" strokeLinejoin="round" />
       ))}
@@ -131,8 +250,9 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
       {(label || step) && !editing && (
         <EdgeLabelRenderer>
           <div
-            className={cn("wp-edge-label nodrag nopan", !label && "is-step-only", p.selected && "is-selected", p.data?._dim === true && "is-dim", p.data?._diff && `wp-diff-${p.data._diff}`)}
+            className={cn("wp-edge-label nodrag nopan", !label && "is-step-only", p.selected && "is-selected", movable && "is-movable", p.data?._dim === true && "is-dim", p.data?._diff && `wp-diff-${p.data._diff}`)}
             style={{ transform: `translate(-50%, -50%) translate(${labelAt.x}px, ${labelAt.y}px)`, ...faded }}
+            {...labelHandlers}
             title={p.data?.description || label || `Passo ${step}`}
           >
             {step && (
@@ -152,7 +272,7 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
             aria-valuenow={Math.round((curve ? (bend ?? DEFAULT_BEND) : 0) * 100)}
             title="Arraste para curvar · clique duplo endireita"
             className="wp-bend-handle nodrag nopan"
-            style={{ transform: `translate(-50%, -50%) translate(${labelAt.x}px, ${labelAt.y}px)` }}
+            style={{ transform: `translate(-50%, -50%) translate(${handleAt.x}px, ${handleAt.y}px)` }}
             onPointerDown={onBend}
             onDoubleClick={(e) => {
               e.stopPropagation();
@@ -171,7 +291,8 @@ const KindEdge = memo(function KindEdge(p: EdgeProps<PlanFlowEdge>) {
   const app = EDGE_APPEARANCE[kind];
   // An elbow connection drawn with the arrow tool keeps its color, width and dash.
   const st = p.data?.style;
-  const [path, lx, ly] = getSmoothStepPath({
+  const avoid = p.data?._avoid as Avoid | undefined;
+  const [stepPath, sx, sy] = getSmoothStepPath({
     sourceX: p.sourceX,
     sourceY: p.sourceY,
     targetX: p.targetX,
@@ -181,6 +302,22 @@ const KindEdge = memo(function KindEdge(p: EdgeProps<PlanFlowEdge>) {
     borderRadius: 10,
     offset: 18,
   });
+  // Something in the way: go around it.
+  const routed = useMemo(() => {
+    if (!avoid) return null;
+    const s0 = { x: p.sourceX, y: p.sourceY };
+    const t0 = { x: p.targetX, y: p.targetY };
+    const sSide = p.sourcePosition as Side;
+    const tSide = p.targetPosition as Side;
+    if (!polylineHits(plainElbow(s0, sSide, t0, tSide), avoid.boxes)) return null;
+    const pts = orthoRoute(s0, sSide, t0, tSide, avoid.boxes, [avoid.source, avoid.target]);
+    return pts ? roundedPath(pts, 10) : null;
+  }, [avoid, p.sourceX, p.sourceY, p.targetX, p.targetY, p.sourcePosition, p.targetPosition]);
+  const path = routed?.d ?? stepPath;
+  const fallback = useMemo(() => (routed ? routed.mid : { x: sx, y: sy }), [routed, sx, sy]);
+  const { at: labelAt, handlers: labelHandlers, movable } = useEdgeLabel(p.id, path, p.data?.labelPos, fallback);
+  const lx = labelAt.x;
+  const ly = labelAt.y;
   const label = p.data?.label;
   const step = p.data?.step;
   const opacity = p.data?._opacity;
@@ -230,8 +367,9 @@ const KindEdge = memo(function KindEdge(p: EdgeProps<PlanFlowEdge>) {
       {(label || step) && !editing && (
         <EdgeLabelRenderer>
           <div
-            className={cn("wp-edge-label nodrag nopan", !label && "is-step-only", p.selected && "is-selected", p.data?._dim === true && "is-dim", p.data?._diff && `wp-diff-${p.data._diff}`)}
+            className={cn("wp-edge-label nodrag nopan", !label && "is-step-only", p.selected && "is-selected", movable && "is-movable", p.data?._dim === true && "is-dim", p.data?._diff && `wp-diff-${p.data._diff}`)}
             style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, ...faded }}
+            {...labelHandlers}
             title={p.data?.description || label || `Passo ${step}`}
           >
             {step && (

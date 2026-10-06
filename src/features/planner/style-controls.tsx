@@ -4,7 +4,8 @@
  * stroke width and dash, clean or hand-drawn, corners, font, size, alignment, arrowheads, route.
  * Shared by the floating style bar and the inspector.
  */
-import { AlignCenter, AlignLeft, AlignRight, Spline } from "lucide-react";
+import { createContext, useContext, useEffect, useRef } from "react";
+import { AlignCenter, AlignLeft, AlignRight, Pipette, Plus, Spline } from "lucide-react";
 import type { Arrowhead } from "@/domain/plan";
 import { Tooltip } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -34,9 +35,89 @@ function Choice({ label, on, onClick, children }: { label: string; on: boolean; 
   );
 }
 
+/** The plan's own colors, offered after the fixed ones in every color picker (the editor provides it). */
+export const PaletteContext = createContext<{ colors: string[]; add: (hex: string) => void } | null>(null);
+
+type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
+
+/** The plan's colors, then "+" (any color) and the eyedropper (pick a color from the screen). */
+export function PlanColors({ value, onChange, size, square }: { value: string | undefined; onChange: (v: string) => void; size: number; square?: boolean }) {
+  const palette = useContext(PaletteContext);
+  const input = useRef<HTMLInputElement>(null);
+  const cb = useRef({ onChange, palette });
+  cb.current = { onChange, palette };
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    // "change" fires once the system picker closes (not on every drag of it).
+    const done = () => {
+      const hex = el.value.toUpperCase();
+      cb.current.onChange(hex);
+      cb.current.palette?.add(hex);
+    };
+    el.addEventListener("change", done);
+    return () => el.removeEventListener("change", done);
+  }, []);
+  if (!palette) return null;
+  const Dropper = typeof window !== "undefined" ? (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper : undefined;
+  const pick = async () => {
+    if (!Dropper) return;
+    try {
+      const { sRGBHex } = await new Dropper().open();
+      const hex = /^#[0-9a-f]{6}$/i.test(sRGBHex) ? sRGBHex.toUpperCase() : rgbToHex(sRGBHex);
+      if (!hex) return;
+      onChange(hex);
+      palette.add(hex);
+    } catch {
+      /* cancelled */
+    }
+  };
+  const small = cn("inline-flex shrink-0 items-center justify-center text-muted transition-colors hover:bg-hover hover:text-ink [&_svg]:size-3.5", square ? "rounded-md" : "rounded-full");
+  return (
+    <>
+      <span className="mx-0.5 h-4 w-px shrink-0 bg-line" aria-hidden />
+      {palette.colors.map((c) => {
+        const on = !!value && value.toUpperCase() === c.toUpperCase();
+        return (
+          <Tooltip key={c} content={`${c} · paleta do plan`}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={`Cor ${c}`}
+              onClick={() => onChange(c)}
+              className={cn("shrink-0 border-2 border-surface", square ? "rounded-md" : "rounded-full")}
+              style={{ width: size, height: size, background: c, boxShadow: on ? "0 0 0 2px var(--accent)" : "0 0 0 1px var(--line-2)" }}
+            />
+          </Tooltip>
+        );
+      })}
+      <Tooltip content="Outra cor (entra na paleta do plan)">
+        <button type="button" aria-label="Outra cor" className={small} style={{ width: size + 2, height: size + 2 }} onClick={() => input.current?.click()}>
+          <Plus />
+        </button>
+      </Tooltip>
+      <input ref={input} type="color" tabIndex={-1} aria-hidden className="pointer-events-none absolute size-0 opacity-0" defaultValue={value ?? "#2F4FD8"} />
+      {Dropper && (
+        <Tooltip content="Conta-gotas: pegar uma cor da tela">
+          <button type="button" aria-label="Conta-gotas" className={small} style={{ width: size + 2, height: size + 2 }} onClick={pick}>
+            <Pipette />
+          </button>
+        </Tooltip>
+      )}
+    </>
+  );
+}
+
+function rgbToHex(css: string): string | null {
+  const m = css.match(/(\d+)\D+(\d+)\D+(\d+)/);
+  if (!m) return null;
+  return `#${[m[1], m[2], m[3]].map((n) => Math.min(255, Number(n)).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+}
+
 export function StrokeColors({ value, onChange, size = 20 }: { value: string | undefined; onChange: (v: string | undefined) => void; size?: number }) {
   return (
-    <Group label="Cor do traço" className="gap-1 px-0.5">
+    <Group label="Cor do traço" className="relative flex-wrap gap-1 px-0.5">
       {STROKE_COLORS.map((c) => {
         const on = (c.value ?? null) === (value ?? null);
         return (
@@ -53,13 +134,14 @@ export function StrokeColors({ value, onChange, size = 20 }: { value: string | u
           </Tooltip>
         );
       })}
+      <PlanColors value={value} onChange={onChange} size={size} />
     </Group>
   );
 }
 
 export function FillColors({ value, onChange, size = 20 }: { value: string | undefined; onChange: (v: string | undefined) => void; size?: number }) {
   return (
-    <Group label="Fundo" className="gap-1 px-0.5">
+    <Group label="Fundo" className="relative flex-wrap gap-1 px-0.5">
       {FILL_COLORS.map((c) => {
         const on = (c.value ?? null) === (value ?? null);
         return (
@@ -81,6 +163,7 @@ export function FillColors({ value, onChange, size = 20 }: { value: string | und
           </Tooltip>
         );
       })}
+      <PlanColors value={value} onChange={onChange} size={size} square />
     </Group>
   );
 }

@@ -45,7 +45,7 @@ function uniqueSlug(workspaceId: string, base: string, exceptId?: string) {
 type DocRow = { nodesJson: string; edgesJson: string; viewportJson: string; layersJson?: string | null };
 
 function parseDoc(row: DocRow): PlanDocument {
-  const extra = row.layersJson ? (JSON.parse(row.layersJson) as Pick<PlanDocument, "layers" | "views">) : {};
+  const extra = row.layersJson ? (JSON.parse(row.layersJson) as Pick<PlanDocument, "layers" | "views" | "palette">) : {};
   return normalizeDocument({
     schemaVersion: 1,
     nodes: JSON.parse(row.nodesJson),
@@ -53,11 +53,13 @@ function parseDoc(row: DocRow): PlanDocument {
     viewport: JSON.parse(row.viewportJson),
     ...(extra.layers ? { layers: extra.layers } : {}),
     ...(extra.views ? { views: extra.views } : {}),
+    ...(extra.palette?.length ? { palette: extra.palette } : {}),
   });
 }
 
-/** Layers and views stored beside the nodes (null when the plan uses neither). */
-const layersJsonOf = (doc: PlanDocument) => (doc.layers || doc.views ? JSON.stringify({ layers: doc.layers, views: doc.views }) : null);
+/** Layers, views and the palette stored beside the nodes (null when the plan uses none). */
+const layersJsonOf = (doc: PlanDocument) =>
+  doc.layers || doc.views || doc.palette?.length ? JSON.stringify({ layers: doc.layers, views: doc.views, ...(doc.palette?.length ? { palette: doc.palette } : {}) }) : null;
 
 export type { Thumb, ThumbNode } from "@/domain/plan-thumb";
 

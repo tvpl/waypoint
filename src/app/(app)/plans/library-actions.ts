@@ -1,7 +1,7 @@
 "use server";
 import { z } from "zod";
 import { canEditWorkspace, requireWorkspace, UserError } from "@/server/services/workspaces";
-import { addLibraryItems, deleteLibraryItems, listLibrary, renameLibraryItem } from "@/server/services/library";
+import { addLibraryItems, deleteLibraryItems, getLibraryItems, listLibrary, renameLibraryItem, updateLibraryItem } from "@/server/services/library";
 import type { LibraryItem } from "@/domain/library";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -54,5 +54,21 @@ export async function deleteLibraryItemsAction(ids: string[]): Promise<Result> {
     const ctx = await requireEditor();
     deleteLibraryItems(ctx.workspace.id, z.array(z.string().max(64)).max(1000).parse(ids));
     return {};
+  });
+}
+
+/** The items a plan's linked copies come from (to show and apply their updates). */
+export async function getLibraryItemsAction(ids: string[]): Promise<Result<{ items: LibraryItem[] }>> {
+  return run(async () => {
+    const ctx = await requireWorkspace();
+    return { items: getLibraryItems(ctx.workspace.id, z.array(z.string().max(64)).max(200).parse(ids)) };
+  });
+}
+
+/** A linked copy sends its drawing back to the item (every other copy can then update). */
+export async function updateLibraryItemAction(id: string, content: unknown): Promise<Result<{ rev: string }>> {
+  return run(async () => {
+    const ctx = await requireEditor();
+    return { rev: updateLibraryItem(ctx.workspace.id, String(id), content) };
   });
 }

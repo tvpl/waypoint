@@ -16,6 +16,8 @@ export type PlannerContextValue = {
   commitEdgeLabel?: (id: string, label: string) => void;
   /** Dragging a drawn connection's middle handle: curves it through that point (`null` = straighten). */
   bendEdge?: (id: string, bend: number | null) => void;
+  /** Dragging a connection's label along it (0–1; `null` = back to the middle). */
+  moveEdgeLabel?: (id: string, pos: number | null) => void;
   toggleCollapsed: (id: string) => void;
   childCount: (id: string) => number;
   /** Only node selected (shows the size badge). */

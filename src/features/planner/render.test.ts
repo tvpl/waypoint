@@ -148,6 +148,8 @@ describe("planner SSR", () => {
       connectKind: "flow",
       grid: true,
       snap: false,
+      palette: [],
+      libraryLinks: { copies: [], copyOf: () => null },
       resourceFor: (n: { id: string }) => (n.id === "lnk" ? resources.lnk : null),
       hasClipboard: () => false,
     };

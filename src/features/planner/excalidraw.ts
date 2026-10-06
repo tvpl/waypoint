@@ -459,7 +459,7 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
         roundness: s.round === false || s.type === "ellipse" ? null : { type: s.type === "rect" ? 3 : 2 },
         seed: s.seed ?? seedOf(n.id),
         // Mirroring and shadow have no Excalidraw twin: kept for the way back.
-        ...(s.flipX || s.flipY || s.shadow || s.radius !== undefined ? { customData: custom(n, { shape: s }) } : {}),
+        ...(s.flipX || s.flipY || s.shadow || s.lockRatio || s.radius !== undefined ? { customData: custom(n, { shape: s }) } : {}),
       });
       out.push(el);
       els.set(n.id, el);
@@ -808,7 +808,7 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
     const rotation = deg > 180 ? deg - 360 : deg;
     if (rotation && Math.abs(rotation) <= 360) s.rotation = rotation;
     const kept = wpOf(el).shape;
-    if (kept?.type === type) for (const k of ["flipX", "flipY", "shadow", "radius"] as const) if (kept[k] !== undefined) (s as Record<string, unknown>)[k] = kept[k];
+    if (kept?.type === type) for (const k of ["flipX", "flipY", "shadow", "radius", "lockRatio"] as const) if (kept[k] !== undefined) (s as Record<string, unknown>)[k] = kept[k];
     return s;
   };
 

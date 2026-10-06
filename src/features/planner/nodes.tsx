@@ -8,7 +8,7 @@ import { SiteIcon } from "@/components/ui/misc";
 import { cn } from "@/lib/utils";
 import { readableText } from "@/lib/color";
 import { usePlanner } from "./context";
-import { KIND_LABEL, statusMeta } from "./defaults";
+import { KIND_LABEL, SHAPE_LABEL, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { PlanIcon } from "./icons";
 import { HIGHLIGHTER_COLOR, inkFontSize, inkPaths, shapePath } from "./ink-geometry";
@@ -60,11 +60,11 @@ function Chrome({ p, kind, children, resizable = true, handles = true }: { p: P;
   return (
     <>
       {edit && resizable && (
-        <NodeResizer isVisible={p.selected} minWidth={mw} minHeight={mh} handleClassName="wp-resize-handle" lineClassName="wp-resize-line" />
+        <NodeResizer isVisible={p.selected} minWidth={mw} minHeight={mh} keepAspectRatio={!!p.data.shape?.lockRatio} handleClassName="wp-resize-handle" lineClassName="wp-resize-line" />
       )}
       {edit && p.selected && singleSelectedId === p.id && (
         <div className="pointer-events-none absolute -top-[26px] left-0 z-10 whitespace-nowrap rounded bg-accent px-1.5 py-0.5 text-caption font-medium text-white">
-          {KIND_LABEL[kind]} · {Math.round(p.width ?? 0)} × {Math.round(p.height ?? 0)}
+          {kind === "shape" && p.data.shape ? SHAPE_LABEL[p.data.shape.type] : KIND_LABEL[kind]} · {Math.round(p.width ?? 0)} × {Math.round(p.height ?? 0)}
         </div>
       )}
       {children}

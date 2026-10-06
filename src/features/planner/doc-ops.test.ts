@@ -3,6 +3,8 @@ import type { PlanDocument, PlanNode } from "@/domain/plan";
 import {
   absPos,
   alignNodes,
+  colorsInUse,
+  replaceColor,
   bringToFront,
   copySubgraph,
   distributeNodes,
@@ -146,5 +148,29 @@ describe("doc-ops", () => {
   it("swaps edge direction with handles", () => {
     const d = swapEdge(base(), "e2");
     expect(d.edges[1]).toMatchObject({ source: "c", target: "b", sourceHandle: "l", targetHandle: "r" });
+  });
+});
+
+describe("plan colors", () => {
+  const d = {
+    nodes: [
+      { id: "a", kind: "block", x: 0, y: 0, width: 10, height: 10, data: { title: "", color: "#ffeadb" } },
+      { id: "b", kind: "shape", x: 0, y: 0, width: 10, height: 10, data: { title: "", shape: { type: "rect", stroke: "#1971C2", fill: "#FFEADB" } } },
+      { id: "c", kind: "shape", x: 0, y: 0, width: 10, height: 10, data: { title: "", shape: { type: "ellipse" } } },
+    ],
+    edges: [{ id: "e", source: "a", target: "b", kind: "flow", style: { stroke: "#1971C2" } }],
+  } as Pick<PlanDocument, "nodes" | "edges">;
+
+  it("lists the colors in use, most used first", () => {
+    expect(colorsInUse(d)).toEqual(["#FFEADB", "#1971C2"]);
+  });
+
+  it("swaps a color everywhere, leaving the rest alone", () => {
+    const r = replaceColor(d, "#FFEADB", "#B2F2BB");
+    expect(r.nodes[0].data.color).toBe("#B2F2BB");
+    expect(r.nodes[1].data.shape).toEqual({ type: "rect", stroke: "#1971C2", fill: "#B2F2BB" });
+    expect(r.nodes[2]).toBe(d.nodes[2]);
+    expect(r.edges[0]).toBe(d.edges[0]);
+    expect(replaceColor(d, "#000000", "#FFFFFF")).toBe(d);
   });
 });

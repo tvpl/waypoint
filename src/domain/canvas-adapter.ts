@@ -40,6 +40,7 @@ export type FlowEdgeData = {
   description?: string;
   layer?: string;
   step?: number;
+  labelPos?: number;
   style?: EdgeStyle;
   _opacity?: number;
   _diff?: string;
@@ -242,7 +243,7 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerR
     sourceHandle: e.sourceHandle ?? null,
     targetHandle: e.targetHandle ?? null,
     type: "plan",
-    data: { kind, label: e.label, description: e.description, layer: e.layer, step: e.step, style: e.style },
+    data: { kind, label: e.label, description: e.description, layer: e.layer, step: e.step, labelPos: e.labelPos, style: e.style },
     markerEnd: edgeMarker(kind),
     // Above top-level containers so connectors crossing an area stay visible (and above
     // everything on lower layers).
@@ -366,6 +367,7 @@ export function fromFlowEdge(e: AnyFlowEdge): PlanEdge {
   if (d.description) out.description = d.description;
   if (typeof d.layer === "string") out.layer = d.layer;
   if (typeof d.step === "number" && Number.isInteger(d.step) && d.step >= 1) out.step = d.step;
+  if (typeof d.labelPos === "number" && d.labelPos >= 0 && d.labelPos <= 1) out.labelPos = d.labelPos;
   if (d.style && typeof d.style === "object") {
     const style = Object.fromEntries(Object.entries(d.style).filter(([, v]) => v !== undefined)) as EdgeStyle;
     if (Object.keys(style).length) out.style = style;
@@ -406,8 +408,8 @@ export function sameFingerprint(a: readonly unknown[] | null, b: readonly unknow
 }
 
 /** Stable string of the document *content* (viewport excluded) — used to detect real changes. */
-export function contentSignature(doc: Pick<PlanDocument, "nodes" | "edges"> & Partial<Pick<PlanDocument, "layers" | "views">>): string {
-  return stableStringify([doc.nodes, doc.edges, doc.layers ?? null, doc.views ?? null]);
+export function contentSignature(doc: Pick<PlanDocument, "nodes" | "edges"> & Partial<Pick<PlanDocument, "layers" | "views" | "palette">>): string {
+  return stableStringify([doc.nodes, doc.edges, doc.layers ?? null, doc.views ?? null, ...(doc.palette?.length ? [doc.palette] : [])]);
 }
 
 /** JSON with sorted object keys and undefined values dropped (key order independent). */

@@ -14,7 +14,7 @@ export type DragPayload =
   /** From the library panel (validated on drop: another page can put anything in a drag). */
   | { type: "icon"; icon: unknown }
   | { type: "component"; pack: unknown; component: unknown }
-  | { type: "fragment"; content: unknown };
+  | { type: "fragment"; content: unknown; item?: string };
 
 export function setDragPayload(e: React.DragEvent, payload: DragPayload) {
   e.dataTransfer.setData(DND_MIME, JSON.stringify(payload));

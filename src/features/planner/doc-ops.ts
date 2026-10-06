@@ -205,6 +205,14 @@ export function pasteClip<T extends Doc>(doc: T, clip: Clip, opts: { offset?: { 
     }
     return setParent({ ...structuredClone(n), id }, keepParent, x, y);
   });
+  // A pasted library copy is a new copy of the same item (its own instance id).
+  const instances = new Map<string, string>();
+  for (const n of nodes) {
+    const r = n.data.libraryRef;
+    if (!r) continue;
+    if (!instances.has(r.instance)) instances.set(r.instance, newId());
+    n.data = { ...n.data, libraryRef: { ...r, instance: instances.get(r.instance)! } };
+  }
   const edges = clip.edges.filter((e) => map.has(e.source) && map.has(e.target)).map((e) => ({ ...e, id: newId(), source: map.get(e.source)!, target: map.get(e.target)! }));
   return { doc: finish(doc, [...doc.nodes, ...nodes], [...doc.edges, ...edges]), ids: roots.map((r) => map.get(r.id)!) };
 }
@@ -431,4 +439,50 @@ export function boundsOf(doc: Doc, ids: Iterable<string>): Rect | null {
   const x = Math.min(...rects.map((r) => r.x));
   const y = Math.min(...rects.map((r) => r.y));
   return { x, y, width: Math.max(...rects.map((r) => r.x + r.width)) - x, height: Math.max(...rects.map((r) => r.y + r.height)) - y };
+}
+
+// ------------------------------------------------------------------ colors
+
+/** Every color the drawing uses (shapes, element colors, strokes, drawn connections), most used first. */
+export function colorsInUse(doc: Doc): string[] {
+  const count = new Map<string, number>();
+  const add = (c: unknown) => {
+    if (typeof c !== "string" || !/^#[0-9a-f]{6}$/i.test(c)) return;
+    const k = c.toUpperCase();
+    count.set(k, (count.get(k) ?? 0) + 1);
+  };
+  for (const n of doc.nodes) {
+    add(n.data.color);
+    add(n.data.shape?.stroke);
+    add(n.data.shape?.fill);
+  }
+  for (const e of doc.edges) add(e.style?.stroke);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+}
+
+/** Swaps one color for another everywhere in the drawing (a plan-wide recolor). */
+export function replaceColor<T extends Doc>(doc: T, from: string, to: string): T {
+  const f = from.toUpperCase();
+  const swap = <V extends string | undefined>(c: V): V | string => (typeof c === "string" && c.toUpperCase() === f ? to : c);
+  let changed = false;
+  const nodes = doc.nodes.map((n) => {
+    const data = { ...n.data };
+    let touched = false;
+    if (data.color && swap(data.color) !== data.color) ((data.color = to), (touched = true));
+    if (data.shape && (swap(data.shape.stroke) !== data.shape.stroke || swap(data.shape.fill) !== data.shape.fill)) {
+      data.shape = { ...data.shape, stroke: swap(data.shape.stroke) as string | undefined, fill: swap(data.shape.fill) as string | undefined };
+      if (data.shape.stroke === undefined) delete data.shape.stroke;
+      if (data.shape.fill === undefined) delete data.shape.fill;
+      touched = true;
+    }
+    if (!touched) return n;
+    changed = true;
+    return { ...n, data };
+  });
+  const edges = doc.edges.map((e) => {
+    if (!e.style?.stroke || swap(e.style.stroke) === e.style.stroke) return e;
+    changed = true;
+    return { ...e, style: { ...e.style, stroke: to } };
+  });
+  return changed ? { ...doc, nodes, edges } : doc;
 }

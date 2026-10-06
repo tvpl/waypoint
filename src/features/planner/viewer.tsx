@@ -14,7 +14,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn, motionMs } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { nodeTypes } from "./nodes";
-import { edgeTypes } from "./edges";
+import { edgeTypes, useAvoidance } from "./edges";
 import { statusMeta, PARENT_KINDS } from "./defaults";
 import { ZoomControls } from "./zoom-controls";
 import { fallbackResource, type ResolvedResource } from "./resource-types";
@@ -153,7 +153,8 @@ function ViewerInner({ document: doc, planId, resources, focusNodeId, className,
   const overlay = useMemo(() => overlayFlow(doc, overlays, { layerVisibility: shownLayers }), [doc, overlays, shownLayers]);
   const shown = useMemo(() => nodes.map((n) => (n.type === "annotation" && !annotationVisible(annotationOf(n), annotationView) ? { ...n, hidden: true } : n)), [nodes, annotationView]);
   const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...shown] : shown), [overlay.nodes, shown]);
-  const renderEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
+  const allEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
+  const renderEdges = useAvoidance(renderNodes, allEdges);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
   const resourceFor = useCallback(

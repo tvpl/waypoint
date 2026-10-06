@@ -114,6 +114,8 @@ export const shapeSchema = z.object({
   flipY: z.boolean().optional(),
   /** A soft drop shadow. */
   shadow: z.boolean().optional(),
+  /** Resizing keeps the width/height proportion. */
+  lockRatio: z.boolean().optional(),
   opacity: z.number().finite().min(0.1).max(1).optional(),
   font: z.enum(FONT_FAMILIES).optional(),
   fontSize: z.number().finite().min(8).max(160).optional(),
@@ -188,6 +190,14 @@ export const nodeDataSchema = z.object({
   shape: shapeSchema.optional(),
   annotation: annotationSchema.optional(),
   component: componentSchema.optional(),
+  /**
+   * A copy of a "Minha biblioteca" item: which item, the revision it was copied from, which copy
+   * (all its elements share it) and the element of the item it came from. Lets the copy be updated
+   * when the item changes, or send its own changes back.
+   */
+  libraryRef: z
+    .object({ item: z.string().min(1).max(64), rev: z.string().min(1).max(32), instance: z.string().min(1).max(64), node: z.string().min(1).max(64) })
+    .optional(),
   /** Can't be selected on the canvas, moved or deleted (the layers panel and the menu still reach it). */
   locked: z.boolean().optional(),
   /** Not drawn, with what is inside it (the layers panel lists it to show it again). */
@@ -239,6 +249,8 @@ export const planEdgeSchema = z.object({
   layer: z.string().max(64).optional(),
   /** Numbered step of a flow (badge on the connection). */
   step: z.number().int().min(1).max(999).optional(),
+  /** Where the label sits along the line (0 = start, 1 = end); missing = the middle. */
+  labelPos: z.number().finite().min(0).max(1).optional(),
   style: edgeStyleSchema.optional(),
 });
 export type PlanEdge = z.infer<typeof planEdgeSchema>;
@@ -307,6 +319,8 @@ export const planDocumentSchema = z.object({
   viewport: viewportSchema,
   layers: z.array(planLayerSchema).max(50).optional(),
   views: z.array(planViewSchema).max(30).optional(),
+  /** The plan's own colors (offered first in every color picker). */
+  palette: z.array(hexColor).max(24).optional(),
 });
 export type PlanDocument = z.infer<typeof planDocumentSchema>;
 

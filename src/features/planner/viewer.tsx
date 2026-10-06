@@ -22,6 +22,8 @@ import { ResourceIcon } from "./resource-picker";
 import { copyScene, downloadScene, excalidrawScene, exportFramesPdf, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
 import { isOverlayId } from "@/domain/overlay";
 import { overlayFlow, useOverlays } from "./overlays";
+import { ALL_ANNOTATIONS, annotationOf, annotationVisible, legend, type AnnotationView } from "./annotations";
+import { AnnotationsMenu } from "./annotations-panel";
 import { compareViews, layerIdOf, layerVisibility, viewVisibility } from "@/domain/layers";
 import { CompareBar, defaultCompare, parseCompare, sideVisibility, ViewLayers, type CompareState } from "./view-layers";
 import type { ExportKind } from "./topbar";
@@ -143,10 +145,14 @@ function ViewerInner({ document: doc, planId, resources, focusNodeId, className,
       return { ...e, className: cn(e.className, "wp-stage-edge", !lit && "wp-dim"), data: { ...e.data!, _dim: !lit } };
     });
   }, [viewDoc, stage, active, activeLayer, shownLayers, diffOn, diff]);
+  // Annotations: the reader can hide them, by kind too.
+  const [annotationView, setAnnotationView] = useState<AnnotationView>(ALL_ANNOTATIONS);
+  const annotationItems = useMemo(() => legend(doc.nodes.map((n) => ({ id: n.id, kind: n.kind, data: n.data, x: n.x, y: n.y }))), [doc.nodes]);
   // Other plans overlaid on layers, for readers who can see them.
   const overlays = useOverlays(planId ?? "", planId ? doc.layers : undefined, null);
   const overlay = useMemo(() => overlayFlow(doc, overlays, { layerVisibility: shownLayers }), [doc, overlays, shownLayers]);
-  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...nodes] : nodes), [overlay.nodes, nodes]);
+  const shown = useMemo(() => nodes.map((n) => (n.type === "annotation" && !annotationVisible(annotationOf(n), annotationView) ? { ...n, hidden: true } : n)), [nodes, annotationView]);
+  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...shown] : shown), [overlay.nodes, shown]);
   const renderEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
@@ -432,6 +438,19 @@ function ViewerInner({ document: doc, planId, resources, focusNodeId, className,
 
         {!stage && (
           <div className="wp-no-print absolute bottom-6 right-6 z-10 flex items-center gap-0.5 rounded-control border border-line bg-surface p-1">
+            {annotationItems.length > 0 && (
+              <>
+                <AnnotationsMenu
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-body text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
+                  items={annotationItems}
+                  view={annotationView}
+                  setView={(patch) => setAnnotationView((v) => ({ ...v, ...patch }))}
+                  onFocus={(id) => void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.2, duration: motionMs(400) })}
+                  side="top"
+                />
+                <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+              </>
+            )}
             <ZoomControls compact />
           </div>
         )}

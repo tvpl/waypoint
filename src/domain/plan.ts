@@ -29,7 +29,7 @@ export type OpenIn = (typeof OPEN_IN)[number];
 
 // ------------------------------------------------------------------ nodes
 
-export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink", "shape", "frame"] as const;
+export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink", "shape", "frame", "annotation"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 
 export const NODE_STATUSES = ["none", "idea", "planned", "in-progress", "production", "deprecated"] as const;
@@ -109,6 +109,23 @@ export const shapeSchema = z.object({
 });
 export type Shape = z.infer<typeof shapeSchema>;
 
+/**
+ * Annotations sit on top of the drawing without being part of it: a numbered pin, a callout
+ * pointing at an element, a bracket over a part, or a highlighted area. Attached to an element
+ * (as its child) they follow it; they can be shown, filtered and hidden apart from the layers.
+ */
+export const ANNOTATION_TYPES = ["pin", "callout", "bracket", "highlight"] as const;
+export const ANNOTATION_CATEGORIES = ["note", "question", "risk", "decision", "todo"] as const;
+export type AnnotationType = (typeof ANNOTATION_TYPES)[number];
+export type AnnotationCategory = (typeof ANNOTATION_CATEGORIES)[number];
+export const annotationSchema = z.object({
+  type: z.enum(ANNOTATION_TYPES),
+  category: z.enum(ANNOTATION_CATEGORIES).default("note"),
+  /** Dealt with: hidden unless the reader asks for resolved ones. */
+  resolved: z.boolean().optional(),
+});
+export type Annotation = z.infer<typeof annotationSchema>;
+
 export const ARROWHEADS = ["none", "arrow", "triangle", "dot", "bar"] as const;
 export type Arrowhead = (typeof ARROWHEADS)[number];
 
@@ -139,6 +156,7 @@ export const nodeDataSchema = z.object({
   collapsed: z.boolean().optional(),
   ink: inkSchema.optional(),
   shape: shapeSchema.optional(),
+  annotation: annotationSchema.optional(),
   /**
    * Presentation mode. Without any `order` in the plan, steps are the
    * top-level areas then the other top-level nodes (reading order) minus

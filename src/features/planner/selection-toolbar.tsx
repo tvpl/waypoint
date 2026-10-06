@@ -9,6 +9,8 @@ import { BASE_LAYER_ID } from "@/domain/layers";
 import { useEditor } from "./editor-context";
 import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "./inspector";
 import { styleOfSelection } from "./shape-style";
+import { CATEGORY_META } from "./annotations";
+import { CategoryPicker } from "./annotations-panel";
 import {
   AlignPicker,
   CornersPicker,
@@ -144,6 +146,13 @@ export function SelectionToolbar() {
                 <AlignPicker value={s.align} onChange={(align) => set({ align })} />
               </Field>
             </div>
+          </Pop>
+        )}
+        {nodes.every((n) => n.type === "annotation") && (
+          <Pop label="Tipo da anotação" trigger={<Swatch color={CATEGORY_META[nodes[0].data.annotation?.category ?? "note"].color} />} width={300}>
+            <Field label="Tipo">
+              <CategoryPicker value={nodes[0].data.annotation?.category ?? "note"} onChange={(category) => ed.setAnnotStyle({ category })} />
+            </Field>
           </Pop>
         )}
         {plain && (

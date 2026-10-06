@@ -1,7 +1,7 @@
 "use client";
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Handle, NodeResizer, Position, type NodeProps, type NodeTypes } from "@xyflow/react";
-import { ArrowUpRight, ChevronDown, ChevronRight, ExternalLink, ImagePlus, Link2, MessageSquare } from "lucide-react";
+import { Handle, NodeResizer, Position, useInternalNode, type NodeProps, type NodeTypes } from "@xyflow/react";
+import { ArrowUpRight, ChevronDown, ChevronRight, CircleCheck, CircleHelp, ExternalLink, ImagePlus, Link2, ListTodo, MessageSquare, StickyNote, TriangleAlert } from "lucide-react";
 import type { NodeKind } from "@/domain/plan";
 import type { PlanFlowNode } from "@/domain/canvas-adapter";
 import { SiteIcon } from "@/components/ui/misc";
@@ -14,6 +14,7 @@ import { PlanIcon } from "./icons";
 import { HIGHLIGHTER_COLOR, inkFontSize, inkPaths, shapePath } from "./ink-geometry";
 import { FONT_STACK, resolveShape, seedOf, shapePaths } from "./shape-geometry";
 import { GlyphSvg } from "./glyph";
+import { CATEGORY_META } from "./annotations";
 
 type P = NodeProps<PlanFlowNode>;
 
@@ -35,6 +36,7 @@ const MIN: Record<NodeKind, [number, number]> = {
   ink: [6, 6],
   shape: [16, 16],
   frame: [120, 80],
+  annotation: [24, 24],
 };
 
 function Handles({ connectable }: { connectable: boolean }) {
@@ -606,6 +608,136 @@ function IconShape({ p, cls, editing }: { p: P; cls: string; editing: boolean })
   );
 }
 
+const CATEGORY_ICON = { note: StickyNote, question: CircleHelp, risk: TriangleAlert, decision: CircleCheck, todo: ListTodo } as const;
+
+/** Where a callout's tail meets the element it points at (canvas coordinates), or null when over it. */
+function tailTarget(me: { x: number; y: number; w: number; h: number }, to: { x: number; y: number; w: number; h: number }) {
+  const cx = me.x + me.w / 2;
+  const cy = me.y + me.h / 2;
+  const tx = Math.min(Math.max(cx, to.x), to.x + to.w);
+  const ty = Math.min(Math.max(cy, to.y), to.y + to.h);
+  if (tx === cx && ty === cy) return null;
+  // Leave from the side of the callout that faces the target.
+  const sx = Math.min(Math.max(tx, me.x), me.x + me.w);
+  const sy = Math.min(Math.max(ty, me.y), me.y + me.h);
+  return { from: { x: sx - me.x, y: sy - me.y }, to: { x: tx - me.x, y: ty - me.y } };
+}
+
+/** An annotation: a numbered pin, a callout pointing at its element, a bracket or a highlighted area. */
+export const AnnotationNode = memo(function AnnotationNode(p: P) {
+  const { cls, editing } = useNodeState(p);
+  const a = p.data.annotation ?? { type: "callout" as const, category: "note" as const };
+  const meta = CATEGORY_META[a.category];
+  const Icon = CATEGORY_ICON[a.category];
+  const w = p.width ?? 240;
+  const h = p.height ?? 88;
+  const parent = useInternalNode(p.parentId ?? "");
+  const resolved = !!a.resolved;
+  const title = p.data.title;
+  const desc = p.data.description;
+
+  if (a.type === "pin") {
+    return (
+      <Chrome p={p} kind="annotation" resizable={false} handles={false}>
+        <div className={cn(cls, "wp-ann wp-ann-pin group relative h-full w-full")} data-cat={a.category}>
+          <span
+            className={cn("flex h-full w-full items-center justify-center rounded-full text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(0,0,0,.25)] ring-2 ring-white", resolved && "opacity-50")}
+            style={{ background: meta.color }}
+            aria-label={`Anotação ${p.data._num ?? ""}: ${title || meta.label}`}
+          >
+            {p.data._num ?? "•"}
+          </span>
+          {(title || desc || editing) && (
+            <div className={cn("wp-ann-card wp-no-export pointer-events-none absolute left-[calc(100%+8px)] top-1/2 z-20 hidden w-[220px] -translate-y-1/2 rounded-xl border border-line bg-surface p-2.5 text-left shadow-float group-hover:block", (editing || p.selected) && "block")}>
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.05em]" style={{ color: meta.color }}>
+                <Icon className="size-3" aria-hidden /> {meta.label} {p.data._num}
+              </span>
+              {editing ? (
+                <InlineTitle id={p.id} value={title} multiline className="pointer-events-auto mt-1 text-[13px] font-medium" />
+              ) : (
+                <>
+                  {title && <p className="mt-1 text-[13px] font-medium leading-snug text-ink">{title}</p>}
+                  {desc && <p className="mt-0.5 line-clamp-4 text-xs leading-snug text-ink-2">{desc}</p>}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </Chrome>
+    );
+  }
+
+  if (a.type === "bracket") {
+    const vertical = h > w * 1.4;
+    const len = vertical ? h : w;
+    const d = 10;
+    // A curly brace along the long side, its point toward the label.
+    const brace = `M0 ${d} Q0 0 ${d} 0 L${len / 2 - d} 0 Q${len / 2} 0 ${len / 2} ${-d} Q${len / 2} 0 ${len / 2 + d} 0 L${len - d} 0 Q${len} 0 ${len} ${d}`;
+    return (
+      <Chrome p={p} kind="annotation" handles={false}>
+        <div className={cn(cls, "wp-ann wp-ann-bracket relative h-full w-full", resolved && "opacity-50")} data-cat={a.category}>
+          <svg className="absolute inset-0 overflow-visible" width={w} height={h} aria-hidden>
+            <path className="wp-hit" d={brace} transform={vertical ? `translate(${w - 4} 0) rotate(90)` : `translate(0 ${h - 4})`} fill="none" stroke={meta.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className={cn("wp-hit absolute flex items-center gap-1.5 text-[13px] font-semibold", vertical ? "right-[calc(100%-8px)] top-1/2 -translate-y-1/2 justify-end pr-3" : "inset-x-0 top-0 justify-center")} style={{ color: meta.color }}>
+            <Icon className="size-3.5 shrink-0" aria-hidden />
+            {editing ? <InlineTitle id={p.id} value={title} className="min-w-[120px] text-[13px] font-semibold" /> : <span className="truncate">{title || meta.label}</span>}
+          </div>
+        </div>
+      </Chrome>
+    );
+  }
+
+  if (a.type === "highlight") {
+    return (
+      <Chrome p={p} kind="annotation" handles={false}>
+        <div
+          className={cn(cls, "wp-ann wp-ann-highlight relative h-full w-full rounded-xl border-2 border-dashed", resolved && "opacity-50")}
+          style={{ borderColor: meta.color, background: `color-mix(in srgb, ${meta.color} 7%, transparent)` }}
+          data-cat={a.category}
+        >
+          <div className="wp-hit absolute -top-3 left-3 flex max-w-[calc(100%-24px)] items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-white shadow-sm" style={{ background: meta.color }}>
+            <Icon className="size-3 shrink-0" aria-hidden />
+            {editing ? <InlineTitle id={p.id} value={title} className="min-w-[120px] bg-transparent text-xs font-semibold text-white" /> : <span className="truncate">{title || meta.label}</span>}
+          </div>
+        </div>
+      </Chrome>
+    );
+  }
+
+  // Callout: a card, with a tail to the element it is attached to.
+  const me = { x: p.positionAbsoluteX, y: p.positionAbsoluteY, w, h };
+  const target = parent ? tailTarget(me, { x: parent.internals.positionAbsolute.x, y: parent.internals.positionAbsolute.y, w: parent.measured.width ?? parent.width ?? 0, h: parent.measured.height ?? parent.height ?? 0 }) : null;
+  return (
+    <Chrome p={p} kind="annotation" handles={false}>
+      {target && (
+        <svg className="wp-ann-tail pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1} aria-hidden>
+          <path d={`M${target.from.x} ${target.from.y} L${target.to.x} ${target.to.y}`} stroke={meta.color} strokeWidth={1.5} strokeDasharray="4 3" fill="none" />
+          <circle cx={target.to.x} cy={target.to.y} r={3.5} fill={meta.color} />
+        </svg>
+      )}
+      <div
+        className={cn(cls, "wp-ann wp-ann-callout relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-line bg-surface py-2 pl-3.5 pr-3 shadow-[0_4px_14px_rgba(0,0,0,.08)]", resolved && "opacity-55")}
+        data-cat={a.category}
+      >
+        <span className="absolute inset-y-0 left-0 w-1" style={{ background: meta.color }} aria-hidden />
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.05em]" style={{ color: meta.color }}>
+          <Icon className="size-3" aria-hidden /> {meta.label}
+          {resolved && <span className="ml-auto rounded bg-subtle px-1 text-[10px] normal-case tracking-normal text-muted">resolvida</span>}
+        </span>
+        {editing ? (
+          <InlineTitle id={p.id} value={title} multiline className="mt-1 text-[13px] font-medium" />
+        ) : (
+          <>
+            <p className={cn("mt-1 line-clamp-2 text-[13px] font-medium leading-snug", title ? "text-ink" : "text-muted")}>{title || "Escreva a anotação"}</p>
+            {desc && <p className="mt-0.5 line-clamp-3 text-xs leading-snug text-ink-2">{desc}</p>}
+          </>
+        )}
+      </div>
+    </Chrome>
+  );
+});
+
 /** A frame: a named area (like an artboard) that holds what is drawn inside it. */
 export const FrameNode = memo(function FrameNode(p: P) {
   const { cls, editing } = useNodeState(p);
@@ -631,4 +763,5 @@ export const nodeTypes: NodeTypes = {
   ink: InkNode,
   shape: ShapeNode,
   frame: FrameNode,
+  annotation: AnnotationNode,
 };

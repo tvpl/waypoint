@@ -220,3 +220,27 @@ describe("icons and libraries", () => {
     expect(parseLibrary({ type: "excalidraw", elements: [] })).toBeNull();
   });
 });
+
+describe("annotations in Excalidraw", () => {
+  it("pins become numbered circles with their text beside, and come back as annotations", () => {
+    const d = normalizeDocument({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        { id: "b", kind: "block", x: 0, y: 0, width: 200, height: 72, data: { title: "API" } },
+        { id: "p", kind: "annotation", x: 190, y: -10, width: 28, height: 28, parentId: "b", data: { title: "Limite de taxa?", annotation: { type: "pin", category: "question" } } },
+        { id: "h", kind: "annotation", x: -20, y: -20, width: 260, height: 120, data: { title: "Escopo", annotation: { type: "highlight", category: "risk" } } },
+      ],
+      edges: [],
+    });
+    const scene = toExcalidraw(d, { now: 1 });
+    const pin = scene.elements.find((e) => e.id === "p")!;
+    expect(pin).toMatchObject({ type: "ellipse", x: 190, y: -10, backgroundColor: "#7C4DDB" });
+    expect(scene.elements.find((e) => e.id === "p:t")?.text).toBe("1");
+    expect(scene.elements.find((e) => e.id === "p:l")?.text).toBe("Limite de taxa?");
+    expect(scene.elements.find((e) => e.id === "h")).toMatchObject({ type: "rectangle", strokeStyle: "dashed" });
+    const back = fromExcalidraw(parseScene(JSON.parse(JSON.stringify(scene)))!);
+    const p = back.nodes.find((n) => n.id === "p")!;
+    expect(p).toMatchObject({ kind: "annotation", parentId: "b", x: 190, y: -10, data: { title: "Limite de taxa?", annotation: { type: "pin", category: "question" } } });
+    expect(back.nodes.some((n) => n.id === "p:l")).toBe(false);
+  });
+});

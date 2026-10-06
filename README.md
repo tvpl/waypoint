@@ -11,6 +11,8 @@ Além do essencial, o Planner tem **layout automático** (vertical ou horizontal
 
 **Painéis que aparecem só quando precisa.** Ao selecionar algo, uma **barra rápida** surge acima da seleção (cores, traço, texto, camada, alinhar, duplicar, excluir) e as **propriedades** flutuam à direita; sem seleção, o canvas fica livre. `I` recolhe ou mostra as propriedades, o alfinete as **fixa** ao lado do canvas, e o painel esquerdo recolhe para uma faixa de ícones que abre como gaveta. `⌘\` liga o **modo foco** (só o desenho). Título, descrição e tags do plan ficam no botão ⓘ ao lado do título. No clique direito: **Converter em…** (bloco, nota, retângulo, elipse, losango, texto) e **copiar/colar estilo** (`⌘⌥C` / `⌘⌥V`).
 
+**Anotações sem bagunçar o desenho.** A ferramenta **Anotar** (`N`) coloca **marcadores numerados** (o texto vai para a legenda), **balões** com seta para o elemento, **chaves** sobre uma parte e **áreas destacadas**, cada uma com um tipo: Observação, Dúvida, Risco, Decisão ou A fazer. Presas a um elemento, acompanham quando ele se move. O botão **Anotações** da barra inferior mostra a legenda, filtra por tipo, mostra as resolvidas e liga o **modo revisão** (o desenho fica apagado); `⇧N` oculta ou mostra todas. Quem lê o plan também filtra e oculta, e as exportações saem como estiver na tela. Uma anotação pode ser **resolvida** ou virar **conversa**.
+
 **Camadas e desenho.** Um plan pode ter várias **camadas** empilhadas: a base (o que existe hoje) e, por cima, fluxos alternativos, versões, complementos ou anotações. Cada camada pode ser:
 
 - ocultada (`⌥` + clique no olho mostra só ela);

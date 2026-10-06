@@ -31,7 +31,7 @@ import { hiddenByLayers, layerIdOf, layerIndex, layerOpacity, layersOf, layerVis
  * Node data as seen by React Flow. `_h` keeps the expanded height of a collapsed container;
  * `_layer` and `_z` carry the node's layer and own z (React Flow's zIndex adds the layer's offset).
  */
-export type FlowNodeData = NodeData & { _h?: number; _layer?: string; _z?: number; _sketch?: boolean } & Record<string, unknown>;
+export type FlowNodeData = NodeData & { _h?: number; _layer?: string; _z?: number; _sketch?: boolean; _num?: number } & Record<string, unknown>;
 export type PlanFlowNode = Node<FlowNodeData, NodeKind>;
 
 export type FlowEdgeData = {
@@ -166,6 +166,11 @@ export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: Reado
   };
   if (n.parentId) out.parentId = n.parentId;
   if (n.z !== undefined || layer?.z) out.zIndex = (layer?.z ?? 0) + (n.z ?? 0);
+  // Pins and callouts float above their layer's drawing; highlighted areas sit under it.
+  if (n.kind === "annotation") {
+    const t = n.data.annotation?.type;
+    out.zIndex = (layer?.z ?? 0) + (n.z ?? 0) + (t === "highlight" ? -1 : t === "bracket" ? 0 : 900);
+  }
   if (hidden?.has(n.id)) out.hidden = true;
   if (opts.selected?.has(n.id)) out.selected = true;
   if (layer?.locked) {
@@ -195,8 +200,16 @@ export function toFlowNodes(doc: Pick<PlanDocument, "nodes"> & Partial<Pick<Plan
   const hidden = hiddenByCollapse(doc);
   const layers = layerRender(doc, opts);
   for (const id of hiddenByLayers({ nodes: doc.nodes, edges: [] }, new Map([...layers].map(([k, v]) => [k, !v.hidden]))).nodes) hidden.add(id);
+  // Pins carry their number (the legend uses the same order).
+  const pins = new Map<string, number>();
+  for (const n of doc.nodes) if (n.kind === "annotation" && n.data.annotation?.type === "pin") pins.set(n.id, pins.size + 1);
   // React Flow requires parents before children.
-  return sortParentsFirst(doc.nodes).map((n) => toFlowNode(n, opts, hidden, layers.get(layerIdOf(n))));
+  return sortParentsFirst(doc.nodes).map((n) => {
+    const out = toFlowNode(n, opts, hidden, layers.get(layerIdOf(n)));
+    const num = pins.get(n.id);
+    if (num) out.data._num = num;
+    return out;
+  });
 }
 
 export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerRender): PlanFlowEdge {

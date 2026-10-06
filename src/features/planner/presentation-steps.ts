@@ -55,7 +55,7 @@ export function defaultStepNodes(doc: Doc, overrides?: Readonly<Record<string, b
   const order = byReading(doc);
   const visible = onVisibleLayer(doc, overrides);
   // Drawings are annotations, not steps.
-  const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden && n.kind !== "ink" && visible(n));
+  const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden && n.kind !== "ink" && n.kind !== "annotation" && visible(n));
   const frames = top.filter((n) => n.kind === "frame");
   if (frames.length) return frames.sort(order);
   const areas = top.filter((n) => PARENT_KINDS.has(n.kind)).sort(order);

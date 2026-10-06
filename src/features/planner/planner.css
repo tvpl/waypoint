@@ -609,3 +609,33 @@
   filter: grayscale(1);
   opacity: 0.32;
 }
+
+/* Annotations: highlighted areas and brackets let clicks through (only their label and outline
+   grab the pointer); hidden ones (filters, "ocultar anotações") are removed by the editor. */
+.wp-flow .react-flow__node-annotation:has(.wp-ann-highlight),
+.wp-flow .react-flow__node-annotation:has(.wp-ann-bracket) {
+  pointer-events: none !important;
+}
+.wp-flow .react-flow__node-annotation .wp-hit,
+.wp-flow .react-flow__node-annotation .react-flow__resize-control {
+  pointer-events: all;
+}
+.wp-ann-highlight {
+  border-style: dashed;
+}
+.wp-ann.is-selected.wp-ann-callout {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.wp-ann.is-selected.wp-ann-pin > span {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+.wp-ann.is-selected.wp-ann-highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Review mode: annotations stand out, the drawing steps back. */
+.wp-review .react-flow__node:not(.react-flow__node-annotation),
+.wp-review .react-flow__edge {
+  opacity: 0.3;
+  filter: saturate(0.4);
+}

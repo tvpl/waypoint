@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { SHAPE_TOOLS, useEditor, type Tool } from "./editor-context";
 import { arrowheadPath, type Pt } from "./shape-geometry";
+import { CATEGORY_META } from "./annotations";
 
 /** Where a press starts something: the canvas itself, not the floating toolbars over it. */
 const CANVAS = ".react-flow__pane, .react-flow__node, .react-flow__edge, .react-flow__nodesselection, .react-flow__edgelabel-renderer";
@@ -12,7 +13,7 @@ function nodeAt(x: number, y: number, root: HTMLElement): string | null {
   for (const el of document.elementsFromPoint(x, y)) {
     const node = el.closest<HTMLElement>(".react-flow__node");
     if (!node || !root.contains(node) || node.classList.contains("react-flow__node-ink")) continue;
-    if (node.classList.contains("wp-isolate-out")) continue;
+    if (node.classList.contains("wp-isolate-out") || node.classList.contains("react-flow__node-annotation") || node.classList.contains("wp-overlay")) continue;
     return node.dataset.id ?? null;
   }
   return null;
@@ -32,7 +33,7 @@ export function ShapeTools({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nu
   edRef.current = ed;
   const [drag, setDrag] = useState<Drag | null>(null);
   const tool = ed.tool;
-  const active = SHAPE_TOOLS.has(tool);
+  const active = SHAPE_TOOLS.has(tool) || tool === "annotate";
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -55,6 +56,10 @@ export function ShapeTools({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nu
       if (e.button !== 0 || !target?.closest?.(CANVAS)) return;
       e.preventDefault();
       e.stopPropagation();
+      // Pins and callouts go where you click, attached to the element under the pointer.
+      if (tool === "annotate" && (edRef.current.annotStyle.type === "pin" || edRef.current.annotStyle.type === "callout")) {
+        return edRef.current.addAnnotation(null, flow(e), nodeAt(e.clientX, e.clientY, el));
+      }
       if (tool === "text") {
         // The first click away from a text being typed finishes it; the next one starts another.
         const typing = document.activeElement as HTMLElement | null;
@@ -93,6 +98,7 @@ export function ShapeTools({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nu
         if (moved) api.addLink(d.tool, d.start, d.end, d.source, d.target);
         return;
       }
+      if (d.tool === "annotate") return api.addAnnotation(moved ? boxOf(d) : null, d.start, null);
       const type = d.tool as "rect" | "diamond" | "ellipse" | "frame";
       if (!moved) return api.addShape(type, null, d.start);
       api.addShape(type, boxOf(d), d.start);
@@ -128,6 +134,14 @@ export function ShapeTools({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nu
     );
   }
   const r = boxOf({ ...drag, start: drag.startScreen, end: drag.endScreen });
+  if (drag.tool === "annotate") {
+    const c = CATEGORY_META[ed.annotStyle.category].color;
+    return (
+      <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full" aria-hidden>
+        <rect x={r.x} y={r.y} width={r.w} height={r.h} rx={10} style={{ stroke: c, strokeWidth: 2, fill: c, fillOpacity: 0.07 }} strokeDasharray="7 5" />
+      </svg>
+    );
+  }
   const path =
     drag.tool === "ellipse"
       ? `M${r.x} ${r.y + r.h / 2} a${r.w / 2} ${r.h / 2} 0 1 0 ${r.w} 0 a${r.w / 2} ${r.h / 2} 0 1 0 ${-r.w} 0 Z`

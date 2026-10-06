@@ -25,6 +25,8 @@ import {
   type Shape,
 } from "@/domain/plan";
 import { readableText } from "@/lib/color";
+import { CATEGORY_META } from "./annotations";
+
 import { HIGHLIGHTER_COLOR, inkFontSize, pairsOf } from "./ink-geometry";
 import { curveControl, floatingEnds, measureText, seedOf, type Box, type Pt } from "./shape-geometry";
 
@@ -240,6 +242,8 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
     return l ? { layer: l } : {};
   };
 
+  const pinNo = new Map<string, number>();
+  for (const n of doc.nodes) if (n.kind === "annotation" && n.data.annotation?.type === "pin") pinNo.set(n.id, pinNo.size + 1);
   const files: Record<string, ExFile> = {};
   const out: ExElement[] = [];
   const els = new Map<string, ExElement>();
@@ -496,6 +500,45 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
       return;
     }
 
+    if (n.kind === "annotation" && n.data.annotation) {
+      const a = n.data.annotation;
+      const meta = CATEGORY_META[a.category];
+      const keep = custom(n, { title: n.data.title });
+      if (a.type === "pin") {
+        const el = base(n.id, "ellipse", box, { strokeColor: meta.color, backgroundColor: meta.color, fillStyle: "solid", strokeWidth: 1, ...common, customData: keep });
+        out.push(el);
+        els.set(n.id, el);
+        label(el, String(pinNo.get(n.id) ?? "•"), { fontSize: 14, font: "sans", color: "#ffffff" });
+        if (n.data.title) {
+          const size = textSize(n.data.title, 14);
+          out.push(base(`${n.id}:l`, "text", { x: box.x + box.w + 6, y: box.y + box.h / 2 - size.height / 2, w: size.width, h: size.height }, { text: n.data.title, originalText: n.data.title, fontSize: 14, fontFamily: FONT_ID.sans, textAlign: "left", verticalAlign: "top", containerId: null, autoResize: true, lineHeight: 1.25, strokeColor: meta.color, frameId, customData: { waypoint: { labelOf: n.id } satisfies WpCustom } }));
+        }
+        return;
+      }
+      if (a.type === "highlight" || a.type === "bracket") {
+        const el = base(n.id, "rectangle", box, {
+          strokeColor: meta.color,
+          backgroundColor: a.type === "highlight" ? meta.soft : "transparent",
+          strokeStyle: a.type === "highlight" ? "dashed" : "solid",
+          strokeWidth: a.type === "highlight" ? 2 : 1,
+          opacity: a.type === "highlight" ? 70 : 100,
+          roundness: { type: 3 },
+          ...common,
+          customData: keep,
+        });
+        out.push(el);
+        els.set(n.id, el);
+        label(el, n.data.title || "", { fontSize: 14, font: "sans", align: "left", valign: "top", color: meta.color });
+        return;
+      }
+      // Callout: a card with an arrow to what it is attached to.
+      const el = base(n.id, "rectangle", box, { strokeColor: meta.color, backgroundColor: "#ffffff", strokeWidth: 1.5, roundness: { type: 3 }, ...common, customData: keep });
+      out.push(el);
+      els.set(n.id, el);
+      label(el, n.data.title || "", { fontSize: 14, font: "sans", align: "left", valign: "top", color: "#1e1e1e" });
+      return;
+    }
+
     // Blocks, notes, link cards, containers, sections and images without a file: a box with the title.
     const area = n.kind === "container" || n.kind === "section";
     const bg = n.data.color ?? (n.kind === "section" ? undefined : n.kind === "note" ? "#FFF3C4" : area ? undefined : "#FFFFFF");
@@ -722,6 +765,10 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
       case "diamond":
       case "ellipse": {
         // A Waypoint element exported as a box comes back as itself.
+        if (wp.kind === "annotation") {
+          push(el, { kind: "annotation", data: dataOf(el, { title: title(typeof wp.title === "string" ? wp.title : textOf(el)) }) });
+          break;
+        }
         if (wp.kind && wp.kind !== "shape" && wp.kind !== "ink") {
           const t = textOf(el);
           const isNote = wp.kind === "note";

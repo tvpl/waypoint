@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext } from "react";
 import type { LibraryContent } from "@/domain/library";
-import type { EdgeKind, Glyph, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef } from "@/domain/plan";
+import type { AnnotationCategory, AnnotationType, EdgeKind, Glyph, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef } from "@/domain/plan";
 import type { PlanFlowEdge, PlanFlowNode } from "@/domain/canvas-adapter";
 import type { AlignMode } from "./doc-ops";
 import type { LayoutDirection } from "./auto-layout";
@@ -10,16 +10,17 @@ import type { InkMode, Point } from "./ink-geometry";
 import type { DrawStyle, Pt } from "./shape-geometry";
 import type { Panels } from "./panels";
 import type { ConvertTarget } from "./convert";
+import type { AnnotationView } from "./annotations";
 
 /**
  * "draw": pen or highlighter (see `ink`); "erase": removes drawings under the pointer; the shape
  * tools draw a box by dragging; "arrow"/"line" connect the shapes they start and end on (or draw a
  * free line); "text" places a text where you click.
  */
-export type Tool = "select" | "hand" | "connect" | "draw" | "erase" | "rect" | "diamond" | "ellipse" | "arrow" | "line" | "text" | "frame";
+export type Tool = "select" | "hand" | "connect" | "draw" | "erase" | "rect" | "diamond" | "ellipse" | "arrow" | "line" | "text" | "frame" | "annotate";
 
 /** Tools that create by pressing on the canvas (React Flow selection and dragging are off). */
-export const CREATE_TOOLS: ReadonlySet<Tool> = new Set(["draw", "erase", "rect", "diamond", "ellipse", "arrow", "line", "text", "frame"]);
+export const CREATE_TOOLS: ReadonlySet<Tool> = new Set(["draw", "erase", "rect", "diamond", "ellipse", "arrow", "line", "text", "frame", "annotate"]);
 export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set(["rect", "diamond", "ellipse", "arrow", "line", "text", "frame"]);
 
 export type InkSettings = { mode: InkMode; color: string | undefined; size: number };
@@ -137,6 +138,18 @@ export type EditorApi = {
   hasCopiedStyle: boolean;
   /** A shape, text or frame drawn on the canvas (canvas coordinates; a click gives a default size). */
   addShape: (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: Pt) => void;
+  /** The kind and category the annotation tool (N) adds. */
+  annotStyle: { type: AnnotationType; category: AnnotationCategory };
+  setAnnotStyle: (patch: Partial<{ type: AnnotationType; category: AnnotationCategory }>, opts?: { restyle?: boolean }) => void;
+  /** Adds an annotation: at a point (attached to `target` when given) or over a box. */
+  addAnnotation: (box: { x: number; y: number; w: number; h: number } | null, at: Pt, target: string | null) => void;
+  /** Takes an attached element (an annotation) off its parent, keeping it where it is. */
+  detach: (id: string) => void;
+  /** Which annotations are shown (all, by category, resolved ones), and review mode. */
+  annotationView: AnnotationView;
+  setAnnotationView: (patch: Partial<AnnotationView>) => void;
+  review: boolean;
+  setReview: (on: boolean) => void;
   /** An icon from the library (canvas point; default the view's center). */
   addIcon: (icon: IconPick, at?: Pt) => void;
   /** A library item: a fresh copy centered on the point (default the view's center). */

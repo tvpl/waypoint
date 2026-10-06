@@ -51,6 +51,8 @@ import { openShortcuts } from "@/components/shell/shortcuts";
 import { KIND_LABEL, PARENT_KINDS, STATUS_META, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { GlyphSvg } from "./glyph";
+import { CATEGORY_META } from "./annotations";
+import { AnnotationFields } from "./annotations-panel";
 import { ICON_NAMES, KIND_ICON, PLAN_ICONS, PlanIcon } from "./icons";
 import { EdgeSample } from "./edges";
 import { TagInput } from "./tag-input";
@@ -91,11 +93,39 @@ function InspectorBody({ empty }: { empty?: React.ReactNode }) {
   const edges = ed.selectedEdges;
   if (nodes.length >= 1 && nodes.every((n) => n.type === "shape")) return <DrawInspector key={nodes.map((n) => n.id).join()} />;
   if (nodes.length === 1 && nodes[0].type === "ink") return <InkInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1 && nodes[0].type === "annotation") return <AnnotationInspector key={nodes[0].id} node={nodes[0]} />;
   if (nodes.length === 1) return <NodeInspector key={nodes[0].id} node={nodes[0]} />;
   if (nodes.length > 1) return <MultiInspector />;
   if (edges.length === 1) return <EdgeInspector key={edges[0].id} edge={edges[0]} />;
   if (edges.length > 1) return <MultiEdgeInspector />;
   return empty ?? <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
+}
+
+function AnnotationInspector({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const a = node.data.annotation;
+  const meta = CATEGORY_META[a?.category ?? "note"];
+  const [title, setTitle] = useState(node.data.title);
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg text-white" style={{ background: meta.color }}>
+            <KIND_ICON.annotation className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker={`Anotação · ${meta.label}`}
+        title={node.data.title || "Sem texto"}
+      />
+      <F label="Texto" htmlFor={`at-${node.id}`}>
+        <Textarea id={`at-${node.id}`} rows={2} maxLength={300} className="min-h-[56px] rounded-lg text-body" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== node.data.title && ed.updateNodeData(node.id, { title })} />
+      </F>
+      <AnnotationFields node={node} />
+      <Button size="sm" variant="danger" onClick={ed.remove}>
+        <Trash2 /> Excluir anotação
+      </Button>
+    </Scroll>
+  );
 }
 
 /** Phones: the whole panel, opened from the "Propriedades" button. */

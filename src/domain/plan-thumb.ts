@@ -23,7 +23,7 @@ export function planThumb(doc: PlanDocument): Thumb {
   const hidden = hiddenByCollapse(doc);
   // Nor what is on hidden layers; drawings are left out of the miniature.
   for (const id of hiddenByLayers(doc, layerVisibility(doc)).nodes) hidden.add(id);
-  const shown = doc.nodes.filter((n) => !hidden.has(n.id) && n.kind !== "ink").slice(0, THUMB_MAX_NODES);
+  const shown = doc.nodes.filter((n) => !hidden.has(n.id) && n.kind !== "ink" && n.kind !== "annotation").slice(0, THUMB_MAX_NODES);
   const index = new Map(shown.map((n, i) => [n.id, i]));
   const nodes = shown.map((n) => {
     const p = abs(n.id);

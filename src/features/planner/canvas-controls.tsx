@@ -15,6 +15,7 @@ import {
   Magnet,
   Map as MapIcon,
   Minus,
+  MessageSquarePlus,
   MoreHorizontal,
   MousePointer2,
   Network,
@@ -37,6 +38,7 @@ import { KIND_LABEL } from "./defaults";
 import { ArrowheadPicker, FillColors, FontPicker, RoughnessPicker, RoutingPicker, SizePicker, StrokeColors, WidthPicker } from "./style-controls";
 import { EdgeSample } from "./edges";
 import { ZoomControls, pillBtn } from "./zoom-controls";
+import { AnnotateBar, AnnotationsButton } from "./annotations-panel";
 import { HIGHLIGHTER_COLOR, INK_COLORS, INK_SIZES, type InkMode } from "./ink-geometry";
 
 const pillOn = "bg-accent-soft text-accent-ink hover:bg-accent-soft hover:text-accent-ink";
@@ -96,6 +98,9 @@ export function BottomPill() {
       </Tooltip>
       {tool({ id: "erase", label: "Borracha", key: "E", num: "0", icon: Eraser })}
       {tool({ id: "frame", label: "Quadro", key: "F", icon: Frame })}
+      <Sep />
+      {tool({ id: "annotate", label: "Anotar: marcador, balão, chave ou destaque", key: "N", icon: MessageSquarePlus })}
+      <AnnotationsButton className={pillBtn} />
       <Sep />
       {tool({ id: "connect", label: "Conectar pelos pontos", key: "C", icon: ConnectorIcon })}
       <DropdownMenu>
@@ -386,6 +391,16 @@ export function SelectionBar() {
   const ed = useEditor();
   if (ed.tool === "draw") return <InkBar />;
   if (SHAPE_TOOLS.has(ed.tool)) return <StyleBar />;
+  if (ed.tool === "annotate") {
+    return (
+      <AnnotateBar barCls={barCls}>
+        <span className="mx-1 h-5 w-px bg-line" aria-hidden />
+        <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Concluir anotações">
+          <X /> <span className="hidden pr-1 xl:inline">Concluir</span>
+        </button>
+      </AnnotateBar>
+    );
+  }
   if (ed.tool === "erase") {
     return (
       <div className={barCls} role="toolbar" aria-label="Borracha">

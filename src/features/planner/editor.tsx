@@ -27,7 +27,7 @@ import {
 } from "@xyflow/react";
 import { CloudOff, MonitorSmartphone, MousePointerClick, Plus, RotateCcw, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
-import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef, Shape } from "@/domain/plan";
+import type { AnnotationCategory, AnnotationType, EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef, Shape } from "@/domain/plan";
 import { instantiateLibraryContent, libraryContentSchema, normalizeLibraryContent, type LibraryContent } from "@/domain/library";
 import { luminance } from "@/lib/color";
 import { iconPickSchema } from "./icon-library";
@@ -79,6 +79,7 @@ import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges";
 import { History } from "./history";
 import {
+  absRect,
   addNodes,
   alignNodes,
   bringToFront,
@@ -121,6 +122,7 @@ import { sceneName, withUploadedImages } from "./excalidraw-import";
 import { overlayFlow, useOverlays } from "./overlays";
 import { usePanels } from "./panels";
 import { SelectionToolbar } from "./selection-toolbar";
+import { ALL_ANNOTATIONS, annotationOf, annotationVisible, TYPE_META, type AnnotationView } from "./annotations";
 import { convertNodes, type ConvertTarget } from "./convert";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
@@ -263,10 +265,18 @@ function EditorShell(props: PlanEditorProps) {
   activeLayerRef.current = activeLayer;
   // Editing one layer alone: the others fade and can't be touched (not saved with the plan).
   const [isolated, setIsolatedState] = useState<string | null>(null);
+  const [annotationView, setAnnotationViewState] = useState<AnnotationView>(ALL_ANNOTATIONS);
+  const setAnnotationView = useCallback((patch: Partial<AnnotationView>) => setAnnotationViewState((v) => ({ ...v, ...patch })), []);
+  const [review, setReview] = useState(false);
   const [onion, setOnion] = useState<{ versionId: string; label: string } | null>(null);
   const overlays = useOverlays(planId, layerState.layers, onion?.versionId ?? null);
   const overlay = useMemo(() => overlayFlow(layerState, overlays, { isolate: isolated }), [layerState, overlays, isolated]);
-  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...nodes] : nodes), [overlay.nodes, nodes]);
+  // Annotations the reader filtered out leave the canvas (the document keeps them).
+  const shownNodes = useMemo(
+    () => nodes.map((n) => (n.type === "annotation" && !n.hidden && !annotationVisible(annotationOf(n), annotationView) ? { ...n, hidden: true, selected: false } : n)),
+    [nodes, annotationView],
+  );
+  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...shownNodes] : shownNodes), [overlay.nodes, shownNodes]);
   const renderEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
   const isolateRef = useRef<string | null>(null);
   // Element hovered in the layers panel, outlined on the canvas.
@@ -931,6 +941,73 @@ function EditorShell(props: PlanEditorProps) {
     });
   }, [copiedStyle, mutate]);
 
+  // ---------------------------------------------------------------- annotations
+  const [annotStyle, setAnnotStyleState] = useState<{ type: AnnotationType; category: AnnotationCategory }>({ type: "pin", category: "note" });
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("wp-planner-annot") ?? "null");
+      if (saved?.type && saved?.category) setAnnotStyleState(saved);
+    } catch {}
+  }, []);
+  const setAnnotStyle = useCallback((patch: Partial<{ type: AnnotationType; category: AnnotationCategory }>, opts: { restyle?: boolean } = {}) => {
+    setAnnotStyleState((cur) => {
+      const next = { ...cur, ...patch };
+      try {
+        localStorage.setItem("wp-planner-annot", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    // Restyle the selected annotations too (not while picking what the tool adds next).
+    if ((patch.category || patch.type) && opts.restyle !== false) {
+      const ids = nodesRef.current.filter((n) => n.selected && n.type === "annotation").map((n) => n.id);
+      if (ids.length)
+        mutate((d) => ({
+          ...d,
+          nodes: d.nodes.map((n) => (ids.includes(n.id) && n.data.annotation ? { ...n, data: { ...n.data, annotation: { ...n.data.annotation, ...(patch.category ? { category: patch.category } : {}) } } } : n)),
+        }));
+    }
+  }, [mutate]);
+  const annotStyleRef = useRef(annotStyle);
+  annotStyleRef.current = annotStyle;
+
+  const addAnnotation = useCallback(
+    (box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }, target: string | null) => {
+      const { type, category } = annotStyleRef.current;
+      const [dw, dh] = TYPE_META[type].size;
+      const id = newId();
+      const w = box && type !== "pin" ? Math.max(40, box.w) : dw;
+      const h = box && type !== "pin" ? Math.max(type === "bracket" ? 24 : 40, box.h) : dh;
+      // A pin sits on the point; a callout floats up and to the right of it; areas cover the box.
+      let x = box && type !== "pin" ? box.x : type === "pin" ? at.x - w / 2 : type === "callout" ? at.x + 28 : at.x - w / 2;
+      let y = box && type !== "pin" ? box.y : type === "pin" ? at.y - h / 2 : type === "callout" ? at.y - h - 28 : at.y - h / 2;
+      const base = docOf();
+      const parent = target && (type === "pin" || type === "callout") ? base.nodes.find((n) => n.id === target) : undefined;
+      if (parent) {
+        const r = absRect(base, parent.id);
+        x -= r.x;
+        y -= r.y;
+      }
+      const node: PlanNode = {
+        id,
+        kind: "annotation",
+        x: Math.round(x),
+        y: Math.round(y),
+        width: w,
+        height: h,
+        ...(parent ? { parentId: parent.id } : {}),
+        data: { title: "", annotation: { type, category } },
+      };
+      pendingKey.current = null;
+      const doc = addNodes(base, [node]);
+      applyDoc(parent ? doc : placeInActive(doc, [id]), { nodes: [id] });
+      // New annotations are shown even when that category was filtered out.
+      setAnnotationViewState((v) => (v.show && v.categories.has(category) ? v : { ...v, show: true, categories: new Set([...v.categories, category]) }));
+      setToolState("select");
+      setTimeout(() => setEditingId(id), 30);
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
   const addShape = useCallback(
     (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }) => {
       const s = styleRef.current;
@@ -1250,6 +1327,14 @@ function EditorShell(props: PlanEditorProps) {
     style,
     setStyle,
     addShape,
+    annotStyle,
+    setAnnotStyle,
+    addAnnotation,
+    detach: (id: string) => mutate((d) => reparent(d, id, undefined)),
+    annotationView,
+    setAnnotationView,
+    review,
+    setReview,
     convertTo,
     copyStyle,
     pasteStyle,
@@ -1422,6 +1507,9 @@ function EditorShell(props: PlanEditorProps) {
       if (k === "l") return run(() => a.setTool("line"));
       if (k === "t") return run(() => a.setTool("text"));
       if (k === "f") return run(() => a.setTool("frame"));
+      // ⇧N shows or hides every annotation at once; N is the annotation tool.
+      if (k === "n" && e.shiftKey) return run(() => a.setAnnotationView({ show: !a.annotationView.show }));
+      if (k === "n") return run(() => a.setTool(a.tool === "annotate" ? "select" : "annotate"));
       if (k === "c") return run(() => (a.selectedNodes.length === 1 ? a.startConnectFrom(a.selectedNodes[0].id) : a.setTool("connect")));
       if (k === "+" || k === "=") return run(() => rf.zoomIn({ duration: motionMs(150) }));
       if (k === "-" || k === "_") return run(() => rf.zoomOut({ duration: motionMs(150) }));
@@ -1981,7 +2069,7 @@ function EditorShell(props: PlanEditorProps) {
                     zoomOnDoubleClick={false}
                     elevateNodesOnSelect={false}
                     proOptions={{ hideAttribution: true }}
-                    className={cn("wp-flow", `wp-tool-${tool}`)}
+                    className={cn("wp-flow", `wp-tool-${tool}`, review && "wp-review")}
                   >
                     {grid && <Background variant={BackgroundVariant.Dots} gap={20} size={1.3} color="var(--canvas-dot)" />}
                     {!editingId && <SelectionToolbar />}

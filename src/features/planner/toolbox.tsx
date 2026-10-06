@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Layers, ListTree, Plus, Search } from "lucide-react";
+import { Layers, ListTree, Plus, Search, Shapes } from "lucide-react";
 import type { NodeKind } from "@/domain/plan";
 import { SectionLabel } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
@@ -10,6 +10,7 @@ import { KIND_LABEL } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
 import { ResourceRow, setDragPayload, useResourceSearch } from "./resource-picker";
 import { LayersPanel } from "./layers-panel";
+import { LibraryPanel } from "./library-panel";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/menu";
 
 const SHELVES = [
@@ -22,10 +23,11 @@ type Shelf = (typeof SHELVES)[number]["value"];
 
 const TILES: (NodeKind | "connector" | "draw")[] = ["block", "container", "note", "link", "section", "image", "text", "connector", "draw"];
 
-type Tab = "insert" | "layers" | "outline";
+type Tab = "insert" | "library" | "layers" | "outline";
 const TAB_KEY = "wp-planner-left-tab";
 const TABS: { id: Tab; label: string; icon: typeof Plus }[] = [
   { id: "insert", label: "Inserir", icon: Plus },
+  { id: "library", label: "Biblioteca", icon: Shapes },
   { id: "layers", label: "Camadas", icon: Layers },
   { id: "outline", label: "Estrutura", icon: ListTree },
 ];
@@ -59,19 +61,23 @@ export function Toolbox() {
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
+            aria-label={t.label}
+            title={t.label}
             className={cn(
-              "inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg text-body font-medium transition-colors [&_svg]:size-3.5 [&_svg]:shrink-0",
-              tab === t.id ? "bg-surface text-ink shadow-rest" : "text-ink-2 hover:text-ink",
+              // The open tab shows its name; the others only their icon.
+              "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg text-body font-medium transition-colors [&_svg]:size-3.5 [&_svg]:shrink-0",
+              tab === t.id ? "flex-1 bg-surface px-2 text-ink shadow-rest" : "w-10 shrink-0 text-ink-2 hover:bg-surface/60 hover:text-ink",
             )}
           >
             <t.icon strokeWidth={2} />
-            {t.label}
-            {t.id === "layers" && many && <span className="rounded-full bg-accent-soft px-1.5 text-caption tabular-nums text-accent-ink">{ed.layers.list.length}</span>}
+            {tab === t.id && <span className="truncate">{t.label}</span>}
+            {t.id === "layers" && many && tab === t.id && <span className="rounded-full bg-accent-soft px-1.5 text-caption tabular-nums text-accent-ink">{ed.layers.list.length}</span>}
           </button>
         ))}
       </div>
       <div role="tabpanel" className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto p-4">
         {tab === "insert" && <InsertTab />}
+        {tab === "library" && <LibraryPanel />}
         {tab === "layers" && <LayersPanel />}
         {tab === "outline" && <Outline />}
       </div>

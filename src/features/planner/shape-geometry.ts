@@ -149,7 +149,7 @@ function cleanOutline(type: "rect" | "diamond" | "ellipse", x: number, y: number
  */
 export function shapePaths(shape: Shape, w: number, h: number, opts: { seed: number; sketch?: boolean; ink?: string }): DrawPath[] {
   const s = resolveShape(shape, opts.sketch);
-  if (s.type === "text") return [];
+  if (s.type === "text" || s.type === "icon") return [];
   const stroke = s.stroke ?? opts.ink ?? "currentColor";
   const sw = s.strokeWidth;
   const pad = sw / 2 + 1;

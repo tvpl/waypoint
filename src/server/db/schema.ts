@@ -426,3 +426,20 @@ export const planComments = sqliteTable(
   },
   (t) => [index("plan_comments_plan_idx").on(t.planId, t.createdAt)],
 );
+
+/** "Minha biblioteca": reusable drawings of a workspace (also imported from .excalidrawlib files). */
+export const libraryItems = sqliteTable(
+  "library_items",
+  {
+    id: id(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull().default(""),
+    /** The elements, at the origin (see src/domain/library.ts). */
+    content: text("content").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("library_items_workspace_idx").on(t.workspaceId, t.createdAt)],
+);

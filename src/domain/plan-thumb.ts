@@ -31,7 +31,7 @@ export function planThumb(doc: PlanDocument): Thumb {
     const out: ThumbNode = { x: p.x, y: p.y, w: n.width, h: collapsed ? COLLAPSED_HEIGHT : n.height, color: n.data.color, kind: n.kind };
     // Drawn shapes keep their outline and background in the miniature.
     if (n.kind === "shape" && n.data.shape) {
-      out.shape = n.data.shape.type;
+      out.shape = n.data.shape.type === "icon" ? "rect" : n.data.shape.type;
       out.color = n.data.shape.fill;
       if (n.data.shape.stroke) out.stroke = n.data.shape.stroke;
     }

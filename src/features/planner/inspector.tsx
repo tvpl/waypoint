@@ -44,6 +44,7 @@ import { Tooltip } from "@/components/ui/popover";
 import { useEditor, type InspectorTab } from "./editor-context";
 import { KIND_LABEL, PARENT_KINDS, STATUS_META, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
+import { GlyphSvg } from "./glyph";
 import { ICON_NAMES, KIND_ICON, PLAN_ICONS, PlanIcon } from "./icons";
 import { EdgeSample } from "./edges";
 import { TagInput } from "./tag-input";
@@ -175,7 +176,21 @@ function DrawInspector() {
   const onlyText = types.size === 1 && types.has("text");
   const boxes = types.has("rect") || types.has("diamond");
   const set = ed.setStyle;
-  const label = one ? (one.data.shape?.type === "text" ? "Texto" : one.data.shape?.type === "ellipse" ? "Elipse" : one.data.shape?.type === "diamond" ? "Losango" : "Retângulo") : `${nodes.length} formas`;
+  const onlyIcons = types.size === 1 && types.has("icon");
+  const glyph = one?.data.shape?.glyph;
+  const label = one
+    ? one.data.shape?.type === "icon"
+      ? one.data.title || "Ícone"
+      : one.data.shape?.type === "text"
+        ? "Texto"
+        : one.data.shape?.type === "ellipse"
+          ? "Elipse"
+          : one.data.shape?.type === "diamond"
+            ? "Losango"
+            : "Retângulo"
+    : onlyIcons
+      ? `${nodes.length} ícones`
+      : `${nodes.length} formas`;
   const Icon = KIND_ICON.shape;
   const setText = (title: string) =>
     ed.mutate(
@@ -195,21 +210,33 @@ function DrawInspector() {
       <Header
         icon={
           <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle" style={{ color: s.stroke ?? "var(--ink)" }}>
-            <Icon className="size-4" strokeWidth={2} />
+            {glyph ? <GlyphSvg glyph={glyph} size={16} color={s.stroke ?? "var(--ink)"} /> : <Icon className="size-4" strokeWidth={2} />}
           </span>
         }
-        kicker={one ? "Forma" : "Seleção"}
+        kicker={one ? (glyph ? "Ícone" : "Forma") : "Seleção"}
         title={label}
       />
       {one && (
-        <F label="Texto" htmlFor={`st-${one.id}`}>
+        <F label={glyph ? "Rótulo" : "Texto"} htmlFor={`st-${one.id}`}>
           <Textarea id={`st-${one.id}`} rows={2} maxLength={300} className="min-h-[56px] rounded-lg text-body" value={one.data.title} onChange={(e) => setText(e.target.value)} />
         </F>
       )}
-      <Row label="Traço">
+      <Row label={onlyIcons ? "Cor" : "Traço"}>
         <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
       </Row>
-      {!onlyText && (
+      {onlyIcons && (
+        <>
+          <Row label="Fundo">
+            <FillColors value={s.fill} onChange={(fill) => set({ fill })} />
+          </Row>
+          {!glyph?.filled && (
+            <Row label="Espessura">
+              <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+            </Row>
+          )}
+        </>
+      )}
+      {!onlyText && !onlyIcons && (
         <>
           <Row label="Fundo">
             <FillColors value={s.fill} onChange={(fill) => set({ fill })} />
@@ -237,17 +264,21 @@ function DrawInspector() {
           </div>
         </>
       )}
-      <Row label="Fonte">
-        <FontPicker value={s.font} onChange={(font) => set({ font })} />
-      </Row>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-        <Row label="Tamanho">
-          <SizePicker value={s.fontSize} onChange={(fontSize) => set({ fontSize })} />
-        </Row>
-        <Row label="Alinhamento">
-          <AlignPicker value={s.align} onChange={(align) => set({ align })} />
-        </Row>
-      </div>
+      {!onlyIcons && (
+        <>
+          <Row label="Fonte">
+            <FontPicker value={s.font} onChange={(font) => set({ font })} />
+          </Row>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+            <Row label="Tamanho">
+              <SizePicker value={s.fontSize} onChange={(fontSize) => set({ fontSize })} />
+            </Row>
+            <Row label="Alinhamento">
+              <AlignPicker value={s.align} onChange={(align) => set({ align })} />
+            </Row>
+          </div>
+        </>
+      )}
       <Row label="Opacidade">
         <OpacitySlider value={s.opacity} onChange={(opacity) => set({ opacity })} />
       </Row>

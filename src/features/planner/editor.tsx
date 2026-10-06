@@ -27,7 +27,10 @@ import {
 } from "@xyflow/react";
 import { CloudOff, MonitorSmartphone, MousePointerClick, Plus, RotateCcw, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
-import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef } from "@/domain/plan";
+import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef, Shape } from "@/domain/plan";
+import { instantiateLibraryContent, libraryContentSchema, normalizeLibraryContent, type LibraryContent } from "@/domain/library";
+import { luminance } from "@/lib/color";
+import { iconPickSchema } from "./icon-library";
 import {
   addLayer,
   applyView,
@@ -65,7 +68,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
-import { CREATE_TOOLS, EditorContext, type EditorApi, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
+import { CREATE_TOOLS, EditorContext, type EditorApi, type IconPick, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
 import { DEFAULT_STYLE, measureText, seedOf, type DrawStyle } from "./shape-geometry";
 import { applyStyle, edgeStyleFromStyle, shapeFromStyle } from "./shape-style";
 import { ShapeTools } from "./draw-tools";
@@ -910,6 +913,54 @@ function EditorShell(props: PlanEditorProps) {
     [docOf, applyDoc, placeInActive, canHold, snap],
   );
 
+  const addIcon = useCallback(
+    (icon: IconPick, at?: { x: number; y: number }) => {
+      const id = newId();
+      const p = at ?? viewportCenter();
+      // Brand logos keep their color, except near-black or white ones, which follow the theme.
+      const lum = icon.color ? luminance(icon.color) : -1;
+      const color = icon.color && lum > 0.03 && lum < 0.85 ? icon.color : styleRef.current.stroke;
+      const shape: Shape = { type: "icon", glyph: icon.glyph, ...(color ? { stroke: color } : {}) };
+      const title = icon.set === "brand" ? icon.name.slice(0, 300) : "";
+      const size = 64;
+      const h = size + (title ? 24 : 0);
+      const node: PlanNode = { id, kind: "shape", x: Math.round(p.x - size / 2), y: Math.round(p.y - h / 2), width: size, height: h, data: { title, shape } };
+      if (snap) {
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
+      }
+      pendingKey.current = null;
+      let doc = placeInActive(addNodes(docOf(), [node]), [id]);
+      const parent = findDropTarget(doc, id, canHold);
+      if (parent) doc = reparent(doc, id, parent);
+      applyDoc(doc, { nodes: [id] });
+    },
+    [docOf, applyDoc, placeInActive, canHold, snap, viewportCenter],
+  );
+
+  const insertFragment = useCallback(
+    (content: LibraryContent, at?: { x: number; y: number }) => {
+      const c = instantiateLibraryContent(content, at ?? viewportCenter(), newId);
+      const ids = new Set(c.nodes.map((n) => n.id));
+      const top = c.nodes.filter((n) => !n.parentId || !ids.has(n.parentId)).map((n) => n.id);
+      pendingKey.current = null;
+      const base = docOf();
+      applyDoc(placeInActive({ ...base, nodes: [...base.nodes, ...c.nodes], edges: [...base.edges, ...c.edges] }, top, c.edges.map((e) => e.id)), { nodes: top });
+    },
+    [docOf, applyDoc, placeInActive, viewportCenter],
+  );
+
+  const selectionFragment = useCallback((): LibraryContent | null => {
+    const sel = selectedIds();
+    if (!sel.nodes.size) return null;
+    try {
+      return normalizeLibraryContent(subsetDoc(docOf(), sel.nodes, sel.edges));
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docOf]);
+
   const addLink = useCallback(
     (kind: "arrow" | "line", from: { x: number; y: number }, to: { x: number; y: number }, source?: string | null, target?: string | null) => {
       const s = styleRef.current;
@@ -1127,6 +1178,9 @@ function EditorShell(props: PlanEditorProps) {
     style,
     setStyle,
     addShape,
+    addIcon,
+    insertFragment,
+    selectionFragment,
     addLink,
     numberSteps: (edgeIds) => {
       const ids = stepTargets(docOf(), edgeIds ? { nodes: new Set(), edges: new Set(edgeIds) } : selectedIds());
@@ -1474,7 +1528,14 @@ function EditorShell(props: PlanEditorProps) {
     if (p) {
       e.preventDefault();
       if (p.type === "kind") addNode(p.kind, { at });
-      else addResourceNode(p.ref, p.resource, at);
+      else if (p.type === "resource") addResourceNode(p.ref, p.resource, at);
+      else if (p.type === "icon") {
+        const icon = iconPickSchema.safeParse(p.icon);
+        if (icon.success) addIcon(icon.data, at);
+      } else if (p.type === "fragment") {
+        const content = libraryContentSchema.safeParse(p.content);
+        if (content.success) insertFragment(normalizeLibraryContent(content.data), at);
+      }
       return;
     }
     // Links dragged from the library (another tab or window).

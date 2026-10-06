@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDocument, type PlanDocument } from "@/domain/plan";
-import { centerOn, fromExcalidraw, hexOf, parseScene, toClipboard, toExcalidraw, type ExElement } from "./excalidraw";
+import { centerOn, fromExcalidraw, hexOf, parseLibrary, parseScene, toClipboard, toExcalidraw, toExcalidrawLib, type ExElement } from "./excalidraw";
 import { embedInPng, embedInSvg, readSceneFile, sceneFromPng, sceneFromSvg } from "./excalidraw-file";
 
 const doc: PlanDocument = normalizeDocument({
@@ -175,5 +175,48 @@ describe("excalidraw files", () => {
     const file = new File([JSON.stringify(scene)], "a.excalidraw", { type: "" });
     expect((await readSceneFile(file))?.elements.length).toBe(scene.elements.length);
     expect(await readSceneFile(new File(["{}"], "b.json"))).toBeNull();
+  });
+});
+
+describe("icons and libraries", () => {
+  const glyph = { id: "lucide:database", viewBox: "0 0 24 24", paths: ["M3 5V19A9 3 0 0 0 21 19V5", "M3 12A9 3 0 0 0 21 12"] };
+  const iconDoc = normalizeDocument({
+    viewport: { x: 0, y: 0, zoom: 1 },
+    nodes: [
+      { id: "ic", kind: "shape", x: 0, y: 0, width: 64, height: 88, data: { title: "Banco", shape: { type: "icon", glyph, stroke: "#1971C2", fill: "#E9ECEF" } } },
+      { id: "r", kind: "shape", x: 200, y: 0, width: 100, height: 60, data: { title: "", shape: { type: "rect" } } },
+    ],
+    edges: [{ id: "e", source: "r", target: "ic", kind: "flow", style: { end: "arrow" } }],
+  });
+
+  it("exports an icon as an SVG image with its label, and brings it back", () => {
+    const scene = toExcalidraw(iconDoc, { now: 1 });
+    const img = scene.elements.find((e) => e.id === "ic")!;
+    expect(img).toMatchObject({ type: "image", width: 64, height: 64 });
+    const file = scene.files[img.fileId!];
+    expect(file.mimeType).toBe("image/svg+xml");
+    expect(atob(file.dataURL.split(",")[1])).toContain('stroke="#1971C2"');
+    const label = scene.elements.find((e) => e.id === "ic:t")!;
+    expect(label).toMatchObject({ text: "Banco", groupIds: img.groupIds });
+    expect(scene.elements.find((e) => e.id === "e")?.endBinding?.elementId).toBe("ic");
+
+    const back = fromExcalidraw(parseScene(JSON.parse(JSON.stringify(scene)))!);
+    const ic = back.nodes.find((n) => n.id === "ic")!;
+    expect(ic).toMatchObject({ kind: "shape", width: 64, height: 88, data: { title: "Banco", shape: { type: "icon", glyph, fill: "#E9ECEF" } } });
+    expect(back.nodes.some((n) => n.id === "ic:t")).toBe(false);
+    expect(back.images).toEqual([]);
+    expect(back.edges[0]).toMatchObject({ source: "r", target: "ic" });
+  });
+
+  it("reads and writes Excalidraw libraries", () => {
+    const lib = JSON.parse(toExcalidrawLib([{ id: "i1", name: "Banco", nodes: iconDoc.nodes, edges: iconDoc.edges }], 1));
+    expect(lib).toMatchObject({ type: "excalidrawlib", version: 2, libraryItems: [{ id: "i1", name: "Banco", status: "unpublished" }] });
+    const items = parseLibrary(lib)!;
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("Banco");
+    // version 1: a list of element lists
+    const v1 = parseLibrary({ type: "excalidrawlib", version: 1, library: [[{ id: "a", type: "rectangle", x: 0, y: 0, width: 10, height: 10 }], []] })!;
+    expect(v1).toHaveLength(1);
+    expect(parseLibrary({ type: "excalidraw", elements: [] })).toBeNull();
   });
 });

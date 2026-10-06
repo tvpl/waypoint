@@ -13,6 +13,7 @@ import { nodeTone, toneVars } from "./colors";
 import { PlanIcon } from "./icons";
 import { HIGHLIGHTER_COLOR, inkFontSize, inkPaths, shapePath } from "./ink-geometry";
 import { FONT_STACK, resolveShape, seedOf, shapePaths } from "./shape-geometry";
+import { GlyphSvg } from "./glyph";
 
 type P = NodeProps<PlanFlowNode>;
 
@@ -544,6 +545,7 @@ export const ShapeNode = memo(function ShapeNode(p: P) {
     textAlign: s.align,
     justifyContent: s.align === "left" ? "flex-start" : s.align === "right" ? "flex-end" : "center",
   };
+  if (s.type === "icon" && shape.glyph) return <IconShape p={p} cls={cls} editing={editing} />;
   return (
     <Chrome p={p} kind="shape" handles={!text}>
       <div className={cn(cls, "wp-shape relative h-full w-full", text && "is-text")} style={{ opacity: s.opacity }}>
@@ -573,6 +575,36 @@ export const ShapeNode = memo(function ShapeNode(p: P) {
     </Chrome>
   );
 });
+
+/** An icon (with an optional tile behind it and a label under it). */
+function IconShape({ p, cls, editing }: { p: P; cls: string; editing: boolean }) {
+  const shape = p.data.shape!;
+  const s = resolveShape(shape);
+  const w = p.width ?? 72;
+  const h = p.height ?? 72;
+  const label = editing || !!p.data.title;
+  const labelH = label ? 24 : 0;
+  const area = Math.max(8, Math.min(w, h - labelH));
+  const tile = s.fill;
+  const color = s.stroke ?? "var(--ink)";
+  return (
+    <Chrome p={p} kind="shape" handles>
+      <div className={cn(cls, "wp-shape wp-icon relative flex h-full w-full flex-col items-center")} style={{ opacity: s.opacity }}>
+        <div className="flex w-full items-center justify-center" style={{ height: h - labelH }}>
+          <div className="flex items-center justify-center" style={{ width: area, height: area, background: tile, borderRadius: tile ? area * 0.22 : undefined }}>
+            <GlyphSvg glyph={shape.glyph!} size={area * (tile ? 0.6 : 0.92)} color={color} strokeWidth={s.strokeWidth} />
+          </div>
+        </div>
+        {label && (
+          // The label may be wider than the icon (centered under it, like a desktop icon).
+          <div className="wp-shape-text absolute bottom-0 left-1/2 flex h-6 w-max min-w-full max-w-[220px] -translate-x-1/2 items-end justify-center text-center text-[13px] font-medium leading-tight text-ink-2">
+            {editing ? <InlineTitle id={p.id} value={p.data.title} className="w-[160px] text-center text-[13px] font-medium" /> : <span className="truncate">{p.data.title}</span>}
+          </div>
+        )}
+      </div>
+    </Chrome>
+  );
+}
 
 /** A frame: a named area (like an artboard) that holds what is drawn inside it. */
 export const FrameNode = memo(function FrameNode(p: P) {

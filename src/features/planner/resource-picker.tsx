@@ -8,7 +8,12 @@ import type { ResolvedResource, ResourceSearchItem } from "./resource-types";
 
 export const DND_MIME = "application/x-waypoint";
 
-export type DragPayload = { type: "kind"; kind: NodeKind } | { type: "resource"; ref: ResourceRef; resource: ResolvedResource };
+export type DragPayload =
+  | { type: "kind"; kind: NodeKind }
+  | { type: "resource"; ref: ResourceRef; resource: ResolvedResource }
+  /** From the library panel (validated on drop: another page can put anything in a drag). */
+  | { type: "icon"; icon: unknown }
+  | { type: "fragment"; content: unknown };
 
 export function setDragPayload(e: React.DragEvent, payload: DragPayload) {
   e.dataTransfer.setData(DND_MIME, JSON.stringify(payload));

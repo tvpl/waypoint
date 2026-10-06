@@ -68,9 +68,27 @@ export const STROKE_STYLES = ["solid", "dashed", "dotted"] as const;
 export const FILL_STYLES = ["solid", "hachure", "cross-hatch", "dots"] as const;
 export const FONT_FAMILIES = ["hand", "sans", "mono"] as const;
 
-/** A drawn shape ("shape" node): a box, diamond or ellipse with text inside, or a free text. */
+/** SVG path data only (no markup, so a stored icon can't carry anything but drawing commands). */
+const svgPath = z.string().max(40000).regex(/^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+\-\s]*$/);
+
+/**
+ * An icon's drawing, kept in the document (renders offline, exports anywhere): interface icons
+ * are outlined strokes on a 24×24 grid, brand logos filled paths.
+ */
+export const glyphSchema = z.object({
+  /** Where it came from ("lucide:database", "si:postgresql"). */
+  id: z.string().max(80).optional(),
+  viewBox: z.string().regex(/^-?[\d.]+ -?[\d.]+ [\d.]+ [\d.]+$/).max(48),
+  paths: z.array(svgPath).min(1).max(48),
+  filled: z.boolean().optional(),
+});
+export type Glyph = z.infer<typeof glyphSchema>;
+
+/** A drawn shape ("shape" node): a box, diamond or ellipse with text inside, a free text, or an icon. */
 export const shapeSchema = z.object({
-  type: z.enum(["rect", "diamond", "ellipse", "text"]),
+  type: z.enum(["rect", "diamond", "ellipse", "text", "icon"]),
+  /** The icon's drawing (type "icon"). */
+  glyph: glyphSchema.optional(),
   /** Stroke and text color; missing = the theme's ink. */
   stroke: hexColor.optional(),
   /** Background; missing = transparent. */

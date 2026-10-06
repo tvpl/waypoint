@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext } from "react";
-import type { EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef } from "@/domain/plan";
+import type { LibraryContent } from "@/domain/library";
+import type { EdgeKind, Glyph, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef } from "@/domain/plan";
 import type { PlanFlowEdge, PlanFlowNode } from "@/domain/canvas-adapter";
 import type { AlignMode } from "./doc-ops";
 import type { LayoutDirection } from "./auto-layout";
@@ -121,6 +122,12 @@ export type EditorApi = {
   setStyle: (patch: Partial<DrawStyle>) => void;
   /** A shape, text or frame drawn on the canvas (canvas coordinates; a click gives a default size). */
   addShape: (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: Pt) => void;
+  /** An icon from the library (canvas point; default the view's center). */
+  addIcon: (icon: IconPick, at?: Pt) => void;
+  /** A library item: a fresh copy centered on the point (default the view's center). */
+  insertFragment: (content: LibraryContent, at?: Pt) => void;
+  /** The selection as a library item (elements inside it and the connections among them). */
+  selectionFragment: () => LibraryContent | null;
   /** An arrow or line: connects the elements it starts and ends on, else it is a free line. */
   addLink: (kind: "arrow" | "line", from: Pt, to: Pt, source?: string | null, target?: string | null) => void;
   /** Numbers the selected flow's connections 1…n ("Numerar passos"), or clears the numbers. */
@@ -156,3 +163,6 @@ export function useEditor(): EditorApi {
   if (!v) throw new Error("useEditor outside of the planner editor");
   return v;
 }
+
+/** An icon chosen in the library panel. */
+export type IconPick = { glyph: Glyph; name: string; set: "ui" | "brand"; color?: string };

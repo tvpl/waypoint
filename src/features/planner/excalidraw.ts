@@ -12,7 +12,9 @@ import {
   planLayerSchema,
   planNodeSchema,
   planViewSchema,
+  shapeSchema,
   type Arrowhead,
+  type Glyph,
   type EdgeStyle,
   type NodeData,
   type PlanDocument,
@@ -96,7 +98,27 @@ type WpCustom = {
   layer?: PlanLayer & { order?: number };
   edge?: Pick<PlanEdge, "kind" | "label" | "description" | "step"> & { styled?: boolean };
   highlighter?: boolean;
+  /** An icon (exported as an image): its drawing and label come back as they were. */
+  icon?: Shape;
+  title?: string;
+  /** The label under an icon (skipped on import: the icon brings its title). */
+  labelOf?: string;
 };
+
+/** A standalone SVG of an icon (on its tile when it has one). */
+export function glyphSvg(glyph: Glyph, color: string, opts: { size?: number; strokeWidth?: number; tile?: string } = {}): string {
+  const size = opts.size ?? 128;
+  const [vx, vy, vw, vh] = glyph.viewBox.split(" ").map(Number);
+  const body = glyph.paths
+    .map((d) => (glyph.filled ? `<path d="${d}" fill="${color}"/>` : `<path d="${d}" fill="none" stroke="${color}" stroke-width="${opts.strokeWidth ?? 2}" stroke-linecap="round" stroke-linejoin="round"/>`))
+    .join("");
+  if (!opts.tile) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${glyph.viewBox}" width="${size}" height="${size}">${body}</svg>`;
+  // The tile is the whole image; the icon sits in its middle 60%.
+  const pad = vw / 3;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx - pad} ${vy - pad} ${vw + pad * 2} ${vh + pad * 2}" width="${size}" height="${size}"><rect x="${vx - pad}" y="${vy - pad}" width="${vw + pad * 2}" height="${vh + pad * 2}" rx="${(vw + pad * 2) * 0.22}" fill="${opts.tile}"/>${body}</svg>`;
+}
+
+const toBase64 = (s: string) => (typeof btoa === "function" ? btoa(s) : Buffer.from(s, "binary").toString("base64"));
 
 const INK = "#1e1e1e";
 const SOURCE = "https://waypoint.app";
@@ -301,6 +323,49 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
     const common = { frameId, customData: custom(n) };
     const url = n.data.resource?.type === "url" ? n.data.resource.url : null;
     const sketch = sketchOf(n.layer);
+
+    if (n.kind === "shape" && n.data.shape?.type === "icon" && n.data.shape.glyph) {
+      const s = n.data.shape;
+      const title = n.data.title;
+      const size = Math.max(8, Math.min(box.w, box.h - (title ? 24 : 0)));
+      const svg = glyphSvg(s.glyph!, s.stroke ?? INK, { strokeWidth: s.strokeWidth, tile: s.fill });
+      const fileId = `wp-icon-${seedOf(svg).toString(36)}`;
+      files[fileId] = { id: fileId, mimeType: "image/svg+xml", dataURL: `data:image/svg+xml;base64,${toBase64(svg)}`, created: now };
+      const group = title ? [`${n.id}:g`] : [];
+      const el = base(n.id, "image", { x: box.x + (box.w - size) / 2, y: box.y, w: size, h: size }, {
+        fileId,
+        status: "saved",
+        scale: [1, 1],
+        crop: null,
+        opacity: Math.round((s.opacity ?? 1) * 100),
+        groupIds: group,
+        link: url,
+        ...common,
+        customData: custom(n, { icon: s, title }),
+      });
+      out.push(el);
+      els.set(n.id, el);
+      if (title) {
+        const size2 = textSize(title, 14);
+        out.push(
+          base(`${n.id}:t`, "text", { x: box.x + box.w / 2 - size2.width / 2, y: box.y + size + 4, w: size2.width, h: size2.height }, {
+            text: title,
+            originalText: title,
+            fontSize: 14,
+            fontFamily: FONT_ID.sans,
+            textAlign: "center",
+            verticalAlign: "top",
+            containerId: null,
+            autoResize: true,
+            lineHeight: 1.25,
+            groupIds: group,
+            frameId,
+            customData: { waypoint: { labelOf: n.id } satisfies WpCustom },
+          }),
+        );
+      }
+      return;
+    }
 
     if (n.kind === "shape" && n.data.shape) {
       const s = n.data.shape;
@@ -651,6 +716,7 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
   for (const el of live) {
     const wp = wpOf(el);
     if (el.type === "text" && el.containerId && byId.has(el.containerId)) continue;
+    if (wp.labelOf && byId.has(wp.labelOf)) continue;
     switch (el.type) {
       case "rectangle":
       case "diamond":
@@ -687,6 +753,12 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
         push(el, { kind: "frame", data: dataOf(el, { title: title(el.name ?? "Quadro") }) });
         break;
       case "image": {
+        const icon = shapeSchema.safeParse(wp.icon);
+        if (icon.success && icon.data.type === "icon" && icon.data.glyph) {
+          const title = typeof wp.title === "string" ? wp.title.slice(0, 300) : "";
+          push(el, { kind: "shape", data: dataOf(el, { title, shape: icon.data }), width: el.width, height: el.height + (title ? 24 : 0) });
+          break;
+        }
         const file = el.fileId ? scene.files[el.fileId] : undefined;
         if (file?.dataURL?.startsWith("data:image/")) {
           push(el, { kind: "image", data: dataOf(el, { title: "" }) });
@@ -716,7 +788,8 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
 
   // Arrows and lines: a connection when both ends are bound to imported elements, else a stroke.
   for (const el of live) {
-    if (el.type !== "arrow" && el.type !== "line") continue;
+    // "draw" is the old name of hand-drawn lines (libraries from before freedraw).
+    if (el.type !== "arrow" && el.type !== "line" && el.type !== "draw") continue;
     const wp = wpOf(el);
     const pts = el.points ?? [];
     if (pts.length < 2) continue;
@@ -842,4 +915,34 @@ export function subsetDoc(doc: PlanDocument, nodeIds: Iterable<string>, edgeIds:
     nodes: doc.nodes.filter((n) => keep.has(n.id)).map((n) => (n.parentId && !keep.has(n.parentId) ? { ...n, parentId: undefined, ...abs.get(n.id)! } : n)),
     edges: doc.edges.filter((e) => edges.has(e.id) || (keep.has(e.source) && keep.has(e.target))),
   };
+}
+
+// ------------------------------------------------------------------ libraries (.excalidrawlib)
+
+/** The items of an `.excalidrawlib` file (version 1 or 2), each as a small scene; null if it isn't one. */
+export function parseLibrary(json: unknown): { name?: string; scene: Pick<ExScene, "elements" | "files" | "appState"> }[] | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as { type?: string; libraryItems?: { name?: string; elements?: unknown[] }[]; library?: unknown[][] };
+  if (o.type !== "excalidrawlib") return null;
+  const raw: { name?: string; elements: unknown[] }[] = Array.isArray(o.libraryItems)
+    ? o.libraryItems.filter((i) => Array.isArray(i?.elements)).map((i) => ({ name: typeof i.name === "string" ? i.name : undefined, elements: i.elements! }))
+    : Array.isArray(o.library)
+      ? o.library.filter(Array.isArray).map((elements) => ({ elements }))
+      : [];
+  return raw.flatMap((i) => {
+    const scene = parseScene({ type: "excalidraw", elements: i.elements, files: {} });
+    return scene && scene.elements.length ? [{ name: i.name, scene }] : [];
+  });
+}
+
+/** Library items as an `.excalidrawlib` file (version 2). */
+export function toExcalidrawLib(items: { id: string; name: string; nodes: PlanNode[]; edges: PlanEdge[] }[], now = Date.now()): string {
+  const libraryItems = items.map((it) => ({
+    id: it.id,
+    status: "unpublished",
+    created: now,
+    name: it.name || undefined,
+    elements: toExcalidraw({ schemaVersion: 1, nodes: it.nodes, edges: it.edges, viewport: { x: 0, y: 0, zoom: 1 } }, { now }).elements,
+  }));
+  return JSON.stringify({ type: "excalidrawlib", version: 2, source: SOURCE, libraryItems }, null, 2);
 }

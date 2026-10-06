@@ -47,12 +47,17 @@ function byReading(doc: Doc) {
   };
 }
 
-/** Automatic order: top-level sections/containers, then the other top-level nodes, in reading order. */
+/**
+ * Automatic order: top-level sections/containers, then the other top-level nodes, in reading
+ * order. A plan drawn in frames presents them as its pages, and nothing else.
+ */
 export function defaultStepNodes(doc: Doc, overrides?: Readonly<Record<string, boolean>>): PlanNode[] {
   const order = byReading(doc);
   const visible = onVisibleLayer(doc, overrides);
   // Drawings are annotations, not steps.
   const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden && n.kind !== "ink" && visible(n));
+  const frames = top.filter((n) => n.kind === "frame");
+  if (frames.length) return frames.sort(order);
   const areas = top.filter((n) => PARENT_KINDS.has(n.kind)).sort(order);
   const rest = top.filter((n) => !PARENT_KINDS.has(n.kind)).sort(order);
   return [...areas, ...rest];

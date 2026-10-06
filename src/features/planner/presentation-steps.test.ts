@@ -24,6 +24,12 @@ describe("presentation steps", () => {
     expect(steps[1].title).toBe("secA");
   });
 
+  it("a plan drawn in frames presents its frames as pages, in reading order", () => {
+    const d = sample();
+    d.nodes.push(n("f2", 900, 1200, { kind: "frame", width: 400, height: 300 }), n("f1", 0, 1200, { kind: "frame", width: 400, height: 300 }));
+    expect(presentationSteps(d, "Plano").map((s) => s.nodeId)).toEqual([null, "f1", "f2"]);
+  });
+
   it("uses only ordered nodes once a custom order exists", () => {
     let d = sample();
     d = setOrder(d, "inner", 2);

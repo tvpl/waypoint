@@ -224,6 +224,17 @@ export const planLayerSchema = z.object({
   sketch: z.boolean().optional(),
   /** Folder in the layers panel ("Versões" › v1, v2…). Layers of a folder stay next to each other. */
   group: z.string().max(80).optional(),
+  /**
+   * A live overlay of another plan: its current content shows on this layer, read-only, for
+   * whoever can see that plan (never copied into this document).
+   */
+  source: z
+    .object({
+      planId: z.string().min(1).max(64),
+      dx: z.number().finite().optional(),
+      dy: z.number().finite().optional(),
+    })
+    .optional(),
   description: z.string().max(500).optional(),
 });
 export type PlanLayer = z.infer<typeof planLayerSchema>;

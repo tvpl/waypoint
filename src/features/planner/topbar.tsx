@@ -19,7 +19,7 @@ import {
 import { cn, timeAgo } from "@/lib/utils";
 import type { SaveStatus } from "./autosave";
 
-export type ExportKind = "json" | "png" | "svg" | "pdf" | "excalidraw" | "excalidraw-png" | "excalidraw-svg" | "excalidraw-copy";
+export type ExportKind = "json" | "png" | "svg" | "pdf" | "frames-pdf" | "excalidraw" | "excalidraw-png" | "excalidraw-svg" | "excalidraw-copy";
 
 export function SaveIndicator({ status, error, savedAt }: { status: SaveStatus; error?: string | null; savedAt?: number | null }) {
   // Re-render now and then so "há 2 min" stays true.
@@ -154,12 +154,15 @@ export function ExportMenu({
   onImport,
   trigger,
   views = [],
+  frames = 0,
 }: {
   onExport: (k: ExportKind, viewId?: string) => void;
   /** "Importar do Excalidraw…" (editor only). */
   onImport?: () => void;
   trigger?: React.ReactNode;
   views?: { id: string; name: string }[];
+  /** The plan has frames: offers one PDF page per frame. */
+  frames?: number;
 }) {
   return (
     <DropdownMenu>
@@ -181,6 +184,11 @@ export function ExportMenu({
         <DropdownMenuItem onSelect={() => onExport("pdf")}>
           <Printer /> PDF (imprimir)
         </DropdownMenuItem>
+        {frames > 0 && (
+          <DropdownMenuItem onSelect={() => onExport("frames-pdf")}>
+            <Printer /> Quadros como páginas (PDF · {frames})
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => onExport("json")}>
           <FileJson /> JSON
@@ -217,6 +225,8 @@ export function EditorTopbar(props: {
   people: { name: string; email: string }[];
   onExport: (k: ExportKind, viewId?: string) => void;
   onImport?: () => void;
+  /** Frames in the plan (export menu: one PDF page per frame). */
+  frames?: number;
   /** Saved views (export menu). */
   views?: { id: string; name: string }[];
   /** Comments panel toggle. */
@@ -308,7 +318,7 @@ export function EditorTopbar(props: {
         </span>
         {props.comments}
         <span className="hidden md:contents">
-          <ExportMenu onExport={props.onExport} onImport={props.onImport} views={props.views} />
+          <ExportMenu onExport={props.onExport} onImport={props.onImport} views={props.views} frames={props.frames} />
           <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
           <span className="hidden lg:contents">
             <Avatars people={props.people} />

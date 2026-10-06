@@ -174,3 +174,32 @@ test("drawing: shapes, an arrow bound between them, and text", async ({ page }) 
   await page.mouse.click(away.x, away.y);
   await expect(page.locator(".react-flow__node-shape").filter({ hasText: "Revisar" })).toHaveCount(1);
 });
+
+test("overlays: another plan shown live on a layer, never copied into this one", async ({ page }) => {
+  await signUp(page);
+  // The plan to overlay.
+  await page.getByRole("button", { name: "Novo diagrama em branco" }).click();
+  await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
+  await page.locator("#plan-title").fill("Arquitetura atual");
+  await page.locator("#plan-title").press("Tab");
+  await page.getByRole("button", { name: /^Bloco/ }).first().click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Salvo")).toBeVisible({ timeout: 15_000 });
+
+  // A new plan that draws over it.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Novo diagrama em branco" }).click();
+  await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
+  await page.getByRole("tab", { name: "Camadas" }).click();
+  await page.getByRole("button", { name: "Sobrepor outro plan" }).click();
+  await page.getByRole("searchbox", { name: "Buscar plans" }).fill("Arquitetura");
+  await page.getByRole("dialog").getByRole("button", { name: /Arquitetura atual/ }).first().click();
+  await expect(page.locator(".react-flow__node.wp-overlay")).toHaveCount(1);
+  await expect(page.getByText(/Sobreposição · 1 elemento/)).toBeVisible();
+  await expect(page.getByText("Salvo")).toBeVisible({ timeout: 15_000 });
+
+  // Saved as a layer that points at the plan, not as copies of its elements.
+  await page.reload();
+  await expect(page.locator(".react-flow__node.wp-overlay")).toHaveCount(1);
+  await expect(page.locator(".react-flow__node:not(.wp-overlay)")).toHaveCount(0);
+});

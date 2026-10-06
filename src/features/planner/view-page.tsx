@@ -82,7 +82,7 @@ export function ViewBody({
       {/* phones & tablets: compact header + "Detalhes" sheet */}
       <CompactInfo plan={plan} refs={refs} kinds={kinds} />
       <section aria-label="Plan" className="relative min-h-0 flex-1 lg:min-h-[420px]">
-        <PlanCanvasView document={document} resources={resources} focusNodeId={focusNodeId} meta={meta} exportRef={exportRef} {...canvas} />
+        <PlanCanvasView document={document} planId={plan.id} resources={resources} focusNodeId={focusNodeId} meta={meta} exportRef={exportRef} {...canvas} />
       </section>
     </div>
   );
@@ -340,7 +340,7 @@ export function PlanViewPage({
           </Button>
         )}
         <div className="hidden md:block">
-          <ExportMenu onExport={onExport} views={views} />
+          <ExportMenu onExport={onExport} views={views} frames={document.nodes.filter((n) => n.kind === "frame").length} />
         </div>
         <MobileMenu planId={plan.id} canEdit={canEdit} onShare={() => setShare(true)} onExport={onExport} views={views} />
       </header>

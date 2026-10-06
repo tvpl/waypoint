@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  ExternalLink,
   Focus,
   Folder,
   FolderInput,
@@ -48,6 +49,7 @@ import {
 import { ask } from "@/components/ui/ask";
 import { cn } from "@/lib/utils";
 import { useEditor } from "./editor-context";
+import { OnionSection, OverlayPlanButton } from "./overlay-panel";
 import { KIND_LABEL } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
 import { pairsOf } from "./ink-geometry";
@@ -198,7 +200,16 @@ function LayerRow({
   const isolated = L.isolated === layer.id;
   const dimmedByIsolation = !!L.isolated && !isolated;
   const marker = drop?.id === layer.id ? drop.where : null;
-  const sub = [count ? `${count} ${count === 1 ? "elemento" : "elementos"}` : "vazia", opacity < 1 ? `${Math.round(opacity * 100)}%` : null].filter(Boolean).join(" · ");
+  const overlay = layer.source ? L.overlays.get(layer.source.planId) : undefined;
+  const sub = layer.source
+    ? [
+        overlay?.status === "error" ? overlay.error : overlay?.status === "ok" ? `Sobreposição · ${overlay.count} ${overlay.count === 1 ? "elemento" : "elementos"}` : "Sobreposição · carregando…",
+        count ? `+${count}` : null,
+        opacity < 1 ? `${Math.round(opacity * 100)}%` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : [count ? `${count} ${count === 1 ? "elemento" : "elementos"}` : "vazia", opacity < 1 ? `${Math.round(opacity * 100)}%` : null].filter(Boolean).join(" · ");
 
   return (
     <li className={cn("relative", dimmedByIsolation && "opacity-50")}>
@@ -405,6 +416,11 @@ function LayerRow({
                 )}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {layer.source && (
+              <DropdownMenuItem onSelect={() => window.open(`/plans/${encodeURIComponent(layer.source!.planId)}`, "_blank", "noopener")}>
+                <ExternalLink /> Abrir o plan sobreposto
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => L.move(layer.id, "up")} disabled={index === total - 1}>
               <ArrowUp /> Subir
             </DropdownMenuItem>
@@ -839,6 +855,7 @@ export function LayersPanel() {
           </span>
           <div className="flex items-center gap-0.5">
             <TemplatesMenu />
+            <OverlayPlanButton />
             <Tooltip content="Nova camada" side="right">
               <button type="button" aria-label="Nova camada" className={iconBtn} onClick={L.add}>
                 <Plus />
@@ -906,6 +923,7 @@ export function LayersPanel() {
         )}
       </div>
       <ViewsSection boxes={boxes} frame={frame} />
+      <OnionSection />
     </section>
   );
 }

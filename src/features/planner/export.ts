@@ -163,6 +163,32 @@ export function openPrintWindow(title: string): Window | null {
   return w;
 }
 
+/** One PDF page per frame ("quadros como páginas"), each titled with the frame's name. */
+export async function exportFramesPdf(container: HTMLElement, pages: { bounds: Rect; title: string }[], title: string, w: Window | null) {
+  if (!w) throw new Error("popup blocked");
+  const urls: string[] = [];
+  try {
+    for (const p of pages) urls.push(await renderFlowImage(container, p.bounds, "png"));
+  } catch (e) {
+    w.close();
+    throw e;
+  }
+  const body = pages
+    .map((p, i) => `<section><h1>${esc(p.title)}</h1><img src="${urls[i]}" alt=""></section>`)
+    .join("");
+  w.document.open();
+  w.document.write(
+    `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{size:auto;margin:12mm}html,body{margin:0;font-family:system-ui,sans-serif;color:#17171c}section{break-after:page;page-break-after:always}section:last-child{break-after:auto;page-break-after:auto}h1{font-size:16px;font-weight:600;margin:0 0 10px}img{width:100%;height:auto;display:block}</style></head><body>${body}</body></html>`,
+  );
+  w.document.close();
+  const imgs = [...w.document.querySelectorAll("img")];
+  const go = () => {
+    w.focus();
+    w.print();
+  };
+  void Promise.all(imgs.map((img) => (img.complete ? null : new Promise((r) => (img.onload = r))))).then(() => setTimeout(go, 50));
+}
+
 /** PDF via the browser's print dialog, using a rendered PNG on a clean page. */
 export async function exportPdf(container: HTMLElement, bounds: Rect, title: string, w: Window | null) {
   if (!w) throw new Error("popup blocked");

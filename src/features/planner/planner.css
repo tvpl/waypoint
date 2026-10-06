@@ -593,3 +593,19 @@
 .wp-flow .react-flow__edge.wp-drawn-edge .wp-edge-head {
   pointer-events: none;
 }
+
+/* Overlays (another plan on a layer, or the "papel vegetal"): seen, never touched. */
+.react-flow__node.wp-overlay,
+.react-flow__edge.wp-overlay {
+  pointer-events: none !important;
+  cursor: default;
+}
+.react-flow__node.wp-overlay .react-flow__handle,
+.react-flow__node.wp-overlay .react-flow__resize-control {
+  display: none;
+}
+.react-flow__node.wp-onion,
+.react-flow__edge.wp-onion {
+  filter: grayscale(1);
+  opacity: 0.32;
+}

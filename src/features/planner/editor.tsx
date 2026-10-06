@@ -113,10 +113,12 @@ import { ViewBody } from "./view-page";
 import { readDragPayload, DND_MIME } from "./resource-picker";
 import { DND_MIME as LIBRARY_MIME } from "@/features/links/dnd";
 import { fallbackResource, refKey, type ResolvedResource } from "./resource-types";
-import { copyScene, downloadScene, excalidrawScene, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { copyScene, downloadScene, excalidrawScene, exportFramesPdf, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { isOverlayId } from "@/domain/overlay";
 import { centerOn, CLIPBOARD_TYPE, EXCALIDRAW_MIME, fromExcalidraw, parseScene, subsetDoc } from "./excalidraw";
 import { EXCALIDRAW_ACCEPT, readSceneFile } from "./excalidraw-file";
 import { sceneName, withUploadedImages } from "./excalidraw-import";
+import { overlayFlow, useOverlays } from "./overlays";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
@@ -258,6 +260,11 @@ function EditorShell(props: PlanEditorProps) {
   activeLayerRef.current = activeLayer;
   // Editing one layer alone: the others fade and can't be touched (not saved with the plan).
   const [isolated, setIsolatedState] = useState<string | null>(null);
+  const [onion, setOnion] = useState<{ versionId: string; label: string } | null>(null);
+  const overlays = useOverlays(planId, layerState.layers, onion?.versionId ?? null);
+  const overlay = useMemo(() => overlayFlow(layerState, overlays, { isolate: isolated }), [layerState, overlays, isolated]);
+  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...nodes] : nodes), [overlay.nodes, nodes]);
+  const renderEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
   const isolateRef = useRef<string | null>(null);
   // Element hovered in the layers panel, outlined on the canvas.
   const [hoverId, setHoverId] = useState<string | null>(null);
@@ -1112,8 +1119,26 @@ function EditorShell(props: PlanEditorProps) {
       updateView: (id) => mutate((d) => updateViewLayers(d, id)),
       hover: setHoverId,
       counts,
+      addOverlay: (sourceId, title) => {
+        if (sourceId === planId) return;
+        let id: string | null = null;
+        mutate((d) => {
+          const r = addLayer(d, title || "Plan sobreposto");
+          id = r.id;
+          return updateLayer(r.doc, r.id, { source: { planId: sourceId }, opacity: 0.6, locked: true });
+        });
+        if (id) toast.success(`“${title}” sobreposto numa camada nova`);
+      },
+      overlays: new Map(
+        [...overlays.byPlan].map(([pid, st]) => [
+          pid,
+          st.status === "ok" ? { status: "ok" as const, title: st.title, count: st.doc.nodes.length } : st.status === "error" ? { status: "error" as const, error: st.error } : { status: "loading" as const },
+        ]),
+      ),
+      onion,
+      setOnion,
     };
-  }, [layerState, nodes, edges, activeLayer, mutate, select, openLayerComments, isolated, setIsolated]);
+  }, [layerState, nodes, edges, activeLayer, mutate, select, openLayerComments, isolated, setIsolated, overlays, onion, planId]);
 
   const focusNode = useCallback(
     (id: string) => {
@@ -1587,6 +1612,26 @@ function EditorShell(props: PlanEditorProps) {
     const view = viewId ? doc.views?.find((v) => v.id === viewId) : undefined;
     const title = view ? `${meta.title || "plan"} — ${view.name}` : meta.title || "plan";
     if (k === "json") return exportJson({ title, description: meta.description, tags: meta.tags }, doc);
+    if (k === "frames-pdf") {
+      const frames = rf.getNodes().filter((n) => n.type === "frame" && !n.hidden && !isOverlayId(n.id));
+      if (!frames.length) return void toast.error("O plan não tem quadros.");
+      const win = openPrintWindow(title);
+      if (!win) return void toast.error("Permita pop-ups para exportar em PDF.");
+      const prev = selectedIds();
+      select([]);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      try {
+        const pages = frames.map((f) => ({ bounds: rf.getNodesBounds([f]), title: (f.data.title as string) || "Quadro" }));
+        // Reading order: rows top to bottom, then left to right.
+        pages.sort((a, b) => (Math.abs(a.bounds.y - b.bounds.y) > Math.min(a.bounds.height, b.bounds.height) / 2 ? a.bounds.y - b.bounds.y : a.bounds.x - b.bounds.x));
+        await exportFramesPdf(wrapRef.current!, pages, title, win);
+      } catch {
+        toast.error("Não foi possível exportar. Tente novamente.");
+      } finally {
+        select([...prev.nodes], [...prev.edges]);
+      }
+      return;
+    }
     const vis = view ? viewVisibility(doc, view.id) : null;
     const shown = vis ?? Object.fromEntries(layersOf(doc).map((l) => [l.id, l.visible !== false]));
     const scene = isExcalidrawExport(k) ? () => excalidrawScene(doc, { title, visible: (id) => shown[id] !== false }) : null;
@@ -1728,6 +1773,7 @@ function EditorShell(props: PlanEditorProps) {
             people={props.people}
             onExport={onExport}
             onImport={() => importInput.current?.click()}
+            frames={nodes.filter((n) => n.type === "frame").length}
             views={layerState.views}
             comments={<CommentsToggle count={comments.counts.unresolvedThreads} open={commentsPanel.open} onClick={commentsPanel.toggle} />}
           />
@@ -1815,8 +1861,8 @@ function EditorShell(props: PlanEditorProps) {
                   }}
                 >
                   <ReactFlow<PlanFlowNode, PlanFlowEdge>
-                    nodes={nodes}
-                    edges={edges}
+                    nodes={renderNodes}
+                    edges={renderEdges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
                     onNodesChange={onNodesChange}

@@ -19,7 +19,9 @@ import { statusMeta, PARENT_KINDS } from "./defaults";
 import { ZoomControls } from "./zoom-controls";
 import { fallbackResource, type ResolvedResource } from "./resource-types";
 import { ResourceIcon } from "./resource-picker";
-import { copyScene, downloadScene, excalidrawScene, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { copyScene, downloadScene, excalidrawScene, exportFramesPdf, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { isOverlayId } from "@/domain/overlay";
+import { overlayFlow, useOverlays } from "./overlays";
 import { compareViews, layerIdOf, layerVisibility, viewVisibility } from "@/domain/layers";
 import { CompareBar, defaultCompare, parseCompare, sideVisibility, ViewLayers, type CompareState } from "./view-layers";
 import type { ExportKind } from "./topbar";
@@ -36,6 +38,8 @@ export type CanvasExtras = {
 
 type Props = CanvasExtras & {
   document: PlanDocument;
+  /** The plan shown (lets layers that overlay other plans load them). */
+  planId?: string;
   resources: Record<string, ResolvedResource>;
   focusNodeId?: string | null;
   className?: string;
@@ -80,7 +84,7 @@ function ancestorsOf(doc: PlanDocument, id: string) {
 
 type Hover = { id: string; left: number; top: number; sheet?: boolean };
 
-function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef, stage, layerOverrides: fixedLayers, children, commentCount, openNodeComments, focusRequest }: Props) {
+function ViewerInner({ document: doc, planId, resources, focusNodeId, className, meta, exportRef, stage, layerOverrides: fixedLayers, children, commentCount, openNodeComments, focusRequest }: Props) {
   const rf = useReactFlow();
   const router = useRouter();
   const wrap = useRef<HTMLDivElement>(null);
@@ -139,6 +143,11 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
       return { ...e, className: cn(e.className, "wp-stage-edge", !lit && "wp-dim"), data: { ...e.data!, _dim: !lit } };
     });
   }, [viewDoc, stage, active, activeLayer, shownLayers, diffOn, diff]);
+  // Other plans overlaid on layers, for readers who can see them.
+  const overlays = useOverlays(planId ?? "", planId ? doc.layers : undefined, null);
+  const overlay = useMemo(() => overlayFlow(doc, overlays, { layerVisibility: shownLayers }), [doc, overlays, shownLayers]);
+  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...nodes] : nodes), [overlay.nodes, nodes]);
+  const renderEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
   const resourceFor = useCallback(
@@ -218,6 +227,15 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
       const view = viewId ? doc.views?.find((v) => v.id === viewId) : undefined;
       const title = view ? `${meta?.title ?? "plan"} — ${view.name}` : (meta?.title ?? "plan");
       if (kind === "json") return exportJson({ title, description: meta?.description, tags: meta?.tags }, doc);
+      if (kind === "frames-pdf") {
+        const frames = rf.getNodes().filter((n) => n.type === "frame" && !n.hidden && !isOverlayId(n.id));
+        if (!frames.length) return void toast.error("O plan não tem quadros.");
+        const win = openPrintWindow(title);
+        if (!win) return void toast.error("Permita pop-ups para exportar em PDF.");
+        const pages = frames.map((f) => ({ bounds: rf.getNodesBounds([f]), title: (f.data.title as string) || "Quadro" }));
+        pages.sort((a, b) => (Math.abs(a.bounds.y - b.bounds.y) > Math.min(a.bounds.height, b.bounds.height) / 2 ? a.bounds.y - b.bounds.y : a.bounds.x - b.bounds.x));
+        return exportFramesPdf(wrap.current!, pages, title, win).catch(() => void toast.error("Não foi possível exportar. Tente novamente."));
+      }
       // a saved view is shown just for the picture, then the reader's own layers come back
       const before = layerOverridesRef.current;
       const vis = view ? viewVisibility(doc, view.id) : null;
@@ -341,8 +359,8 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
         }}
       >
         <ReactFlow<PlanFlowNode>
-          nodes={nodes}
-          edges={edges}
+          nodes={renderNodes}
+          edges={renderEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           className={cn("wp-flow wp-view", stage && "wp-stage")}

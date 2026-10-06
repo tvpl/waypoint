@@ -65,6 +65,13 @@ export type LayersApi = {
   hover: (id: string | null) => void;
   /** Elements per layer (top-level nodes and connections). */
   counts: Map<string, number>;
+  /** Adds a layer showing another plan, live and read-only ("Sobrepor plan"). */
+  addOverlay: (planId: string, title: string) => void;
+  /** How each overlaid plan is doing (by plan id): loading, shown, or why not. */
+  overlays: Map<string, { status: "loading" | "ok" | "error"; title?: string; error?: string; count?: number }>;
+  /** An earlier version shown faded under the plan ("papel vegetal"). */
+  onion: { versionId: string; label: string } | null;
+  setOnion: (v: { versionId: string; label: string } | null) => void;
 };
 export type InspectorTab = "content" | "appearance" | "action";
 

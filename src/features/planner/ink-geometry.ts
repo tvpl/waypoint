@@ -171,15 +171,16 @@ export function arrowHead(a: Point, b: Point, size: number): string {
 /** Everything the canvas draws for a stored stroke, in its own box (`ink.w` × `ink.h`). */
 export function inkPaths(ink: Ink): { fill: string; line: string; head?: string } {
   const pts = pairsOf(ink.points);
-  if (ink.line && pts.length >= 2) return { fill: "", line: centerline([pts[0], pts[pts.length - 1]]) };
+  // Lines and arrows go through every point (two for the tools; more when imported from Excalidraw).
+  if (ink.line && pts.length >= 2) return { fill: "", line: centerline(pts) };
   if (ink.arrow && pts.length >= 2) {
-    const a = pts[0];
+    const a = pts[pts.length - 2];
     const b = pts[pts.length - 1];
     // Stop the shaft inside the head so the tip stays sharp.
     const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
     const back = Math.max(10, ink.size * 3.2) * 0.6;
     const end: Point = [b[0] - back * Math.cos(angle), b[1] - back * Math.sin(angle)];
-    return { fill: "", line: centerline([a, end]), head: arrowHead(a, b, ink.size) };
+    return { fill: "", line: centerline([...pts.slice(0, -1), end]), head: arrowHead(a, b, ink.size) };
   }
   return { fill: strokeOutline(pts, ink.size, ink.highlighter), line: centerline(pts) };
 }

@@ -110,7 +110,10 @@ import { ViewBody } from "./view-page";
 import { readDragPayload, DND_MIME } from "./resource-picker";
 import { DND_MIME as LIBRARY_MIME } from "@/features/links/dnd";
 import { fallbackResource, refKey, type ResolvedResource } from "./resource-types";
-import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
+import { copyScene, downloadScene, excalidrawScene, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { centerOn, CLIPBOARD_TYPE, EXCALIDRAW_MIME, fromExcalidraw, parseScene, subsetDoc } from "./excalidraw";
+import { EXCALIDRAW_ACCEPT, readSceneFile } from "./excalidraw-file";
+import { sceneName, withUploadedImages } from "./excalidraw-import";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
@@ -593,6 +596,59 @@ function EditorShell(props: PlanEditorProps) {
     },
     [],
   );
+
+  /**
+   * Brings an Excalidraw drawing in: into a new layer named after the file (or the active layer
+   * when pasted), centered where it was dropped. Layers saved by a Waypoint export come back as
+   * layers of their own.
+   */
+  const insertScene = useCallback(
+    async (scene: NonNullable<ReturnType<typeof parseScene>>, opts: { at?: { x: number; y: number }; layerName?: string } = {}) => {
+      const r = fromExcalidraw(scene, { newId });
+      if (!r.nodes.length) return void toast.error("Não há nada para importar neste desenho.");
+      let nodes = await withUploadedImages(r.nodes, r.images);
+      nodes = centerOn(nodes, opts.at ?? viewportCenter()).map(({ layer: _l, ...n }) => n);
+      const ids = new Set(nodes.map((n) => n.id));
+      const edges = r.edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map(({ layer: _l, ...e }) => e);
+      const fromLayer = new Map([...r.nodes.map((n) => [n.id, n.layer] as const), ...r.edges.map((e) => [e.id, e.layer] as const)]);
+      const top = nodes.filter((n) => !n.parentId || !ids.has(n.parentId)).map((n) => n.id);
+      let target: string | null = null;
+      mutate(
+        (d) => {
+          let doc: PlanDocument = { ...d, nodes: [...d.nodes, ...nodes], edges: [...d.edges, ...edges] };
+          if (!opts.layerName) return placeInActive(doc, top, edges.map((e) => e.id));
+          // The drawing's own layers (from a Waypoint export) come back next to the file's layer.
+          const made = new Map<string | undefined, string>();
+          const add = (name: string, extra?: Partial<PlanLayer>) => {
+            const a = addLayer(doc, name);
+            doc = extra ? updateLayer(a.doc, a.id, extra) : a.doc;
+            return a.id;
+          };
+          made.set(undefined, (target = add(opts.layerName)));
+          for (const l of r.layers) made.set(l.id, add(l.name, { sketch: l.sketch, opacity: l.opacity, description: l.description }));
+          for (const [src, id] of made) {
+            const ns = top.filter((n) => fromLayer.get(n) === src || (src === undefined && !made.has(fromLayer.get(n))));
+            const es = edges.filter((e) => fromLayer.get(e.id) === src || (src === undefined && !made.has(fromLayer.get(e.id)))).map((e) => e.id);
+            if (ns.length || es.length) doc = assignLayer(doc, id, { nodes: ns, edges: es });
+          }
+          return doc;
+        },
+        { select: top },
+      );
+      if (target) setActiveLayer(target);
+      toast.success(opts.layerName ? `Desenho importado na camada “${opts.layerName}”` : "Desenho do Excalidraw colado");
+    },
+    [mutate, placeInActive, viewportCenter],
+  );
+  const insertSceneRef = useRef(insertScene);
+  insertSceneRef.current = insertScene;
+  const importInput = useRef<HTMLInputElement>(null);
+  const importSceneFile = useCallback(async (file: File, at?: { x: number; y: number }) => {
+    const scene = await readSceneFile(file);
+    if (!scene) return false;
+    await insertSceneRef.current(scene, { at, layerName: sceneName(file).slice(0, 60) || "Excalidraw" });
+    return true;
+  }, []);
 
   const updateNodeData = useCallback((id: string, patch: Partial<NodeData>, key?: string) => {
     pendingKey.current = key ?? null;
@@ -1272,6 +1328,14 @@ function EditorShell(props: PlanEditorProps) {
       e.preventDefault();
       if (cd?.types.includes(NODES_MIME)) return apiRef.current.paste();
       const at = pasteAt();
+      // Copied in Excalidraw: the drawing comes in, not its JSON as a note.
+      const raw = cd?.getData(EXCALIDRAW_MIME) || cd?.getData("text/plain") || "";
+      if (raw.trimStart().startsWith("{") && (raw.includes(CLIPBOARD_TYPE) || raw.includes('"excalidraw"'))) {
+        try {
+          const scene = parseScene(JSON.parse(raw));
+          if (scene) return void insertSceneRef.current(scene, { at });
+        } catch {}
+      }
       const image = Array.from(cd?.files ?? []).find((f) => f.type.startsWith("image/"));
       if (image) return void uploadImage(image, at);
       const text = cd?.getData("text/plain")?.trim() ?? "";
@@ -1421,11 +1485,12 @@ function EditorShell(props: PlanEditorProps) {
         return addFavoriteNodes(lib.ids, at);
       }
     } catch {}
-    const file = Array.from(e.dataTransfer.files ?? []).find((f) => f.type.startsWith("image/"));
-    if (file) {
-      e.preventDefault();
-      return uploadImage(file, at);
-    }
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) e.preventDefault();
+    // An Excalidraw file, or a PNG/SVG exported with its scene, comes in as a drawing.
+    for (const f of files) if (/\.(excalidraw|json|png|svg)$/i.test(f.name) && (await importSceneFile(f, at))) return;
+    const file = files.find((f) => f.type.startsWith("image/"));
+    if (file) return uploadImage(file, at);
     // A link dragged from the browser's address bar or another page.
     const urls = (e.dataTransfer.getData("text/uri-list") || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#") && /^https?:/i.test(l));
     if (urls.length) {
@@ -1462,6 +1527,19 @@ function EditorShell(props: PlanEditorProps) {
     const title = view ? `${meta.title || "plan"} — ${view.name}` : meta.title || "plan";
     if (k === "json") return exportJson({ title, description: meta.description, tags: meta.tags }, doc);
     const vis = view ? viewVisibility(doc, view.id) : null;
+    const shown = vis ?? Object.fromEntries(layersOf(doc).map((l) => [l.id, l.visible !== false]));
+    const scene = isExcalidrawExport(k) ? () => excalidrawScene(doc, { title, visible: (id) => shown[id] !== false }) : null;
+    if (k === "excalidraw") return downloadScene(await scene!(), title);
+    if (k === "excalidraw-copy") {
+      // The selection when there is one, else the plan as shown.
+      const sel = selectedIds();
+      const part = sel.nodes.size || sel.edges.size ? subsetDoc(doc, sel.nodes, sel.edges) : doc;
+      const out = await excalidrawScene(part, { title, visible: (id) => shown[id] !== false });
+      return void copyScene(out).then(
+        () => toast.success(`Copiado: ${out.elements.filter((e) => !e.containerId).length} elementos. Cole no Excalidraw com ⌘V.`),
+        () => toast.error("Não foi possível copiar."),
+      );
+    }
     if (!vis && !rf.getNodes().some((n) => !n.hidden)) return void toast.error("O plan está vazio.");
     const printWin = k === "pdf" ? openPrintWindow(title) : null;
     if (k === "pdf" && !printWin) return void toast.error("Permita pop-ups para exportar em PDF.");
@@ -1481,7 +1559,8 @@ function EditorShell(props: PlanEditorProps) {
       }
       const bounds = rf.getNodesBounds(visible);
       if (k === "pdf") await exportPdf(wrapRef.current!, bounds, title, printWin);
-      else await exportImage(wrapRef.current!, bounds, k, title);
+      else if (k === "png" || k === "svg") await exportImage(wrapRef.current!, bounds, k, title);
+      else await exportImage(wrapRef.current!, bounds, k === "excalidraw-png" ? "png" : "svg", title, await scene!());
     } catch {
       toast.error("Não foi possível exportar. Tente novamente.");
     } finally {
@@ -1542,6 +1621,21 @@ function EditorShell(props: PlanEditorProps) {
     <EditorContext.Provider value={api}>
       <PlannerContext.Provider value={plannerCtx}>
         <div className="flex h-app flex-col overflow-hidden bg-bg text-ink">
+          <input
+            ref={importInput}
+            type="file"
+            accept={EXCALIDRAW_ACCEPT}
+            className="hidden"
+            aria-label="Importar do Excalidraw"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file)
+                void importSceneFile(file).then((ok) => {
+                  if (!ok) toast.error("Arquivo não reconhecido. Use um .excalidraw, ou um PNG/SVG exportado com a cena.");
+                });
+            }}
+          />
           <EditorTopbar
             planId={planId}
             workspaceName={props.workspaceName}
@@ -1572,6 +1666,7 @@ function EditorShell(props: PlanEditorProps) {
             publishing={publishing}
             people={props.people}
             onExport={onExport}
+            onImport={() => importInput.current?.click()}
             views={layerState.views}
             comments={<CommentsToggle count={comments.counts.unresolvedThreads} open={commentsPanel.open} onClick={commentsPanel.toggle} />}
           />

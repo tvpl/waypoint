@@ -25,6 +25,8 @@ import { Badge, EmptyState } from "@/components/ui/misc";
 import { Dialog, DialogBody, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { cn, timeAgo } from "@/lib/utils";
+import { EXCALIDRAW_ACCEPT } from "./excalidraw-file";
+import { planPayloadFromFile } from "./excalidraw-import";
 import { archivePlanAction, createPlanAction, deletePlanAction, duplicatePlanAction, importPlanAction } from "@/app/(app)/plans/actions";
 
 export type PlanFilter = "mine" | "shared" | "templates" | "archived";
@@ -59,20 +61,24 @@ export function ImportPlanButton({ disabled }: { disabled?: boolean }) {
   return (
     <>
       <Button variant="secondary" disabled={disabled || pending} onClick={() => ref.current?.click()}>
-        {pending ? <Loader2 className="animate-spin" /> : <Upload />} Importar JSON
+        {pending ? <Loader2 className="animate-spin" /> : <Upload />} Importar
       </Button>
       <input
         ref={ref}
         type="file"
-        accept="application/json,.json"
+        accept={`${EXCALIDRAW_ACCEPT},.waypoint.json`}
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = "";
           if (!file) return;
           start(async () => {
-            const text = await file.text();
-            const r = await importPlanAction(text, file.name);
+            // Excalidraw drawings (.excalidraw, or PNG/SVG with the scene) become a plan too.
+            const text = /\.(png|svg)$/i.test(file.name) ? "" : await file.text();
+            const excalidraw = !text || /\.excalidraw$/i.test(file.name) || /^\s*\{\s*"type"\s*:\s*"excalidraw/.test(text);
+            const payload = excalidraw ? await planPayloadFromFile(file) : text;
+            if (!payload) return void toast.error("Arquivo não reconhecido. Use um JSON do Waypoint, um .excalidraw ou um PNG/SVG exportado com a cena.");
+            const r = await importPlanAction(payload, file.name);
             if (!r.ok) return void toast.error(r.error);
             toast.success("Plan importado");
             router.push(`/plans/${r.id}/edit`);

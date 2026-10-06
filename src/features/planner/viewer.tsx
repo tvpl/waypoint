@@ -19,8 +19,8 @@ import { statusMeta, PARENT_KINDS } from "./defaults";
 import { ZoomControls } from "./zoom-controls";
 import { fallbackResource, type ResolvedResource } from "./resource-types";
 import { ResourceIcon } from "./resource-picker";
-import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
-import { compareViews, layerIdOf, viewVisibility } from "@/domain/layers";
+import { copyScene, downloadScene, excalidrawScene, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { compareViews, layerIdOf, layerVisibility, viewVisibility } from "@/domain/layers";
 import { CompareBar, defaultCompare, parseCompare, sideVisibility, ViewLayers, type CompareState } from "./view-layers";
 import type { ExportKind } from "./topbar";
 
@@ -221,6 +221,18 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
       // a saved view is shown just for the picture, then the reader's own layers come back
       const before = layerOverridesRef.current;
       const vis = view ? viewVisibility(doc, view.id) : null;
+      if (isExcalidrawExport(kind)) {
+        const shown = vis ?? Object.fromEntries(layerVisibility(doc, before ?? undefined));
+        const scene = await excalidrawScene(doc, { title, visible: (id) => shown[id] !== false });
+        if (kind === "excalidraw") return downloadScene(scene, title);
+        if (kind === "excalidraw-copy") {
+          await copyScene(scene).then(
+            () => toast.success("Copiado. Cole no Excalidraw com ⌘V."),
+            () => toast.error("Não foi possível copiar."),
+          );
+          return;
+        }
+      }
       const win = kind === "pdf" ? openPrintWindow(title) : null;
       if (kind === "pdf" && !win) return void toast.error("Permita pop-ups para exportar em PDF.");
       try {
@@ -236,7 +248,10 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
         }
         const bounds = rf.getNodesBounds(visible);
         if (kind === "pdf") await exportPdf(wrap.current!, bounds, title, win);
-        else await exportImage(wrap.current!, bounds, kind, title);
+        else if (kind === "excalidraw-png" || kind === "excalidraw-svg") {
+          const shown = vis ?? Object.fromEntries(layerVisibility(doc, before ?? undefined));
+          await exportImage(wrap.current!, bounds, kind === "excalidraw-png" ? "png" : "svg", title, await excalidrawScene(doc, { title, visible: (id) => shown[id] !== false }));
+        } else if (kind === "png" || kind === "svg") await exportImage(wrap.current!, bounds, kind, title);
       } catch {
         toast.error("Não foi possível exportar. Tente novamente.");
       } finally {

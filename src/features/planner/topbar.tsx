@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, CloudOff, Presentation, Download, Eye, FileJson, History, ImageDown, Layers, Loader2, MoreHorizontal, Pencil, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ClipboardCopy, CloudOff, Presentation, Download, Eye, FileJson, FileUp, History, ImageDown, Layers, Loader2, MoreHorizontal, Pencil, PenLine, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/popover";
@@ -19,7 +19,7 @@ import {
 import { cn, timeAgo } from "@/lib/utils";
 import type { SaveStatus } from "./autosave";
 
-export type ExportKind = "json" | "png" | "svg" | "pdf";
+export type ExportKind = "json" | "png" | "svg" | "pdf" | "excalidraw" | "excalidraw-png" | "excalidraw-svg" | "excalidraw-copy";
 
 export function SaveIndicator({ status, error, savedAt }: { status: SaveStatus; error?: string | null; savedAt?: number | null }) {
   // Re-render now and then so "há 2 min" stays true.
@@ -113,6 +113,9 @@ export function ViewExportItems({ views, onExport }: { views: { id: string; name
             <DropdownMenuItem onSelect={() => onExport("pdf", v.id)}>
               <Printer /> PDF (imprimir)
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport("excalidraw", v.id)}>
+              <PenLine /> Excalidraw
+            </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
       ))}
@@ -120,7 +123,44 @@ export function ViewExportItems({ views, onExport }: { views: { id: string; name
   );
 }
 
-export function ExportMenu({ onExport, trigger, views = [] }: { onExport: (k: ExportKind, viewId?: string) => void; trigger?: React.ReactNode; views?: { id: string; name: string }[] }) {
+/** Excalidraw: the file, images that open as editable drawings, the clipboard, and importing. */
+export function ExcalidrawItems({ onExport, onImport }: { onExport: (k: ExportKind) => void; onImport?: () => void }) {
+  return (
+    <>
+      <DropdownMenuLabel>Excalidraw</DropdownMenuLabel>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw")}>
+        <PenLine /> Arquivo .excalidraw
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw-png")}>
+        <ImageDown /> PNG editável no Excalidraw
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw-svg")}>
+        <Download /> SVG editável no Excalidraw
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw-copy")}>
+        <ClipboardCopy /> Copiar para colar no Excalidraw
+      </DropdownMenuItem>
+      {onImport && (
+        <DropdownMenuItem onSelect={onImport}>
+          <FileUp /> Importar do Excalidraw…
+        </DropdownMenuItem>
+      )}
+    </>
+  );
+}
+
+export function ExportMenu({
+  onExport,
+  onImport,
+  trigger,
+  views = [],
+}: {
+  onExport: (k: ExportKind, viewId?: string) => void;
+  /** "Importar do Excalidraw…" (editor only). */
+  onImport?: () => void;
+  trigger?: React.ReactNode;
+  views?: { id: string; name: string }[];
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -145,6 +185,8 @@ export function ExportMenu({ onExport, trigger, views = [] }: { onExport: (k: Ex
         <DropdownMenuItem onSelect={() => onExport("json")}>
           <FileJson /> JSON
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <ExcalidrawItems onExport={onExport} onImport={onImport} />
         <ViewExportItems views={views} onExport={onExport} />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -174,6 +216,7 @@ export function EditorTopbar(props: {
   publishing: boolean;
   people: { name: string; email: string }[];
   onExport: (k: ExportKind, viewId?: string) => void;
+  onImport?: () => void;
   /** Saved views (export menu). */
   views?: { id: string; name: string }[];
   /** Comments panel toggle. */
@@ -265,7 +308,7 @@ export function EditorTopbar(props: {
         </span>
         {props.comments}
         <span className="hidden md:contents">
-          <ExportMenu onExport={props.onExport} views={props.views} />
+          <ExportMenu onExport={props.onExport} onImport={props.onImport} views={props.views} />
           <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
           <span className="hidden lg:contents">
             <Avatars people={props.people} />

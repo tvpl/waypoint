@@ -3,6 +3,9 @@ import { getViewportForBounds, type Rect } from "@xyflow/react";
 import { toPng, toSvg } from "html-to-image";
 import type { PlanDocument } from "@/domain/plan";
 import { slugify } from "@/lib/utils";
+import { EXCALIDRAW_MIME, imageUrls, toClipboard, toExcalidraw, type ExFile, type ExScene } from "./excalidraw";
+import { embedInPng, embedInSvg, sceneJson } from "./excalidraw-file";
+import { seedOf } from "./shape-geometry";
 
 function download(href: string, filename: string) {
   const a = document.createElement("a");
@@ -83,9 +86,67 @@ function inlineSvgPaint(root: HTMLElement): () => void {
   };
 }
 
-export async function exportImage(container: HTMLElement, bounds: Rect, format: "png" | "svg", title: string) {
+/** The image, optionally carrying an Excalidraw scene (opens as an editable drawing on excalidraw.com). */
+export async function exportImage(container: HTMLElement, bounds: Rect, format: "png" | "svg", title: string, scene?: ExScene) {
   const url = await renderFlowImage(container, bounds, format);
-  download(url, `${slugify(title)}.${format}`);
+  if (!scene) return download(url, `${slugify(title)}.${format}`);
+  const body = url.slice(url.indexOf(",") + 1);
+  const blob =
+    format === "png"
+      ? new Blob([(await embedInPng(Uint8Array.from(atob(body), (c) => c.charCodeAt(0)), scene)) as BlobPart], { type: "image/png" })
+      : new Blob([await embedInSvg(url.slice(0, url.indexOf(",")).includes(";base64") ? atob(body) : decodeURIComponent(body), scene)], { type: "image/svg+xml" });
+  downloadBlob(blob, `${slugify(title)}.excalidraw.${format}`);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  download(url, filename);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// ------------------------------------------------------------------ Excalidraw
+
+export type ExcalidrawExport = "excalidraw" | "excalidraw-png" | "excalidraw-svg" | "excalidraw-copy";
+export const isExcalidrawExport = (k: string): k is ExcalidrawExport => k.startsWith("excalidraw");
+
+async function dataUrlOf(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+/** The plan's images as Excalidraw files (an image that can't be fetched stays a box with its link). */
+async function sceneImages(doc: Pick<PlanDocument, "nodes">): Promise<Record<string, ExFile>> {
+  const out: Record<string, ExFile> = {};
+  await Promise.all(
+    imageUrls(doc).map(async (url) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (!blob.type.startsWith("image/") || blob.size > 8 * 1024 * 1024) return;
+        out[url] = { id: `wp-${seedOf(url).toString(36)}`, mimeType: blob.type, dataURL: await dataUrlOf(blob) };
+      } catch {}
+    }),
+  );
+  return out;
+}
+
+/** The plan (the given layers) as an Excalidraw scene, images included. */
+export async function excalidrawScene(doc: PlanDocument, opts: { visible?: (layerId: string) => boolean; title: string }): Promise<ExScene> {
+  return toExcalidraw(doc, { visible: opts.visible, title: opts.title, images: await sceneImages(doc) });
+}
+
+export function downloadScene(scene: ExScene, title: string) {
+  downloadBlob(new Blob([sceneJson(scene)], { type: EXCALIDRAW_MIME }), `${slugify(title)}.excalidraw`);
+}
+
+/** Excalidraw's clipboard format: paste it straight into excalidraw.com. */
+export async function copyScene(scene: ExScene) {
+  await navigator.clipboard.writeText(toClipboard(scene));
 }
 
 const esc = (t: string) => t.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]!);

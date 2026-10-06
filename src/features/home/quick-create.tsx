@@ -3,15 +3,17 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Link2, Loader2, Plus } from "lucide-react";
+import { FileUp, Link2, Loader2, Plus } from "lucide-react";
 import { PlanThumb } from "@/components/plan-thumb";
-import { createPlanAction } from "@/app/(app)/plans/actions";
+import { createPlanAction, importPlanAction } from "@/app/(app)/plans/actions";
 import { planThumb } from "@/domain/plan-thumb";
+import { EXCALIDRAW_ACCEPT } from "@/features/planner/excalidraw-file";
+import { planPayloadFromFile } from "@/features/planner/excalidraw-import";
 import { NewPlanDialog } from "@/features/planner/new-plan-dialog";
 import { STARTER_TEMPLATES } from "@/features/planner/starter-templates";
 import { cn } from "@/lib/utils";
 
-const PICKS = ["blank", "architecture", "roadmap", "decision", "kanban"];
+const PICKS = ["blank", "architecture", "roadmap", "decision"];
 
 const tile =
   "group flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface text-left transition-[box-shadow,transform,border-color] hover:-translate-y-px hover:border-line-2 hover:shadow-raise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
@@ -32,6 +34,28 @@ export function QuickCreate({ canCreate }: { canCreate: boolean }) {
       router.push(`/plans/${id}/edit`);
     } catch {
       toast.error("Não foi possível criar o plan.");
+      setBusy(null);
+    }
+  };
+
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  /** A new plan from an Excalidraw drawing (.excalidraw, or a PNG/SVG with the scene). */
+  const importFile = async (file: File) => {
+    setBusy("excalidraw");
+    try {
+      const payload = await planPayloadFromFile(file);
+      if (!payload) {
+        toast.error("Arquivo não reconhecido. Use um .excalidraw, ou um PNG/SVG exportado com a cena.");
+        return setBusy(null);
+      }
+      const r = await importPlanAction(payload, file.name);
+      if (!r.ok) {
+        toast.error(r.error);
+        return setBusy(null);
+      }
+      router.push(`/plans/${r.id}/edit`);
+    } catch {
+      toast.error("Não foi possível importar o desenho.");
       setBusy(null);
     }
   };
@@ -61,6 +85,19 @@ export function QuickCreate({ canCreate }: { canCreate: boolean }) {
               <span className="truncate px-3 py-2.5 text-body font-medium">{t.id === "blank" ? "Em branco" : t.title}</span>
             </button>
           ))}
+        {canCreate && (
+          <button type="button" className={tile} onClick={() => fileRef.current?.click()} disabled={!!busy} aria-label="Importar do Excalidraw">
+            <div className="relative flex h-[72px] items-center justify-center border-b border-line bg-surface-2">
+              <FileUp className="size-5 text-muted transition-colors group-hover:text-accent-ink" aria-hidden />
+              {busy === "excalidraw" && (
+                <span className="absolute inset-0 flex items-center justify-center bg-surface/70">
+                  <Loader2 className="size-4 animate-spin text-muted" aria-label="Importando" />
+                </span>
+              )}
+            </div>
+            <span className="truncate px-3 py-2.5 text-body font-medium">Do Excalidraw</span>
+          </button>
+        )}
         <Link href="/links?add=1" className={tile}>
           <div className="flex h-[72px] items-center justify-center border-b border-line bg-accent-soft/50">
             <Link2 className="size-5 text-accent-ink" aria-hidden />
@@ -68,6 +105,17 @@ export function QuickCreate({ canCreate }: { canCreate: boolean }) {
           <span className="truncate px-3 py-2.5 text-body font-medium">Salvar link</span>
         </Link>
       </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept={EXCALIDRAW_ACCEPT}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void importFile(file);
+        }}
+      />
       <NewPlanDialog open={more} onClose={() => setMore(false)} />
     </section>
   );

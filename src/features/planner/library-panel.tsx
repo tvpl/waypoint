@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileUp, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronRight, Download, FileUp, ImageUp, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { LibraryContent, LibraryItem } from "@/domain/library";
 import type { PlanNode } from "@/domain/plan";
@@ -18,10 +18,11 @@ import { toPick, useIconSearch, type IconResult } from "./icon-library";
 import { inkPaths } from "./ink-geometry";
 import { setDragPayload } from "./resource-picker";
 import { seedOf, shapePaths } from "./shape-geometry";
+import { COMPONENTS, PACKS, searchComponents, type ComponentDef } from "./components/registry";
 
-type Shelf = "" | "ui" | "brand" | "mine";
+type Shelf = "kits" | "ui" | "brand" | "mine";
 const SHELVES: { value: Shelf; label: string }[] = [
-  { value: "", label: "Tudo" },
+  { value: "kits", label: "Kits" },
   { value: "ui", label: "Ícones" },
   { value: "brand", label: "Marcas" },
   { value: "mine", label: "Minha" },
@@ -31,9 +32,9 @@ const SHELVES: { value: Shelf; label: string }[] = [
 export function LibraryPanel() {
   const ed = useEditor();
   const [q, setQ] = useState("");
-  const [shelf, setShelf] = useState<Shelf>("");
+  const [shelf, setShelf] = useState<Shelf>("kits");
   const query = q.trim();
-  const { icons, loading } = useIconSearch(query, shelf === "ui" || shelf === "brand" ? shelf : undefined, shelf !== "mine");
+  const { icons, loading } = useIconSearch(query, shelf === "ui" || shelf === "brand" ? shelf : undefined, shelf === "ui" || shelf === "brand");
   const lib = useLibrary();
   const mine = useMemo(() => (lib.items ?? []).filter((i) => !query || i.name.toLowerCase().includes(query.toLowerCase())), [lib.items, query]);
 
@@ -45,19 +46,20 @@ export function LibraryPanel() {
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar ícones: banco, usuário, postgres…"
+          placeholder={shelf === "kits" ? "Buscar: kafka, tabela, botão, lambda…" : shelf === "mine" ? "Buscar na sua biblioteca" : "Buscar ícones: banco, usuário, postgres…"}
           aria-label="Buscar ícones e itens da biblioteca"
           className="w-full bg-transparent text-body text-ink outline-none"
         />
       </label>
       <Segmented size="sm" label="Mostrar" value={shelf} onChange={setShelf} options={SHELVES} className="w-full [&>button]:flex-1 [&>button]:justify-center [&>button]:px-1" />
 
-      {(shelf === "" || shelf === "mine") && <MyLibrary lib={lib} items={mine} filtered={!!query} />}
+      {shelf === "kits" && <Kits query={query} />}
+      {shelf === "mine" && <MyLibrary lib={lib} items={mine} filtered={!!query} />}
 
-      {shelf !== "mine" && (
+      {(shelf === "ui" || shelf === "brand") && (
         <section className="flex flex-col gap-2" aria-label="Ícones">
           <div className="flex items-center justify-between">
-            <SectionLabel>{query ? "Ícones encontrados" : shelf === "brand" ? "Marcas" : "Sugeridos"}</SectionLabel>
+            <SectionLabel>{query ? "Ícones encontrados" : shelf === "brand" ? "Marcas" : "Ícones sugeridos"}</SectionLabel>
             {loading && <span className="text-caption text-muted">Buscando…</span>}
           </div>
           {icons && icons.length === 0 ? (
@@ -74,6 +76,109 @@ export function LibraryPanel() {
         </section>
       )}
     </>
+  );
+}
+
+/** The built-in kits: one folding group per pack (or the matches, when searching). */
+function Kits({ query }: { query: string }) {
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem("wp-kits-open") ?? "null");
+      if (Array.isArray(v)) return new Set(v);
+    } catch {}
+    return new Set(["sistemas", "eda"]);
+  });
+  const toggle = (id: string) =>
+    setOpen((o) => {
+      const n = new Set(o);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      try {
+        localStorage.setItem("wp-kits-open", JSON.stringify([...n]));
+      } catch {}
+      return n;
+    });
+  if (query) {
+    const found = searchComponents(query);
+    return (
+      <section className="flex flex-col gap-2" aria-label="Componentes encontrados">
+        <SectionLabel>Componentes</SectionLabel>
+        {found.length ? <ComponentGrid items={found} /> : <p className="text-xs text-muted">Nenhum componente com “{query}”.</p>}
+      </section>
+    );
+  }
+  return (
+    <div className="-mx-4 flex flex-col">
+      {PACKS.map((p) => {
+        const items = COMPONENTS.filter((c) => c.pack === p.id);
+        const isOpen = open.has(p.id);
+        return (
+          <section key={p.id} className="border-t border-line px-4 py-2.5 first:border-t-0 first:pt-0" aria-label={p.name}>
+            <button type="button" aria-expanded={isOpen} onClick={() => toggle(p.id)} className="group flex w-full items-center gap-2 text-left">
+              <ChevronRight className={cn("size-3.5 shrink-0 text-muted transition-transform", isOpen && "rotate-90")} aria-hidden />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-body font-semibold text-ink">{p.name}</span>
+                {!isOpen && <span className="truncate text-caption text-muted">{p.description}</span>}
+              </span>
+              <span className="text-caption tabular-nums text-muted">{items.length}</span>
+            </button>
+            {isOpen && (
+              <div className="pt-2.5">
+                <ComponentGrid items={items} />
+              </div>
+            )}
+          </section>
+        );
+      })}
+      <p className="border-t border-line px-4 pt-2.5 text-caption leading-4 text-muted">Clique ou arraste para o canvas. Tudo é configurável no painel de propriedades.</p>
+    </div>
+  );
+}
+
+function ComponentGrid({ items }: { items: ComponentDef[] }) {
+  const ed = useEditor();
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {items.map((c) => (
+        <Tooltip key={`${c.pack}/${c.type}`} content={c.name}>
+          <button
+            type="button"
+            draggable
+            onDragStart={(e) => setDragPayload(e, { type: "component", pack: c.pack, component: c.type })}
+            onClick={() => ed.addComponent(c.pack, c.type)}
+            aria-label={`Inserir ${c.name}`}
+            className="flex cursor-grab flex-col items-center gap-1 rounded-lg border border-transparent p-1 text-center transition-colors hover:border-line hover:bg-surface-2 active:cursor-grabbing"
+          >
+            <ComponentPreview def={c} />
+            <span className="line-clamp-2 w-full text-[11px] leading-tight text-ink-2">{c.name}</span>
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+/** The component drawn small, as it will look on the canvas. */
+export function ComponentPreview({ def, w = 74, h = 52 }: { def: ComponentDef; w?: number; h?: number }) {
+  if (def.glyph) {
+    const { icon: Icon, color, solid } = def.glyph;
+    const box = Math.min(w, h) * 0.78;
+    return (
+      <span className="pointer-events-none flex items-center justify-center" style={{ width: w, height: h }} aria-hidden>
+        <span className="flex items-center justify-center rounded-[26%]" style={{ width: box, height: box, background: solid ? color : `${color}1f`, color: solid ? "#fff" : color }}>
+          <Icon size={box * 0.52} strokeWidth={1.8} />
+        </span>
+      </span>
+    );
+  }
+  const [cw, ch] = def.size;
+  const s = Math.min(w / cw, h / ch, 1);
+  return (
+    <span className="pointer-events-none relative block overflow-hidden" style={{ width: w, height: h }} aria-hidden>
+      <span className="absolute left-1/2 top-1/2 block origin-center" style={{ width: cw, height: ch, transform: `translate(-50%, -50%) scale(${s})` }}>
+        {def.render({ title: def.title, props: def.defaults ?? {}, w: cw, h: ch })}
+      </span>
+    </span>
   );
 }
 
@@ -167,6 +272,32 @@ function MyLibrary({ lib, items, filtered }: { lib: Lib; items: LibraryItem[]; f
     if (added) toast.success(`${added} ${added === 1 ? "item importado" : "itens importados"} para a biblioteca`);
   };
 
+  const imgRef = useRef<HTMLInputElement>(null);
+  /** Official icon packs (AWS, Azure, Google Cloud…): each SVG/PNG becomes a library item with its name. */
+  const importImages = async (files: File[]) => {
+    const list = files.filter((f) => /\.(svg|png)$/i.test(f.name)).slice(0, 300);
+    if (!list.length) return void toast.error("Escolha arquivos SVG ou PNG.");
+    const t = toast.loading(`Enviando ${list.length} ${list.length === 1 ? "ícone" : "ícones"}…`);
+    const items: { name: string; content: unknown }[] = [];
+    for (const [i, f] of list.entries()) {
+      const fd = new FormData();
+      fd.set("file", f);
+      try {
+        const res = await fetch("/api/assets", { method: "POST", body: fd });
+        const body = (await res.json().catch(() => ({}))) as { url?: string };
+        if (res.ok && body.url) {
+          const name = prettyIconName(f.name);
+          items.push({ name, content: { nodes: [{ id: "img", kind: "image", x: 0, y: 0, width: 72, height: 72, data: { title: name, image: body.url } }], edges: [] } });
+        }
+      } catch {}
+      if (i % 10 === 9) toast.loading(`Enviando ícones… ${i + 1}/${list.length}`, { id: t });
+    }
+    toast.dismiss(t);
+    const added = items.length ? await lib.add(items) : 0;
+    if (added) toast.success(`${added} ${added === 1 ? "ícone adicionado" : "ícones adicionados"} à biblioteca`);
+    else toast.error("Não foi possível importar os ícones.");
+  };
+
   const exportLib = () => {
     const all = lib.items ?? [];
     if (!all.length) return void toast.error("A biblioteca está vazia.");
@@ -201,6 +332,9 @@ function MyLibrary({ lib, items, filtered }: { lib: Lib; items: LibraryItem[]; f
               <DropdownMenuItem onSelect={() => fileRef.current?.click()}>
                 <FileUp /> Importar biblioteca do Excalidraw…
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => imgRef.current?.click()}>
+                <ImageUp /> Importar ícones (SVG ou PNG)…
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={exportLib}>
                 <Download /> Exportar como .excalidrawlib
               </DropdownMenuItem>
@@ -208,6 +342,19 @@ function MyLibrary({ lib, items, filtered }: { lib: Lib; items: LibraryItem[]; f
           </DropdownMenu>
         </div>
       </div>
+      <input
+        ref={imgRef}
+        type="file"
+        multiple
+        accept=".svg,.png,image/svg+xml,image/png"
+        className="hidden"
+        aria-label="Importar ícones"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (files.length) void importImages(files);
+        }}
+      />
       <input
         ref={fileRef}
         type="file"
@@ -358,4 +505,18 @@ function ThumbElement({ n }: { n: PlanNode }) {
     );
   }
   return <rect width={n.width} height={n.height} rx={8} fill={n.data.color ?? "none"} stroke="currentColor" strokeOpacity={0.35} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />;
+}
+
+/** "Arch_Amazon-Simple-Queue-Service_64.svg" → "Amazon Simple Queue Service". */
+export function prettyIconName(file: string): string {
+  return (
+    file
+      .replace(/\.(svg|png)$/i, "")
+      .replace(/^(Arch|Res|Arch-Category|Architecture-Service|Resource)[-_]/i, "")
+      .replace(/[-_](16|24|32|48|64|80|light|dark|bg)$/gi, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80) || "Ícone"
+  );
 }

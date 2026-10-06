@@ -149,6 +149,7 @@ export const KIND_ICON: Record<NodeKind, LucideIcon> = {
   shape: KindShape,
   frame: KindFrame,
   annotation: MessageSquareText,
+  component: Puzzle,
 };
 
 export const ConnectorIcon = Spline;

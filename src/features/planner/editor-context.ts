@@ -142,7 +142,7 @@ export type EditorApi = {
   annotStyle: { type: AnnotationType; category: AnnotationCategory };
   setAnnotStyle: (patch: Partial<{ type: AnnotationType; category: AnnotationCategory }>, opts?: { restyle?: boolean }) => void;
   /** Adds an annotation: at a point (attached to `target` when given) or over a box. */
-  addAnnotation: (box: { x: number; y: number; w: number; h: number } | null, at: Pt, target: string | null) => void;
+  addAnnotation: (box: { x: number; y: number; w: number; h: number } | null, at: Pt, target: string | null, style?: { type: AnnotationType; category: AnnotationCategory }) => void;
   /** Takes an attached element (an annotation) off its parent, keeping it where it is. */
   detach: (id: string) => void;
   /** Which annotations are shown (all, by category, resolved ones), and review mode. */
@@ -150,6 +150,8 @@ export type EditorApi = {
   setAnnotationView: (patch: Partial<AnnotationView>) => void;
   review: boolean;
   setReview: (on: boolean) => void;
+  /** A ready-made component from the built-in libraries (canvas point; default the view's center). */
+  addComponent: (pack: string, type: string, at?: Pt) => void;
   /** An icon from the library (canvas point; default the view's center). */
   addIcon: (icon: IconPick, at?: Pt) => void;
   /** A library item: a fresh copy centered on the point (default the view's center). */

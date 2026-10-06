@@ -53,6 +53,7 @@ import { nodeTone, toneVars } from "./colors";
 import { GlyphSvg } from "./glyph";
 import { CATEGORY_META } from "./annotations";
 import { AnnotationFields } from "./annotations-panel";
+import { ComponentFields, componentLabel } from "./components/component-fields";
 import { ICON_NAMES, KIND_ICON, PLAN_ICONS, PlanIcon } from "./icons";
 import { EdgeSample } from "./edges";
 import { TagInput } from "./tag-input";
@@ -94,11 +95,60 @@ function InspectorBody({ empty }: { empty?: React.ReactNode }) {
   if (nodes.length >= 1 && nodes.every((n) => n.type === "shape")) return <DrawInspector key={nodes.map((n) => n.id).join()} />;
   if (nodes.length === 1 && nodes[0].type === "ink") return <InkInspector key={nodes[0].id} node={nodes[0]} />;
   if (nodes.length === 1 && nodes[0].type === "annotation") return <AnnotationInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1 && nodes[0].type === "component") return <ComponentInspector key={nodes[0].id} node={nodes[0]} />;
   if (nodes.length === 1) return <NodeInspector key={nodes[0].id} node={nodes[0]} />;
   if (nodes.length > 1) return <MultiInspector />;
   if (edges.length === 1) return <EdgeInspector key={edges[0].id} edge={edges[0]} />;
   if (edges.length > 1) return <MultiEdgeInspector />;
   return empty ?? <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
+}
+
+function ComponentInspector({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const label = componentLabel(node);
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle text-ink-2">
+            <KIND_ICON.component className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker={label?.pack ?? "Componente"}
+        title={label?.name ?? "Componente"}
+        menu={<NodeMenu node={node} />}
+      />
+      <Section id="comp-fields" title="Configuração">
+        <F label="Nome" htmlFor={`t-${node.id}`}>
+          <Input id={`t-${node.id}`} className={smallInput} value={node.data.title} maxLength={300} onChange={(e) => ed.updateNodeData(node.id, { title: e.target.value }, `title:${node.id}`)} />
+        </F>
+        <ComponentFields node={node} />
+      </Section>
+      <Section id="comp-more" title="Descrição, status e tags" defaultOpen={false}>
+        <F label="Descrição" htmlFor={`d-${node.id}`}>
+          <Textarea id={`d-${node.id}`} rows={3} maxLength={5000} className="min-h-[76px] rounded-lg text-body" value={node.data.description ?? ""} onChange={(e) => ed.updateNodeData(node.id, { description: e.target.value }, `desc:${node.id}`)} />
+        </F>
+        <StatusField value={node.data.status} onChange={(status) => ed.updateNodeData(node.id, { status })} />
+        <F label="Tags">
+          <TagInput value={node.data.tags ?? []} onChange={(tags) => ed.updateNodeData(node.id, { tags })} />
+        </F>
+      </Section>
+      <Section id="comp-arrange" title="Organizar" defaultOpen={false}>
+        <LayerField />
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+            <BringToFront /> Frente
+          </Button>
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+            <SendToBack /> Trás
+          </Button>
+        </div>
+        <Button size="sm" variant="danger" onClick={ed.remove}>
+          <Trash2 /> Excluir
+        </Button>
+      </Section>
+    </Scroll>
+  );
 }
 
 function AnnotationInspector({ node }: { node: PlanFlowNode }) {

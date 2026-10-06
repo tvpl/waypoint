@@ -61,6 +61,7 @@ const GROUPS: Group[] = [
       ["Retângulo · losango · elipse", "R D O"],
       ["Seta · linha · texto · quadro", "A L T F"],
       ["Anotar · mostrar/ocultar anotações", "N ⇧N"],
+      ["Inserir qualquer coisa aqui (ou duplo clique)", "/"],
       ["Propriedades · modo foco", "I ⌘\\"],
       ["Copiar · colar estilo", "⌘⌥C ⌘⌥V"],
       ["Ferramentas pela ordem da barra (com algo selecionado ou outra ferramenta ativa)", "1 … 0"],

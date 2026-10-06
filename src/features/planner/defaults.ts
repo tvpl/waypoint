@@ -14,6 +14,7 @@ export const KIND_DEFAULTS: Record<NodeKind, { width: number; height: number; ti
   shape: { width: 180, height: 100, title: "", data: { shape: { type: "rect" } } },
   frame: { width: 640, height: 420, title: "Quadro" },
   annotation: { width: 240, height: 88, title: "", data: { annotation: { type: "callout", category: "note" } } },
+  component: { width: 200, height: 72, title: "Componente", data: { component: { pack: "sistemas", type: "service" } } },
 };
 
 export const KIND_LABEL: Record<NodeKind, string> = {
@@ -28,6 +29,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   shape: "Forma",
   frame: "Quadro",
   annotation: "Anotação",
+  component: "Componente",
 };
 
 /** Kinds that can hold children (drop target / group). */

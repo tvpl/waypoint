@@ -15,6 +15,7 @@ import { HIGHLIGHTER_COLOR, inkFontSize, inkPaths, shapePath } from "./ink-geome
 import { FONT_STACK, resolveShape, seedOf, shapePaths } from "./shape-geometry";
 import { GlyphSvg } from "./glyph";
 import { CATEGORY_META } from "./annotations";
+import { componentDef } from "./components/registry";
 
 type P = NodeProps<PlanFlowNode>;
 
@@ -37,6 +38,7 @@ const MIN: Record<NodeKind, [number, number]> = {
   shape: [16, 16],
   frame: [120, 80],
   annotation: [24, 24],
+  component: [40, 32],
 };
 
 function Handles({ connectable }: { connectable: boolean }) {
@@ -738,6 +740,32 @@ export const AnnotationNode = memo(function AnnotationNode(p: P) {
   );
 });
 
+/** A ready-made component from the built-in libraries, drawn by its definition. */
+export const ComponentNode = memo(function ComponentNode(p: P) {
+  const { cls, editing } = useNodeState(p);
+  const ref = p.data.component;
+  const def = ref ? componentDef(ref.pack, ref.type) : undefined;
+  const w = p.width ?? 200;
+  const h = p.height ?? 72;
+  const body = def ? (
+    def.render({ title: p.data.title, props: { ...def.defaults, ...ref?.props }, w, h })
+  ) : (
+    <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-line-2 px-2 text-center text-[12px] text-muted">{p.data.title || "Componente"}</div>
+  );
+  return (
+    <Chrome p={p} kind="component">
+      <div className={cn(cls, "wp-component relative h-full w-full")}>
+        {body}
+        {editing && (
+          <div className="absolute inset-x-0 -top-9 z-10 flex justify-center">
+            <InlineTitle id={p.id} value={p.data.title} className="w-[min(260px,100%)] min-w-[160px] rounded-md bg-surface px-2 py-1 text-[13px] font-semibold shadow-float" />
+          </div>
+        )}
+      </div>
+    </Chrome>
+  );
+});
+
 /** A frame: a named area (like an artboard) that holds what is drawn inside it. */
 export const FrameNode = memo(function FrameNode(p: P) {
   const { cls, editing } = useNodeState(p);
@@ -764,4 +792,5 @@ export const nodeTypes: NodeTypes = {
   shape: ShapeNode,
   frame: FrameNode,
   annotation: AnnotationNode,
+  component: ComponentNode,
 };

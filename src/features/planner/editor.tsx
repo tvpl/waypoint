@@ -124,6 +124,8 @@ import { usePanels } from "./panels";
 import { SelectionToolbar } from "./selection-toolbar";
 import { ALL_ANNOTATIONS, annotationOf, annotationVisible, TYPE_META, type AnnotationView } from "./annotations";
 import { convertNodes, type ConvertTarget } from "./convert";
+import { componentDef } from "./components/registry";
+import { QuickInsert } from "./quick-insert";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
@@ -299,6 +301,9 @@ function EditorShell(props: PlanEditorProps) {
     } catch {}
   }, []);
   const panels = usePanels();
+  // "/" or a double click on the canvas: insert anything at that point.
+  const [quickInsert, setQuickInsert] = useState<{ x: number; y: number } | null>(null);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
   const altDown = useRef(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("content");
@@ -511,6 +516,8 @@ function EditorShell(props: PlanEditorProps) {
     const p = rf.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
     return { x: p.x + jitter, y: p.y + jitter };
   }, [rf]);
+  const viewportCenterRef = useRef(viewportCenter);
+  viewportCenterRef.current = viewportCenter;
 
   const insert = useCallback(
     (node: ReturnType<typeof createNode>) => {
@@ -971,8 +978,8 @@ function EditorShell(props: PlanEditorProps) {
   annotStyleRef.current = annotStyle;
 
   const addAnnotation = useCallback(
-    (box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }, target: string | null) => {
-      const { type, category } = annotStyleRef.current;
+    (box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }, target: string | null, style?: { type: AnnotationType; category: AnnotationCategory }) => {
+      const { type, category } = style ?? annotStyleRef.current;
       const [dw, dh] = TYPE_META[type].size;
       const id = newId();
       const w = box && type !== "pin" ? Math.max(40, box.w) : dw;
@@ -1056,6 +1063,29 @@ function EditorShell(props: PlanEditorProps) {
       const size = 64;
       const h = size + (title ? 24 : 0);
       const node: PlanNode = { id, kind: "shape", x: Math.round(p.x - size / 2), y: Math.round(p.y - h / 2), width: size, height: h, data: { title, shape } };
+      if (snap) {
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
+      }
+      pendingKey.current = null;
+      let doc = placeInActive(addNodes(docOf(), [node]), [id]);
+      const parent = findDropTarget(doc, id, canHold);
+      if (parent) doc = reparent(doc, id, parent);
+      applyDoc(doc, { nodes: [id] });
+    },
+    [docOf, applyDoc, placeInActive, canHold, snap, viewportCenter],
+  );
+
+  const addComponent = useCallback(
+    (pack: string, type: string, at?: { x: number; y: number }) => {
+      const def = componentDef(pack, type);
+      if (!def) return;
+      const id = newId();
+      const p = at ?? viewportCenter();
+      const [w, h] = def.size;
+      const node: PlanNode = def.preset
+        ? { id, kind: def.preset.kind, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h, data: { title: def.title, ...def.preset.data } }
+        : { id, kind: "component", x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h, data: { title: def.title, component: { pack, type, ...(def.defaults ? { props: def.defaults } : {}) } } };
       if (snap) {
         node.x = Math.round(node.x / 20) * 20;
         node.y = Math.round(node.y / 20) * 20;
@@ -1340,6 +1370,7 @@ function EditorShell(props: PlanEditorProps) {
     pasteStyle,
     hasCopiedStyle: !!copiedStyle,
     addIcon,
+    addComponent,
     insertFragment,
     selectionFragment,
     addLink,
@@ -1494,6 +1525,12 @@ function EditorShell(props: PlanEditorProps) {
         const byDigit: Record<string, Tool | "image"> = { "1": "select", "2": "rect", "3": "diamond", "4": "ellipse", "5": "arrow", "6": "line", "7": "draw", "8": "text", "9": "image", "0": "erase" };
         const t = byDigit[digit];
         return run(() => (t === "image" ? a.addNode("image") : a.setTool(t)));
+      }
+      if (e.key === "/") {
+        const r = wrapRef.current?.getBoundingClientRect();
+        const p = lastPointer.current;
+        const inside = p && r && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+        return run(() => setQuickInsert(inside ? rf.screenToFlowPosition(p) : viewportCenterRef.current()));
       }
       if (k === "v") return run(() => a.setTool("select"));
       if (k === "i") return run(() => a.panels.setInspectorOpen(!a.panels.inspectorOpen || a.panels.focus));
@@ -1706,6 +1743,8 @@ function EditorShell(props: PlanEditorProps) {
       else if (p.type === "icon") {
         const icon = iconPickSchema.safeParse(p.icon);
         if (icon.success) addIcon(icon.data, at);
+      } else if (p.type === "component") {
+        if (typeof p.pack === "string" && typeof p.component === "string") addComponent(p.pack, p.component, at);
       } else if (p.type === "fragment") {
         const content = libraryContentSchema.safeParse(p.content);
         if (content.success) insertFragment(normalizeLibraryContent(content.data), at);
@@ -2001,6 +2040,11 @@ function EditorShell(props: PlanEditorProps) {
                     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
                   }}
                   onDrop={(e) => void onDrop(e)}
+                  onPointerMove={(e) => (lastPointer.current = { x: e.clientX, y: e.clientY })}
+                  onDoubleClick={(e) => {
+                    if (tool !== "select" || !(e.target as HTMLElement).classList?.contains("react-flow__pane")) return;
+                    setQuickInsert(rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+                  }}
                   onContextMenuCapture={(e) => {
                     const el = e.target as HTMLElement;
                     if (!el.closest(".react-flow__pane, .react-flow__node, .react-flow__edge, .react-flow__nodesselection, .react-flow__edgelabel-renderer")) {
@@ -2114,6 +2158,7 @@ function EditorShell(props: PlanEditorProps) {
                   )}
                   {(tool === "draw" || tool === "erase") && <InkCanvas wrapRef={wrapRef} />}
                   <ShapeTools wrapRef={wrapRef} />
+                  {quickInsert && <QuickInsert at={quickInsert} onClose={() => setQuickInsert(null)} />}
                   <SelectionBar />
                   {!commentsAside && <InspectorFloat />}
                   <IsolateBanner />

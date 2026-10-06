@@ -29,7 +29,7 @@ export type OpenIn = (typeof OPEN_IN)[number];
 
 // ------------------------------------------------------------------ nodes
 
-export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink", "shape", "frame", "annotation"] as const;
+export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink", "shape", "frame", "annotation", "component"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 
 export const NODE_STATUSES = ["none", "idea", "planned", "in-progress", "production", "deprecated"] as const;
@@ -126,6 +126,20 @@ export const annotationSchema = z.object({
 });
 export type Annotation = z.infer<typeof annotationSchema>;
 
+/**
+ * A ready-made, configurable piece from the built-in libraries (a Kafka topic with its partitions,
+ * a database table with its columns, an AWS service, a wireframe button…): which one, and the
+ * values of its fields. Drawn by src/features/planner/components.
+ */
+const componentValue = z.union([z.string().max(2000), z.number().finite(), z.boolean(), z.array(z.string().max(200)).max(60)]);
+export const componentSchema = z.object({
+  pack: z.string().min(1).max(40),
+  type: z.string().min(1).max(60),
+  props: z.record(z.string().max(40), componentValue).optional(),
+});
+export type ComponentRef = z.infer<typeof componentSchema>;
+export type ComponentValue = z.infer<typeof componentValue>;
+
 export const ARROWHEADS = ["none", "arrow", "triangle", "dot", "bar"] as const;
 export type Arrowhead = (typeof ARROWHEADS)[number];
 
@@ -157,6 +171,7 @@ export const nodeDataSchema = z.object({
   ink: inkSchema.optional(),
   shape: shapeSchema.optional(),
   annotation: annotationSchema.optional(),
+  component: componentSchema.optional(),
   /**
    * Presentation mode. Without any `order` in the plan, steps are the
    * top-level areas then the other top-level nodes (reading order) minus

@@ -28,11 +28,14 @@ const fsSupported = () => typeof document !== "undefined" && !!document.document
 
 export function PresentationMode({
   title,
+  planId,
   document: doc,
   resources,
   onExit,
 }: {
   title: string;
+  /** The plan presented (layers that overlay other plans load them). */
+  planId?: string;
   document: PlanDocument;
   resources: Record<string, ResolvedResource>;
   onExit: () => void;
@@ -190,7 +193,7 @@ export function PresentationMode({
       className={cn("wp-presentation fixed inset-0 z-40 flex flex-col bg-surface-2 text-ink outline-none", idle && "cursor-none")}
     >
       <div className="relative min-h-0 flex-1">
-        <PlanCanvasView document={doc} resources={resources} stage={stage} layerOverrides={step.layers} meta={{ title }}>
+        <PlanCanvasView document={doc} planId={planId} resources={resources} stage={stage} layerOverrides={step.layers} meta={{ title }}>
           <StageCamera step={step} doc={doc} />
         </PlanCanvasView>
       </div>

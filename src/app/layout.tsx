@@ -22,7 +22,7 @@ export const viewport: Viewport = {
 
 // Applies the stored theme before paint to avoid a light/dark flash, including the browser
 // chrome color (kept in sync afterwards by lib/theme.ts).
-const themeScript = `(function(){try{var t=localStorage.getItem('wp-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);var m=document.createElement('meta');m.name='theme-color';m.content=d?'#0e0f12':'#f5f5f2';document.head.appendChild(m);}catch(e){}})();`;
+const themeScript = `(function(){try{var t=localStorage.getItem('wp-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);var m=document.createElement('meta');m.name='theme-color';m.content=d?'#0e0f12':'#f5f5f2';document.head.appendChild(m);if(localStorage.getItem('wp-motion')==='reduce')document.documentElement.classList.add('wp-reduce-motion');}catch(e){}})();`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Desktop mode is only known at request time, so nothing (not even the 404 page) is prerendered

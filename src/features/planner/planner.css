@@ -490,7 +490,7 @@
 
 /* Text annotations (handwritten style) and drawn shapes. */
 .wp-ink-text {
-  font-family: "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive;
+  font-family: Excalifont, "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive;
   font-weight: 600;
   line-height: 1.2;
 }

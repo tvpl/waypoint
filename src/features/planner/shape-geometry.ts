@@ -70,7 +70,7 @@ export const FILL_COLORS: { value: string | undefined; name: string }[] = [
 ];
 
 export const FONT_STACK: Record<DrawStyle["font"], string> = {
-  hand: '"Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive',
+  hand: 'Excalifont, "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive',
   sans: "var(--font-sans)",
   mono: "var(--font-mono)",
 };

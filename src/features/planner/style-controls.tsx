@@ -295,7 +295,7 @@ export function FontPicker({ value, onChange }: { value: DrawStyle["font"]; onCh
   return (
     <Group label="Fonte">
       <Choice label="À mão" on={value === "hand"} onClick={() => onChange("hand")}>
-        <span className="px-0.5 text-[15px] leading-none" style={{ fontFamily: '"Bradley Hand", "Segoe Print", "Comic Sans MS", cursive' }}>
+        <span className="px-0.5 text-[15px] leading-none" style={{ fontFamily: 'Excalifont, "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive' }}>
           Aa
         </span>
       </Choice>

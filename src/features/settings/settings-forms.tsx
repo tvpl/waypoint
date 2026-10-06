@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useDesktop } from "@/lib/desktop";
 import { Field, Input, selectClass } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
-import { applyTheme, useThemePref, type ThemePref } from "@/lib/theme";
+import { applyMotion, applyTheme, useMotionPref, useThemePref, type MotionPref, type ThemePref } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { ask } from "@/components/ui/ask";
 import {
@@ -101,6 +101,23 @@ export function ThemePicker() {
         { value: "light", label: "Claro", icon: <Sun /> },
         { value: "dark", label: "Escuro", icon: <Moon /> },
         { value: "system", label: "Sistema", icon: <Monitor /> },
+      ]}
+    />
+  );
+}
+
+/** Animations: as the system says, or always reduced. */
+export function MotionPicker() {
+  const pref = useMotionPref();
+  return (
+    <Segmented
+      className="self-start"
+      label="Animações"
+      value={pref}
+      onChange={(v: MotionPref) => applyMotion(v)}
+      options={[
+        { value: "system", label: "Como no sistema" },
+        { value: "reduce", label: "Reduzir animações" },
       ]}
     />
   );

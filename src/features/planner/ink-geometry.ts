@@ -30,7 +30,7 @@ export function textBox(text: string, size: number): { width: number; height: nu
 }
 
 /** Font of text annotations (planner.css uses the same stack). */
-export const INK_FONT = '"Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive';
+export const INK_FONT = 'Excalifont, "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive';
 
 /** Ink colors: theme-adaptive ink first (stored as no color), then fixed colors that read on both canvases. */
 export const INK_COLORS: { value: string | undefined; name: string }[] = [

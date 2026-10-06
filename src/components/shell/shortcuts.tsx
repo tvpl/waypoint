@@ -63,6 +63,7 @@ const GROUPS: Group[] = [
       ["Anotar · mostrar/ocultar anotações", "N ⇧N"],
       ["Inserir qualquer coisa aqui (ou duplo clique)", "/"],
       ["Propriedades · modo foco", "I ⌘\\"],
+      ["Ir para a próxima área (barra, painel, canvas, propriedades) · anterior", "F6 ⇧F6"],
       ["Copiar · colar estilo", "⌘⌥C ⌘⌥V"],
       ["Ferramentas pela ordem da barra (com algo selecionado ou outra ferramenta ativa)", "1 … 0"],
       ["Desenho: manter proporção", "⇧ ao arrastar"],

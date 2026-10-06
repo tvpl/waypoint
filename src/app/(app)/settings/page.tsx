@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Download, Upload } from "lucide-react";
 import { listMembers, requireWorkspace } from "@/server/services/workspaces";
 import { Button } from "@/components/ui/button";
-import { Card, ProfileForm, ThemePicker, WorkspaceForm } from "@/features/settings/settings-forms";
+import { Card, MotionPicker, ProfileForm, ThemePicker, WorkspaceForm } from "@/features/settings/settings-forms";
 import { ApiTokens } from "@/features/settings/api-tokens";
 import { DesktopSettings } from "@/features/settings/desktop-settings";
 import { DesktopSecurity } from "@/features/settings/desktop-security";
@@ -35,6 +35,7 @@ export default async function SettingsPage() {
         </Card>
         <Card id="aparencia" title="Aparência" description="Cores dos blocos no Planner não mudam com o tema — o contraste do texto se adapta.">
           <ThemePicker />
+          <MotionPicker />
         </Card>
         <Card id="workspace" title="Workspace" description="Owners gerenciam o nome e as pessoas. Editors criam e editam; viewers apenas consultam.">
           <WorkspaceForm name={ctx.workspace.name} members={members} isOwner={ctx.role === "owner"} meId={ctx.user.id} />

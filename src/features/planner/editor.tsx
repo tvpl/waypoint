@@ -31,29 +31,7 @@ import type { AnnotationCategory, AnnotationType, OutlineType, EdgeKind, NodeDat
 import { instantiateLibraryContent, libraryContentSchema, normalizeLibraryContent, type LibraryContent } from "@/domain/library";
 import { luminance } from "@/lib/color";
 import { iconPickSchema } from "./icon-library";
-import {
-  addLayer,
-  applyView,
-  assignLayer,
-  BASE_LAYER_ID,
-  layerIdOf,
-  layersOf,
-  moveLayer,
-  removeLayer,
-  removeView,
-  renameLayerGroup,
-  renameView,
-  reorderLayer,
-  reorderView,
-  setLayerGroup,
-  updateViewLayers,
-  saveView,
-  showAllLayers,
-  soloLayer,
-  updateLayer,
-  applyLayerTemplate,
-  viewVisibility,
-} from "@/domain/layers";
+import { addLayer, assignLayer, BASE_LAYER_ID, layerIdOf, layersOf, updateLayer } from "@/domain/layers";
 import {
   contentSignature,
   edgeMarker,
@@ -68,7 +46,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
-import { CREATE_TOOLS, EditorContext, type EditorApi, type IconPick, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type ShapeProps, type Tool } from "./editor-context";
+import {
+  CREATE_TOOLS,
+  EditorContext,
+  type EditorApi,
+  type IconPick,
+  type InkSettings,
+  type InspectorTab,
+  type PlanMeta,
+  type ShapeProps,
+  type Tool,
+} from "./editor-context";
 import { DEFAULT_STYLE, measureText, seedOf, type DrawStyle } from "./shape-geometry";
 import { applyStyle, edgeStyleFromStyle, shapeFromStyle, styleOfSelection } from "./shape-style";
 import { ShapeTools } from "./draw-tools";
@@ -78,6 +66,10 @@ import { InkCanvas } from "./ink-canvas";
 import { nodeTypes } from "./nodes";
 import { edgeTypes, useAvoidance } from "./edges";
 import { PaletteContext } from "./style-controls";
+import { useEditorKeys } from "./editor-keys";
+import { useLayersApi } from "./use-layers-api";
+import { exportFromEditor } from "./editor-export";
+import { useEditorClipboard } from "./editor-clipboard";
 import { useLibraryLinks } from "./library-links";
 import { contentRev } from "@/domain/library";
 import { History } from "./history";
@@ -118,9 +110,7 @@ import { ViewBody } from "./view-page";
 import { readDragPayload, DND_MIME } from "./resource-picker";
 import { DND_MIME as LIBRARY_MIME } from "@/features/links/dnd";
 import { fallbackResource, refKey, type ResolvedResource } from "./resource-types";
-import { copyScene, downloadScene, excalidrawScene, exportFramesPdf, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
-import { isOverlayId } from "@/domain/overlay";
-import { centerOn, CLIPBOARD_TYPE, EXCALIDRAW_MIME, fromExcalidraw, parseScene, subsetDoc } from "./excalidraw";
+import { centerOn, fromExcalidraw, parseScene, subsetDoc } from "./excalidraw";
 import { EXCALIDRAW_ACCEPT, readSceneFile } from "./excalidraw-file";
 import { sceneName, withUploadedImages } from "./excalidraw-import";
 import { overlayFlow, useOverlays } from "./overlays";
@@ -135,7 +125,6 @@ import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
 
 /** Marks our own nodes on the system clipboard (set on copy, checked on paste). */
-const NODES_MIME = "application/x-waypoint-nodes";
 
 export type PlanEditorProps = {
   plan: { id: string; title: string; description: string | null; tags: string[]; visibility: string };
@@ -169,12 +158,6 @@ function readClip(): Clip | null {
   } catch {
     return null;
   }
-}
-
-function isTyping(t: EventTarget | null) {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
-  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
 }
 
 const isDefaultViewport = (v: Viewport) => v.x === 0 && v.y === 0 && v.zoom === 1;
@@ -388,6 +371,11 @@ function EditorShell(props: PlanEditorProps) {
     if (b.at > props.initial.updatedAt && contentSignature(b.document) !== initialSig) setBackup(b);
     else clearBackup(planId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The hand-drawn font is measured when texts are created: have it ready.
+  useEffect(() => {
+    document.fonts?.load('20px "Excalifont"').catch(() => {});
   }, []);
 
   // ---------------------------------------------------------------- doc plumbing
@@ -1301,94 +1289,26 @@ function EditorShell(props: PlanEditorProps) {
   }, [editingId, mutate]);
 
   // ---------------------------------------------------------------- layers
-  const layersApi: LayersApi = useMemo(() => {
-    const list = layersOf(layerState);
-    const counts = new Map<string, number>();
-    for (const n of nodes) if (!n.parentId) counts.set(n.data._layer ?? BASE_LAYER_ID, (counts.get(n.data._layer ?? BASE_LAYER_ID) ?? 0) + 1);
-    for (const e of edges) counts.set(e.data?.layer ?? BASE_LAYER_ID, (counts.get(e.data?.layer ?? BASE_LAYER_ID) ?? 0) + 1);
-    return {
-      list,
-      views: layerState.views ?? [],
-      active: list.some((l) => l.id === activeLayer) ? activeLayer : BASE_LAYER_ID,
-      setActive: setActiveLayer,
-      add: () => {
-        let id: string | null = null;
-        mutate((d) => {
-          const r = addLayer(d);
-          id = r.id;
-          return r.doc;
-        });
-        if (id) setActiveLayer(id);
-      },
-      update: (id, patch) =>
-        mutate((d) => updateLayer(d, id, patch), { key: patch.name !== undefined ? `layer-name:${id}` : patch.opacity !== undefined ? `layer-opacity:${id}` : undefined }),
-      move: (id, dir) => mutate((d) => moveLayer(d, id, dir)),
-      remove: (id, mode) => {
-        mutate((d) => removeLayer(d, id, mode), { select: [] });
-        if (activeLayerRef.current === id) setActiveLayer(BASE_LAYER_ID);
-      },
-      solo: (id) => mutate((d) => soloLayer(d, id)),
-      showAll: () => mutate((d) => showAllLayers(d)),
-      assignSelection: (id) => {
-        const ns = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
-        const es = edgesRef.current.filter((e) => e.selected).map((e) => e.id);
-        if (!ns.length && !es.length) return;
-        mutate((d) => assignLayer(d, id, { nodes: ns, edges: es }));
-      },
-      selectLayer: (id) => {
-        const ns = nodesRef.current.filter((n) => !n.parentId && (n.data._layer ?? BASE_LAYER_ID) === id && !n.hidden && n.selectable !== false).map((n) => n.id);
-        const es = edgesRef.current.filter((e) => (e.data?.layer ?? BASE_LAYER_ID) === id && !e.hidden && e.selectable !== false).map((e) => e.id);
-        select(ns, es);
-      },
-      saveView: (name) => mutate((d) => saveView(d, name).doc),
-      applyView: (id) => mutate((d) => applyView(d, id)),
-      removeView: (id) => mutate((d) => removeView(d, id)),
-      applyTemplate: (id) => {
-        let first: string | null = null;
-        mutate((d) => {
-          const r = applyLayerTemplate(d, id);
-          first = r.first;
-          return r.doc;
-        });
-        if (first) setActiveLayer(first);
-      },
-      comment: (id) => openLayerComments(id),
-      reorder: (id, toIndex) => mutate((d) => reorderLayer(d, id, toIndex)),
-      place: (id, toIndex, group) =>
-        mutate((d) => {
-          const x = reorderLayer(d, id, toIndex);
-          return layersOf(x).find((l) => l.id === id)?.group === group ? x : setLayerGroup(x, [id], group);
-        }),
-      setGroup: (ids, group) => mutate((d) => setLayerGroup(d, ids, group)),
-      renameGroup: (from, to) => mutate((d) => renameLayerGroup(d, from, to)),
-      assignTo: (id, ids) => mutate((d) => assignLayer(d, id, ids)),
-      isolated,
-      setIsolated,
-      renameView: (id, name) => mutate((d) => renameView(d, id, name)),
-      reorderView: (id, toIndex) => mutate((d) => reorderView(d, id, toIndex)),
-      updateView: (id) => mutate((d) => updateViewLayers(d, id)),
-      hover: setHoverId,
-      counts,
-      addOverlay: (sourceId, title) => {
-        if (sourceId === planId) return;
-        let id: string | null = null;
-        mutate((d) => {
-          const r = addLayer(d, title || "Plan sobreposto");
-          id = r.id;
-          return updateLayer(r.doc, r.id, { source: { planId: sourceId }, opacity: 0.6, locked: true });
-        });
-        if (id) toast.success(`“${title}” sobreposto numa camada nova`);
-      },
-      overlays: new Map(
-        [...overlays.byPlan].map(([pid, st]) => [
-          pid,
-          st.status === "ok" ? { status: "ok" as const, title: st.title, count: st.doc.nodes.length } : st.status === "error" ? { status: "error" as const, error: st.error } : { status: "loading" as const },
-        ]),
-      ),
-      onion,
-      setOnion,
-    };
-  }, [layerState, nodes, edges, activeLayer, mutate, select, openLayerComments, isolated, setIsolated, overlays, onion, planId]);
+  const layersApi = useLayersApi({
+    planId,
+    layerState,
+    nodes,
+    edges,
+    nodesRef,
+    edgesRef,
+    activeLayer,
+    setActiveLayer,
+    activeLayerRef,
+    mutate,
+    select,
+    openLayerComments,
+    isolated,
+    setIsolated,
+    setHoverId,
+    overlays,
+    onion,
+    setOnion,
+  });
 
   const focusNode = useCallback(
     (id: string) => {
@@ -1597,168 +1517,9 @@ function EditorShell(props: PlanEditorProps) {
     />
   ) : null;
 
-  // ---------------------------------------------------------------- keyboard
-  useEffect(() => {
-    if (mode !== "edit") return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || isTyping(e.target)) return;
-      const t = e.target as HTMLElement | null;
-      if (t?.closest?.('[role="dialog"], [role="menu"], [role="listbox"], [data-planner-panel]')) return;
-      const a = apiRef.current;
-      const mod = e.metaKey || e.ctrlKey;
-      const k = e.key.toLowerCase();
-      if (mod && k === "k") return; // global palette
-      const run = (fn: () => void) => {
-        e.preventDefault();
-        fn();
-      };
-      if (mod && k === "z" && !e.shiftKey) return run(undo);
-      if ((mod && k === "y") || (mod && k === "z" && e.shiftKey)) return run(redo);
-      // ⌘C / ⌘V go through the copy/paste events below (they need the system clipboard).
-      if (mod && k === "d") return run(a.duplicate);
-      if (mod && e.altKey && e.code === "KeyC") return run(a.copyStyle);
-      if (mod && e.altKey && e.code === "KeyV") return run(a.pasteStyle);
-      // Focus mode: only the drawing (⌘\ again brings the panels back).
-      if (mod && e.code === "Backslash") return run(() => a.panels.setFocus(!a.panels.focus));
-      if (mod && k === "a") return run(a.selectAll);
-      if (mod && k === "g" && e.shiftKey) return run(a.ungroup);
-      if (mod && k === "g") return run(a.group);
-      if (mod && e.shiftKey && k === "l" && a.selectedNodes.length) return run(() => a.setLocked(!a.selectedNodes.every((n) => n.data.locked)));
-      if (mod && e.shiftKey && k === "h" && a.selectedNodes.length) return run(() => a.setHidden(true));
-      if (mod && k === "l") return a.selectedNodes.length === 1 ? run(() => a.setInspectorTab("action")) : undefined;
-      // ⇧L vertical, ⌥⇧L horizontal (e.code: ⌥ changes e.key on macOS)
-      if (!mod && e.shiftKey && e.code === "KeyL") return run(() => a.autoArrange(e.altKey ? "LR" : "TB"));
-      // ⌥[ / ⌥] move the selection to the layer below / above (e.code: ⌥ changes e.key on macOS).
-      if (e.altKey && !mod && (e.code === "BracketLeft" || e.code === "BracketRight")) {
-        const sel = a.selectedNodes[0] ?? null;
-        const edge = a.selectedEdges[0] ?? null;
-        const from = sel ? (sel.data._layer ?? BASE_LAYER_ID) : edge ? (edge.data?.layer ?? BASE_LAYER_ID) : null;
-        if (!from) return;
-        const list = a.layers.list;
-        const target = list[list.findIndex((l) => l.id === from) + (e.code === "BracketRight" ? 1 : -1)];
-        if (target) run(() => a.layers.assignSelection(target.id));
-        return;
-      }
-      if (mod || e.altKey) return;
-      if (k === "delete" || k === "backspace") return run(a.remove);
-      if (k === "escape") {
-        setEditingId(null);
-        if (a.tool === "connect" || CREATE_TOOLS.has(a.tool)) return run(() => a.setTool("select"));
-        // nothing to let go of: leave an isolated layer
-        if (!a.selectedNodes.length && !a.selectedEdges.length && a.layers.isolated) return run(() => a.layers.setIsolated(null));
-        return run(() => a.select([]));
-      }
-      if (k === "enter" && a.selectedNodes.length === 1) return run(() => a.startEditing(a.selectedNodes[0].id));
-      // Excalidraw's keys: numbers and letters pick the drawing tools; ⇧1 fits, ⇧0 is 100%.
-      if (e.shiftKey && e.code === "Digit1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
-      if (e.shiftKey && e.code === "Digit0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
-      const digit = /^Digit(\d)$/.exec(e.code)?.[1];
-      if (digit && !e.shiftKey) {
-        // With nothing selected in the select tool, 1 and 0 keep their old meaning: fit and 100%.
-        const idle = a.tool === "select" && !a.selectedNodes.length && !a.selectedEdges.length;
-        if (idle && digit === "1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
-        if (idle && digit === "0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
-        const byDigit: Record<string, Tool | "image"> = { "1": "select", "2": "rect", "3": "diamond", "4": "ellipse", "5": "arrow", "6": "line", "7": "draw", "8": "text", "9": "image", "0": "erase" };
-        const t = byDigit[digit];
-        return run(() => (t === "image" ? a.addNode("image") : a.setTool(t)));
-      }
-      if (e.key === "/") {
-        const r = wrapRef.current?.getBoundingClientRect();
-        const p = lastPointer.current;
-        const inside = p && r && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
-        return run(() => setQuickInsert(inside ? rf.screenToFlowPosition(p) : viewportCenterRef.current()));
-      }
-      if (k === "v") return run(() => a.setTool("select"));
-      if (k === "i") return run(() => a.panels.setInspectorOpen(!a.panels.inspectorOpen || a.panels.focus));
-      if (k === "h") return run(() => a.setTool("hand"));
-      if (k === "p") return run(() => a.setTool(a.tool === "draw" ? "select" : "draw"));
-      if (k === "e") return run(() => a.setTool(a.tool === "erase" ? "select" : "erase"));
-      if (k === "r") return run(() => a.setTool("rect"));
-      if (k === "d") return run(() => a.setTool("diamond"));
-      if (k === "o") return run(() => a.setTool("ellipse"));
-      if (k === "a") return run(() => a.setTool("arrow"));
-      if (k === "l") return run(() => a.setTool("line"));
-      if (k === "t") return run(() => a.setTool("text"));
-      if (k === "f") return run(() => a.setTool("frame"));
-      if (k === "s") return run(() => a.setTool(a.tool === "shape" ? "select" : "shape"));
-      // ⇧N shows or hides every annotation at once; N is the annotation tool.
-      if (k === "n" && e.shiftKey) return run(() => a.setAnnotationView({ show: !a.annotationView.show }));
-      if (k === "n") return run(() => a.setTool(a.tool === "annotate" ? "select" : "annotate"));
-      if (k === "c") return run(() => (a.selectedNodes.length === 1 ? a.startConnectFrom(a.selectedNodes[0].id) : a.setTool("connect")));
-      if (k === "+" || k === "=") return run(() => rf.zoomIn({ duration: motionMs(150) }));
-      if (k === "-" || k === "_") return run(() => rf.zoomOut({ duration: motionMs(150) }));
-
-      if (k === "m") return run(() => a.setMinimap(!a.minimap));
-      if (k === "]") return run(a.bringToFront);
-      if (k === "[") return run(a.sendToBack);
-      if (k.startsWith("arrow")) pendingKey.current = "nudge";
-    };
-    const onAlt = (e: KeyboardEvent) => (freeMove.current = e.metaKey || e.ctrlKey);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keydown", onAlt, true);
-    window.addEventListener("keyup", onAlt, true);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keydown", onAlt, true);
-      window.removeEventListener("keyup", onAlt, true);
-    };
-  }, [mode, undo, redo, rf]);
-
-  // ---------------------------------------------------------------- clipboard
-  useEffect(() => {
-    if (mode !== "edit") return;
-    const outside = (e: Event) => isTyping(e.target) || !!(e.target as HTMLElement | null)?.closest?.('[role="dialog"], [data-planner-panel]');
-    const onCopy = (e: ClipboardEvent) => {
-      if (outside(e) || !apiRef.current.selectedNodes.length || window.getSelection()?.toString()) return;
-      apiRef.current.copy();
-      // Mark the system clipboard so a later paste knows these nodes are the newest thing there.
-      e.clipboardData?.setData(NODES_MIME, "1");
-      e.clipboardData?.setData("text/plain", `${apiRef.current.selectedNodes.map((n) => n.data.title).filter(Boolean).join("\n")}`);
-      e.preventDefault();
-    };
-    // Pasted content lands under the pointer when it's over the canvas (else the viewport center).
-    let pointer: { x: number; y: number } | null = null;
-    const onMove = (e: PointerEvent) => (pointer = { x: e.clientX, y: e.clientY });
-    const pasteAt = () => {
-      const r = wrapRef.current?.getBoundingClientRect();
-      if (!pointer || !r || pointer.x < r.left || pointer.x > r.right || pointer.y < r.top || pointer.y > r.bottom) return undefined;
-      return rf.screenToFlowPosition(pointer);
-    };
-    const onPaste = (e: ClipboardEvent) => {
-      if (outside(e)) return;
-      const cd = e.clipboardData;
-      e.preventDefault();
-      if (cd?.types.includes(NODES_MIME)) return apiRef.current.paste();
-      const at = pasteAt();
-      // Copied in Excalidraw: the drawing comes in, not its JSON as a note.
-      const raw = cd?.getData(EXCALIDRAW_MIME) || cd?.getData("text/plain") || "";
-      if (raw.trimStart().startsWith("{") && (raw.includes(CLIPBOARD_TYPE) || raw.includes('"excalidraw"'))) {
-        try {
-          const scene = parseScene(JSON.parse(raw));
-          if (scene) return void insertSceneRef.current(scene, { at });
-        } catch {}
-      }
-      const image = Array.from(cd?.files ?? []).find((f) => f.type.startsWith("image/"));
-      if (image) return void uploadImage(image, at);
-      const text = cd?.getData("text/plain")?.trim() ?? "";
-      const urls = text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t));
-      if (urls.length && urls.join(" ").length >= text.replace(/\s+/g, " ").length - urls.length) return addUrlNodes(urls, at);
-      if (text) {
-        // Plain text becomes a note (first line as the title).
-        const [first, ...rest] = text.split("\n");
-        return addNodeRef.current("note", { at, data: { title: first.slice(0, 120), description: rest.join("\n").trim().slice(0, 4000) } });
-      }
-      apiRef.current.paste();
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("copy", onCopy);
-    window.addEventListener("paste", onPaste);
-    return () => {
-      window.removeEventListener("copy", onCopy);
-      window.removeEventListener("paste", onPaste);
-      window.removeEventListener("pointermove", onMove);
-    };
-  }, [mode, addUrlNodes, uploadImage, rf]);
+  // ---------------------------------------------------------------- keyboard and clipboard
+  useEditorKeys({ mode, apiRef, rf, undo, redo, setEditingId, wrapRef, lastPointer, viewportCenterRef, setQuickInsert, pendingKey, freeMove });
+  useEditorClipboard({ mode, apiRef, rf, wrapRef, insertSceneRef, addNodeRef, uploadImage, addUrlNodes });
 
   // ---------------------------------------------------------------- flow handlers
   const onNodesChange = useCallback(
@@ -1944,74 +1705,10 @@ function EditorShell(props: PlanEditorProps) {
     }
   };
 
-  /** Exports the canvas as it is, or a saved view (shown only while the image is taken). */
+  /** Exports the canvas as it is, or a saved view (see editor-export.ts). */
   const onExport = async (k: ExportKind, viewId?: string) => {
     if (mode === "preview") return void previewExport.current?.(k, viewId);
-    const doc = docOf();
-    const view = viewId ? doc.views?.find((v) => v.id === viewId) : undefined;
-    const title = view ? `${meta.title || "plan"} — ${view.name}` : meta.title || "plan";
-    if (k === "json") return exportJson({ title, description: meta.description, tags: meta.tags }, doc);
-    if (k === "frames-pdf") {
-      const frames = rf.getNodes().filter((n) => n.type === "frame" && !n.hidden && !isOverlayId(n.id));
-      if (!frames.length) return void toast.error("O plan não tem quadros.");
-      const win = openPrintWindow(title);
-      if (!win) return void toast.error("Permita pop-ups para exportar em PDF.");
-      const prev = selectedIds();
-      select([]);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      try {
-        const pages = frames.map((f) => ({ bounds: rf.getNodesBounds([f]), title: (f.data.title as string) || "Quadro" }));
-        // Reading order: rows top to bottom, then left to right.
-        pages.sort((a, b) => (Math.abs(a.bounds.y - b.bounds.y) > Math.min(a.bounds.height, b.bounds.height) / 2 ? a.bounds.y - b.bounds.y : a.bounds.x - b.bounds.x));
-        await exportFramesPdf(wrapRef.current!, pages, title, win);
-      } catch {
-        toast.error("Não foi possível exportar. Tente novamente.");
-      } finally {
-        select([...prev.nodes], [...prev.edges]);
-      }
-      return;
-    }
-    const vis = view ? viewVisibility(doc, view.id) : null;
-    const shown = vis ?? Object.fromEntries(layersOf(doc).map((l) => [l.id, l.visible !== false]));
-    const scene = isExcalidrawExport(k) ? () => excalidrawScene(doc, { title, visible: (id) => shown[id] !== false }) : null;
-    if (k === "excalidraw") return downloadScene(await scene!(), title);
-    if (k === "excalidraw-copy") {
-      // The selection when there is one, else the plan as shown.
-      const sel = selectedIds();
-      const part = sel.nodes.size || sel.edges.size ? subsetDoc(doc, sel.nodes, sel.edges) : doc;
-      const out = await excalidrawScene(part, { title, visible: (id) => shown[id] !== false });
-      return void copyScene(out).then(
-        () => toast.success(`Copiado: ${out.elements.filter((e) => !e.containerId).length} elementos. Cole no Excalidraw com ⌘V.`),
-        () => toast.error("Não foi possível copiar."),
-      );
-    }
-    if (!vis && !rf.getNodes().some((n) => !n.hidden)) return void toast.error("O plan está vazio.");
-    const printWin = k === "pdf" ? openPrintWindow(title) : null;
-    if (k === "pdf" && !printWin) return void toast.error("Permita pop-ups para exportar em PDF.");
-    const prev = selectedIds();
-    if (vis) {
-      setNodes(toFlowNodes(doc, { layerVisibility: vis }));
-      setEdges(toFlowEdges(doc, { layerVisibility: vis }));
-    } else select([]);
-    // let React Flow render (and measure what the view brings back) before taking the picture
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    if (vis) await new Promise((r) => setTimeout(r, 120));
-    try {
-      const visible = rf.getNodes().filter((n) => !n.hidden);
-      if (!visible.length) {
-        printWin?.close();
-        return void toast.error("Esta visão está vazia.");
-      }
-      const bounds = rf.getNodesBounds(visible);
-      if (k === "pdf") await exportPdf(wrapRef.current!, bounds, title, printWin);
-      else if (k === "png" || k === "svg") await exportImage(wrapRef.current!, bounds, k, title);
-      else await exportImage(wrapRef.current!, bounds, k === "excalidraw-png" ? "png" : "svg", title, await scene!());
-    } catch {
-      toast.error("Não foi possível exportar. Tente novamente.");
-    } finally {
-      if (vis) applyDoc(doc, { nodes: prev.nodes, edges: prev.edges });
-      else select([...prev.nodes], [...prev.edges]);
-    }
+    await exportFromEditor(k, viewId, { doc: docOf(), meta, rf, wrap: wrapRef.current!, selectedIds, select, setNodes, setEdges, applyDoc });
   };
 
   const reloadFromServer = () => {
@@ -2066,7 +1763,7 @@ function EditorShell(props: PlanEditorProps) {
     <EditorContext.Provider value={api}>
       <PaletteContext.Provider value={paletteCtx}>
       <PlannerContext.Provider value={plannerCtx}>
-        <div className="flex h-app flex-col overflow-hidden bg-bg text-ink">
+        <div data-planner-root className="flex h-app flex-col overflow-hidden bg-bg text-ink">
           <input
             ref={importInput}
             type="file"
@@ -2186,7 +1883,11 @@ function EditorShell(props: PlanEditorProps) {
               <CanvasContextMenu target={menuTarget}>
                 <div
                   ref={wrapRef}
-                  className={cn("relative min-w-0 flex-1 bg-canvas", dropping && "wp-dropping")}
+                  tabIndex={-1}
+                  role="region"
+                  aria-label="Canvas"
+                  data-planner-region="canvas"
+                  className={cn("relative min-w-0 flex-1 bg-canvas outline-none", dropping && "wp-dropping")}
                   onDragOver={onDragOver}
                   onDragLeave={(e) => {
                     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);

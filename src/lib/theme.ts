@@ -78,3 +78,38 @@ export const OPEN_PALETTE_EVENT = "wp:open-palette";
 export function openPalette(query?: string) {
   window.dispatchEvent(new CustomEvent(OPEN_PALETTE_EVENT, { detail: { query } }));
 }
+
+// ------------------------------------------------------------------ motion
+
+export type MotionPref = "system" | "reduce";
+const MOTION_KEY = "wp-motion";
+const MOTION_EVENT = "wp:motion";
+
+export function getMotionPref(): MotionPref {
+  try {
+    return localStorage.getItem(MOTION_KEY) === "reduce" ? "reduce" : "system";
+  } catch {
+    return "system";
+  }
+}
+
+/** "reduce" turns animations off everywhere (the `wp-reduce-motion` class on <html>), like the OS setting. */
+export function applyMotion(pref: MotionPref) {
+  try {
+    if (pref === "reduce") localStorage.setItem(MOTION_KEY, "reduce");
+    else localStorage.removeItem(MOTION_KEY);
+  } catch {}
+  document.documentElement.classList.toggle("wp-reduce-motion", pref === "reduce");
+  window.dispatchEvent(new Event(MOTION_EVENT));
+}
+
+export function useMotionPref(): MotionPref {
+  return useSyncExternalStore(
+    (cb) => {
+      window.addEventListener(MOTION_EVENT, cb);
+      return () => window.removeEventListener(MOTION_EVENT, cb);
+    },
+    getMotionPref,
+    () => "system",
+  );
+}

@@ -286,6 +286,7 @@ export function absoluteBoxes(nodes: FlowLike[]): Map<string, Box> {
 }
 
 const CELL = 400;
+const MAX_NEAR = 40;
 
 /**
  * For every elbow connection, the elements near it that it should go around: not its ends, not
@@ -299,14 +300,15 @@ export function avoidanceBoxes(nodes: FlowLike[], edges: EdgeLike[]): Map<string
   const boxes = absoluteBoxes(nodes);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // A coarse grid so each connection only looks at the elements around it.
-  const grid = new Map<string, string[]>();
+  const grid = new Map<number, string[]>();
+  const cell = (gx: number, gy: number) => gx * 1_000_003 + gy;
   for (const n of nodes) {
     if (n.hidden || SOFT.has(n.type ?? "") || n.className?.includes("wp-overlay")) continue;
     const b = boxes.get(n.id)!;
     if (!b.w || !b.h) continue;
     for (let gx = Math.floor(b.x / CELL); gx <= Math.floor((b.x + b.w) / CELL); gx++)
       for (let gy = Math.floor(b.y / CELL); gy <= Math.floor((b.y + b.h) / CELL); gy++) {
-        const k = `${gx},${gy}`;
+        const k = cell(gx, gy);
         const list = grid.get(k);
         if (list) list.push(n.id);
         else grid.set(k, [n.id]);
@@ -327,9 +329,10 @@ export function avoidanceBoxes(nodes: FlowLike[], edges: EdgeLike[]): Map<string
     const y2 = Math.max(sb.y + sb.h, tb.y + tb.h) + ROUTE_LEAD;
     const skip = new Set([...lineage(e.source), ...lineage(e.target)]);
     const found = new Set<string>();
-    for (let gx = Math.floor(x1 / CELL); gx <= Math.floor(x2 / CELL); gx++)
+    // Past MAX_NEAR elements the connection crosses a crowd: it keeps the plain path (and we stop looking).
+    scan: for (let gx = Math.floor(x1 / CELL); gx <= Math.floor(x2 / CELL); gx++)
       for (let gy = Math.floor(y1 / CELL); gy <= Math.floor(y2 / CELL); gy++)
-        for (const id of grid.get(`${gx},${gy}`) ?? []) {
+        for (const id of grid.get(cell(gx, gy)) ?? []) {
           if (skip.has(id) || found.has(id)) continue;
           const b = boxes.get(id)!;
           if (b.x + b.w < x1 || b.x > x2 || b.y + b.h < y1 || b.y > y2) continue;
@@ -337,8 +340,9 @@ export function avoidanceBoxes(nodes: FlowLike[], edges: EdgeLike[]): Map<string
           const anc = lineage(id);
           if (anc.has(e.source) || anc.has(e.target)) continue;
           found.add(id);
+          if (found.size > MAX_NEAR) break scan;
         }
-    if (found.size && found.size <= 40) out.set(e.id, { boxes: [...found].map((id) => boxes.get(id)!), source: sb, target: tb });
+    if (found.size && found.size <= MAX_NEAR) out.set(e.id, { boxes: [...found].map((id) => boxes.get(id)!), source: sb, target: tb });
   }
   return out;
 }

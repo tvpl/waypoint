@@ -375,7 +375,7 @@ export function PlanViewPage({
         )}
       </div>
       {canEdit && <ShareDialog planId={plan.id} open={share} onOpenChange={setShare} workspaceName={workspaceName ?? "seu workspace"} />}
-      {presenting && !empty && <PresentationMode title={plan.title} document={document} resources={resources} onExit={stopPresenting} />}
+      {presenting && !empty && <PresentationMode title={plan.title} planId={plan.id} document={document} resources={resources} onExit={stopPresenting} />}
     </div>
   );
 }

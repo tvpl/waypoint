@@ -57,6 +57,7 @@ test("drawing: more shapes, rotation, ⌥-drag copy, lock, hide and a bent arrow
   await page.mouse.click(at(0.8, 0.75).x, at(0.8, 0.75).y, { button: "right" });
   await page.getByRole("menuitem", { name: /Destravar tudo/ }).click();
   await expect(node(1)).not.toHaveClass(/wp-locked/);
+  await expect(page.getByRole("menu")).toHaveCount(0);
 
   // An arrow between two shapes, bent by its middle handle.
   await page.keyboard.press("a");

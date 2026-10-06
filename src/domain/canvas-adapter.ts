@@ -280,8 +280,8 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerR
  * Picks facing sides for edges stored without handles (imports, seeds) so
  * they don't all leave from the top handle.
  */
-export function autoHandles(nodes: PlanNode[], source: string, target: string): { sourceHandle: string; targetHandle: string } | null {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
+export function autoHandles(nodes: PlanNode[] | ReadonlyMap<string, PlanNode>, source: string, target: string): { sourceHandle: string; targetHandle: string } | null {
+  const byId = nodes instanceof Map ? nodes : new Map((nodes as PlanNode[]).map((n) => [n.id, n]));
   const center = (id: string) => {
     const n = byId.get(id);
     if (!n) return null;
@@ -308,10 +308,12 @@ export function autoHandles(nodes: PlanNode[], source: string, target: string): 
 
 export function toFlowEdges(doc: Pick<PlanDocument, "edges"> & Partial<Pick<PlanDocument, "nodes" | "layers">>, opts: ToFlowOptions = {}): PlanFlowEdge[] {
   const layers = layerRender(doc, opts);
+  let byId: Map<string, PlanNode> | null = null;
   return doc.edges.map((e) => {
     const out = toFlowEdge(e, opts, layers.get(layerIdOf(e)));
     if ((!out.sourceHandle || !out.targetHandle) && doc.nodes) {
-      const h = autoHandles(doc.nodes, e.source, e.target);
+      byId ??= new Map(doc.nodes.map((n) => [n.id, n]));
+      const h = autoHandles(byId, e.source, e.target);
       if (h) {
         out.sourceHandle = out.sourceHandle || h.sourceHandle;
         out.targetHandle = out.targetHandle || h.targetHandle;

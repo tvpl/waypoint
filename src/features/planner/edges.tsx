@@ -1,5 +1,5 @@
 "use client";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, useInternalNode, useReactFlow, type EdgeProps, type EdgeTypes, type InternalNode } from "@xyflow/react";
 import { EDGE_KINDS, type EdgeKind, type EdgeStyle } from "@/domain/plan";
 import { arrowheadPath, bendThrough, curveApex, curveControl, dashFor, DEFAULT_BEND, DEFAULT_STYLE, endTangent, floatingEnds, headInset, linkPaths, seedOf, type Pt } from "./shape-geometry";
@@ -103,8 +103,10 @@ function useEdgeLabel(id: string, d: string, pos: number | undefined, fallback: 
  */
 export function useAvoidance(nodes: Parameters<typeof avoidanceBoxes>[0], edges: PlanFlowEdge[]): PlanFlowEdge[] {
   const cache = useRef(new Map<string, { key: string; edge: PlanFlowEdge; out: PlanFlowEdge }>());
+  // Not urgent: while something is dragged, the routes catch up between frames.
+  const settled = useDeferredValue(nodes);
   return useMemo(() => {
-    const found = avoidanceBoxes(nodes, edges);
+    const found = avoidanceBoxes(settled, edges);
     const next = new Map<string, { key: string; edge: PlanFlowEdge; out: PlanFlowEdge }>();
     const list = edges.map((e) => {
       const a = found.get(e.id);
@@ -117,7 +119,7 @@ export function useAvoidance(nodes: Parameters<typeof avoidanceBoxes>[0], edges:
     });
     cache.current = next;
     return list;
-  }, [nodes, edges]);
+  }, [settled, edges]);
 }
 
 /** Direction (degrees) an edge travels when it enters a handle on each side of the target. */

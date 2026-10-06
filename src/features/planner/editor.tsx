@@ -70,7 +70,7 @@ import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { CREATE_TOOLS, EditorContext, type EditorApi, type IconPick, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
 import { DEFAULT_STYLE, measureText, seedOf, type DrawStyle } from "./shape-geometry";
-import { applyStyle, edgeStyleFromStyle, shapeFromStyle } from "./shape-style";
+import { applyStyle, edgeStyleFromStyle, shapeFromStyle, styleOfSelection } from "./shape-style";
 import { ShapeTools } from "./draw-tools";
 import { buildInk, buildTextInk, INK_SIZES, textBox, type Point } from "./ink-geometry";
 import { clearSteps as clearFlowSteps, numberFlow, stepTargets } from "./flow-steps";
@@ -104,7 +104,7 @@ import { autoLayout, type LayoutDirection } from "./auto-layout";
 import { clearBackup, readBackup, useAutosave } from "./autosave";
 import { Toolbox } from "./toolbox";
 import { IsolateBanner } from "./layers-panel";
-import { Inspector } from "./inspector";
+import { Inspector, InspectorDock, InspectorFloat, PlanDetailsButton } from "./inspector";
 import { BottomPill, SelectionBar } from "./canvas-controls";
 import { CanvasContextMenu, type MenuTarget } from "./context-menu";
 import { EditorTopbar, type ExportKind } from "./topbar";
@@ -119,6 +119,9 @@ import { centerOn, CLIPBOARD_TYPE, EXCALIDRAW_MIME, fromExcalidraw, parseScene, 
 import { EXCALIDRAW_ACCEPT, readSceneFile } from "./excalidraw-file";
 import { sceneName, withUploadedImages } from "./excalidraw-import";
 import { overlayFlow, useOverlays } from "./overlays";
+import { usePanels } from "./panels";
+import { SelectionToolbar } from "./selection-toolbar";
+import { convertNodes, type ConvertTarget } from "./convert";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
@@ -285,6 +288,7 @@ function EditorShell(props: PlanEditorProps) {
       localStorage.setItem("wp-planner-minimap", v ? "1" : "0");
     } catch {}
   }, []);
+  const panels = usePanels();
   const [guides, setGuides] = useState<Guides | null>(null);
   const altDown = useRef(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("content");
@@ -884,6 +888,49 @@ function EditorShell(props: PlanEditorProps) {
     [mutate],
   );
 
+  const convertTo = useCallback(
+    (to: ConvertTarget) => {
+      const ids = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+      if (ids.length) mutate((d) => convertNodes(d, ids, to), { select: ids });
+    },
+    [mutate],
+  );
+
+  // The look copied with ⌘⌥C: drawing style for shapes, strokes and connections, color for blocks.
+  const [copiedStyle, setCopiedStyle] = useState<{ draw: Partial<DrawStyle>; color?: string } | null>(null);
+  const copyStyle = useCallback(() => {
+    const n = nodesRef.current.find((x) => x.selected);
+    const e = n ? undefined : edgesRef.current.find((x) => x.selected);
+    if (!n && !e) return;
+    const full = styleOfSelection(DEFAULT_STYLE, n ? [n.data] : [], e ? [e.data?.style] : []);
+    let out: { draw: Partial<DrawStyle>; color?: string };
+    if (n?.type === "shape") {
+      const { start: _s, end: _e, routing: _r, ...draw } = full;
+      out = { draw, color: n.data.shape?.fill };
+    } else if (n?.type === "ink") out = { draw: { stroke: n.data.color as string | undefined } };
+    else if (n) out = { draw: { fill: n.data.color as string | undefined }, color: n.data.color as string | undefined };
+    else {
+      const { stroke, strokeWidth, strokeStyle, roughness, start, end, routing } = full;
+      out = { draw: { stroke, strokeWidth, strokeStyle, roughness, start, end, routing } };
+    }
+    setCopiedStyle(out);
+    toast("Estilo copiado — cole em outros elementos com ⌘⌥V");
+  }, []);
+  const pasteStyle = useCallback(() => {
+    if (!copiedStyle) return;
+    const ns = nodesRef.current.filter((n) => n.selected);
+    const es = edgesRef.current.filter((x) => x.selected).map((x) => x.id);
+    if (!ns.length && !es.length) return;
+    const drawn = ns.filter((n) => n.type === "shape" || n.type === "ink").map((n) => n.id);
+    const plain = ns.filter((n) => n.type !== "shape" && n.type !== "ink").map((n) => n.id);
+    mutate((d) => {
+      let doc = drawn.length || es.length ? applyStyle(d, { nodes: drawn, edges: es }, copiedStyle.draw) : d;
+      const color = copiedStyle.color ?? copiedStyle.draw.fill;
+      if (plain.length && color) doc = { ...doc, nodes: doc.nodes.map((n) => (plain.includes(n.id) ? { ...n, data: { ...n.data, color } } : n)) };
+      return doc;
+    });
+  }, [copiedStyle, mutate]);
+
   const addShape = useCallback(
     (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }) => {
       const s = styleRef.current;
@@ -1203,6 +1250,10 @@ function EditorShell(props: PlanEditorProps) {
     style,
     setStyle,
     addShape,
+    convertTo,
+    copyStyle,
+    pasteStyle,
+    hasCopiedStyle: !!copiedStyle,
     addIcon,
     insertFragment,
     selectionFragment,
@@ -1225,6 +1276,7 @@ function EditorShell(props: PlanEditorProps) {
     setSnap,
     minimap,
     setMinimap,
+    panels,
     inspectorTab,
     setInspectorTab,
     resourceFor,
@@ -1314,6 +1366,10 @@ function EditorShell(props: PlanEditorProps) {
       if ((mod && k === "y") || (mod && k === "z" && e.shiftKey)) return run(redo);
       // ⌘C / ⌘V go through the copy/paste events below (they need the system clipboard).
       if (mod && k === "d") return run(a.duplicate);
+      if (mod && e.altKey && e.code === "KeyC") return run(a.copyStyle);
+      if (mod && e.altKey && e.code === "KeyV") return run(a.pasteStyle);
+      // Focus mode: only the drawing (⌘\ again brings the panels back).
+      if (mod && e.code === "Backslash") return run(() => a.panels.setFocus(!a.panels.focus));
       if (mod && k === "a") return run(a.selectAll);
       if (mod && k === "g" && e.shiftKey) return run(a.ungroup);
       if (mod && k === "g") return run(a.group);
@@ -1355,6 +1411,7 @@ function EditorShell(props: PlanEditorProps) {
         return run(() => (t === "image" ? a.addNode("image") : a.setTool(t)));
       }
       if (k === "v") return run(() => a.setTool("select"));
+      if (k === "i") return run(() => a.panels.setInspectorOpen(!a.panels.inspectorOpen || a.panels.focus));
       if (k === "h") return run(() => a.setTool("hand"));
       if (k === "p") return run(() => a.setTool(a.tool === "draw" ? "select" : "draw"));
       if (k === "e") return run(() => a.setTool(a.tool === "erase" ? "select" : "erase"));
@@ -1777,6 +1834,7 @@ function EditorShell(props: PlanEditorProps) {
             people={props.people}
             onExport={onExport}
             onImport={() => importInput.current?.click()}
+            details={<PlanDetailsButton />}
             frames={nodes.filter((n) => n.type === "frame").length}
             views={layerState.views}
             comments={<CommentsToggle count={comments.counts.unresolvedThreads} open={commentsPanel.open} onClick={commentsPanel.toggle} />}
@@ -1926,6 +1984,7 @@ function EditorShell(props: PlanEditorProps) {
                     className={cn("wp-flow", `wp-tool-${tool}`)}
                   >
                     {grid && <Background variant={BackgroundVariant.Dots} gap={20} size={1.3} color="var(--canvas-dot)" />}
+                    {!editingId && <SelectionToolbar />}
                     {minimap && (
                       <MiniMap
                         pannable
@@ -1968,6 +2027,7 @@ function EditorShell(props: PlanEditorProps) {
                   {(tool === "draw" || tool === "erase") && <InkCanvas wrapRef={wrapRef} />}
                   <ShapeTools wrapRef={wrapRef} />
                   <SelectionBar />
+                  {!commentsAside && <InspectorFloat />}
                   <IsolateBanner />
                   <BottomPill />
                   <div className="wp-no-print absolute left-3 top-3 z-10 flex gap-2 md:hidden">
@@ -1983,9 +2043,14 @@ function EditorShell(props: PlanEditorProps) {
                 </div>
               </CanvasContextMenu>
               {commentsAside ?? (
-                <PhoneOverlay open={phonePanel === "props"} side="right" label="Propriedades" onClose={() => setPhonePanel(null)}>
-                  <Inspector />
-                </PhoneOverlay>
+                <>
+                  <div className="contents md:hidden">
+                    <PhoneOverlay open={phonePanel === "props"} side="right" label="Propriedades" onClose={() => setPhonePanel(null)}>
+                      {phonePanel === "props" && <Inspector />}
+                    </PhoneOverlay>
+                  </div>
+                  <InspectorDock />
+                </>
               )}
             </div>
           )}

@@ -1,6 +1,6 @@
 "use client";
 import { ContextMenu as CM } from "radix-ui";
-import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Layers, Link2, ListOrdered, ListX, MessageSquarePlus, Pencil, SendToBack, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
+import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Layers, Link2, ListOrdered, ListX, MessageSquarePlus, Paintbrush, Pencil, Replace, SendToBack, SlidersHorizontal, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
 import { BASE_LAYER_ID } from "@/domain/layers";
 import { EDGE_KINDS, NODE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
@@ -19,6 +19,7 @@ import { useEditor } from "./editor-context";
 import { KIND_LABEL, PARENT_KINDS } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
 import { EdgeSample } from "./edges";
+import { CONVERT_TARGETS, convertKind } from "./convert";
 
 export type MenuTarget = { type: "node"; id: string } | { type: "edge"; id: string } | { type: "pane"; at: { x: number; y: number } } | null;
 
@@ -31,6 +32,11 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
   const multi = ed.selectedNodes.length > 1;
   const canUngroup = ed.selectedNodes.some((n) => PARENT_KINDS.has(n.type as NodeKind));
   const canArrangeSel = multi || canUngroup;
+  // "Converter em…" when every selected element can become another kind.
+  const sel = ed.selectedNodes.length ? ed.selectedNodes : node ? [node] : [];
+  const kindsList = sel.map((n) => convertKind({ kind: n.type as NodeKind, data: n.data }));
+  const convertible = sel.length > 0 && kindsList.every(Boolean);
+  const kinds = new Set(kindsList);
   // "Mover para camada" (nodes with what is inside them, and selected connections)
   const current = new Set([...ed.selectedNodes.map((n) => n.data._layer ?? BASE_LAYER_ID), ...ed.selectedEdges.map((e) => e.data?.layer ?? BASE_LAYER_ID)]);
   const toLayer =
@@ -78,6 +84,36 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
             <ContextMenuItem onSelect={ed.copy} shortcut="⌘C">
               <Copy /> Copiar
             </ContextMenuItem>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <Paintbrush /> Estilo
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="min-w-[210px]">
+                <ContextMenuItem onSelect={ed.copyStyle} shortcut="⌘⌥C">
+                  <Copy /> Copiar estilo
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={ed.pasteStyle} disabled={!ed.hasCopiedStyle} shortcut="⌘⌥V">
+                  <ClipboardPaste /> Colar estilo
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            {convertible && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <Replace /> Converter em
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent className="min-w-[180px]">
+                  {CONVERT_TARGETS.map((t) => (
+                    <ContextMenuItem key={t.id} onSelect={() => ed.convertTo(t.id)} disabled={kinds.size === 1 && kinds.has(t.id)}>
+                      {t.label}
+                      {kinds.size === 1 && kinds.has(t.id) && <Check className="ml-auto" />}
+                    </ContextMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
+            {!multi && <ContextMenuSeparator />}
+            {!multi && <CM.Label className={label}>Ligar</CM.Label>}
             {!multi && (
               <ContextMenuItem onSelect={() => ed.startConnectFrom(node.id)} shortcut="C">
                 <ConnectorIcon /> Criar conexão
@@ -88,6 +124,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
                 onSelect={() => {
                   ed.select([node.id]);
                   ed.setInspectorTab("action");
+                  ed.panels.setInspectorOpen(true);
                 }}
                 shortcut="⌘L"
               >
@@ -100,6 +137,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
               </ContextMenuItem>
             )}
             <ContextMenuSeparator />
+            <CM.Label className={label}>Organizar</CM.Label>
             <ContextMenuItem onSelect={ed.bringToFront} shortcut="]">
               <BringToFront /> Trazer para frente
             </ContextMenuItem>
@@ -117,6 +155,9 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
             {canArrangeSel && arrange(multi ? "Organizar seleção" : "Organizar interior")}
             {toLayer}
             <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => ed.panels.setInspectorOpen(true)} shortcut="I">
+              <SlidersHorizontal /> Propriedades
+            </ContextMenuItem>
             <ContextMenuItem danger onSelect={ed.remove} shortcut="⌫">
               <Trash2 /> Excluir
             </ContextMenuItem>

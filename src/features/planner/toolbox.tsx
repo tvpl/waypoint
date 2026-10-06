@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { Layers, ListTree, Plus, Search, Shapes } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Layers, ListTree, PanelLeftClose, PanelLeftOpen, Pin, Plus, Search, Shapes, X } from "lucide-react";
+import { Tooltip } from "@/components/ui/popover";
 import type { NodeKind } from "@/domain/plan";
 import { SectionLabel } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
@@ -32,11 +33,14 @@ const TABS: { id: Tab; label: string; icon: typeof Plus }[] = [
   { id: "outline", label: "Estrutura", icon: ListTree },
 ];
 
-/** Left panel of the editor: insert elements and resources, layers and views, or the outline. */
+/** Left panel of the editor: insert elements and resources, library, layers and views, or the outline. */
 export function Toolbox() {
   const ed = useEditor();
+  const p = ed.panels;
   const [tab, setTabState] = useState<Tab>("insert");
+  const [flyout, setFlyout] = useState<Tab | null>(null);
   const many = ed.layers.list.length > 1;
+  const stripRef = useRef<HTMLElement>(null);
   useEffect(() => {
     try {
       const saved = localStorage.getItem(TAB_KEY) as Tab | null;
@@ -45,44 +49,137 @@ export function Toolbox() {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The drawer closes on a click anywhere else (or Esc).
+  useEffect(() => {
+    if (!flyout) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (stripRef.current?.contains(t) || t?.closest?.("[role=menu], [role=dialog], [data-radix-popper-content-wrapper]")) return;
+      setFlyout(null);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFlyout(null);
+    document.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [flyout]);
+  useEffect(() => {
+    if (!p.leftCollapsed) setFlyout(null);
+  }, [p.leftCollapsed]);
   const setTab = (t: Tab) => {
     setTabState(t);
     try {
       localStorage.setItem(TAB_KEY, t);
     } catch {}
   };
+
+  if (p.focus) return null;
+
+  if (p.leftCollapsed) {
+    const open = flyout ? TABS.find((t) => t.id === flyout)! : null;
+    return (
+      <aside ref={stripRef} aria-label="Ferramentas" className="relative z-30 flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-3">
+        {TABS.map((t) => (
+          <Tooltip key={t.id} content={t.label} side="right">
+            <button
+              type="button"
+              aria-label={t.label}
+              aria-expanded={flyout === t.id}
+              onClick={() => setFlyout((f) => (f === t.id ? null : t.id))}
+              className={cn(
+                "relative inline-flex size-9 items-center justify-center rounded-lg transition-colors [&_svg]:size-[18px]",
+                flyout === t.id ? "bg-accent-soft text-accent-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+              )}
+            >
+              <t.icon strokeWidth={1.75} />
+              {t.id === "layers" && many && <span className="absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 text-[10px] font-semibold leading-4 text-white tabular-nums">{ed.layers.list.length}</span>}
+            </button>
+          </Tooltip>
+        ))}
+        <span className="flex-1" />
+        <Tooltip content="Fixar o painel" side="right">
+          <button type="button" aria-label="Expandir o painel" onClick={() => p.setLeftCollapsed(false)} className="inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink [&_svg]:size-[18px]">
+            <PanelLeftOpen strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+        {open && (
+          <div role="dialog" aria-label={open.label} className="absolute bottom-2 left-[calc(100%+8px)] top-2 flex w-[288px] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-float animate-in">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-line pl-4 pr-1.5">
+              <span className="flex items-center gap-2 text-body font-semibold">
+                <open.icon className="size-4 text-muted" strokeWidth={1.75} /> {open.label}
+              </span>
+              <span className="flex items-center gap-0.5">
+                <Tooltip content="Fixar o painel lateral">
+                  <button
+                    type="button"
+                    aria-label="Fixar o painel lateral"
+                    onClick={() => {
+                      setTab(open.id);
+                      p.setLeftCollapsed(false);
+                    }}
+                    className="inline-flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-3.5"
+                  >
+                    <Pin />
+                  </button>
+                </Tooltip>
+                <button type="button" aria-label="Fechar" onClick={() => setFlyout(null)} className="inline-flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-3.5">
+                  <X />
+                </button>
+              </span>
+            </div>
+            <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto p-4">
+              <TabBody tab={open.id} />
+            </div>
+          </div>
+        )}
+      </aside>
+    );
+  }
+
   return (
     <aside aria-label="Ferramentas" className="flex w-[288px] shrink-0 flex-col border-r border-line bg-surface">
-      <div role="tablist" aria-label="Painel" className="mx-3 mt-3 flex shrink-0 gap-0.5 rounded-xl bg-subtle p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            aria-label={t.label}
-            title={t.label}
-            className={cn(
-              // The open tab shows its name; the others only their icon.
-              "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg text-body font-medium transition-colors [&_svg]:size-3.5 [&_svg]:shrink-0",
-              tab === t.id ? "flex-1 bg-surface px-2 text-ink shadow-rest" : "w-10 shrink-0 text-ink-2 hover:bg-surface/60 hover:text-ink",
-            )}
-          >
-            <t.icon strokeWidth={2} />
-            {tab === t.id && <span className="truncate">{t.label}</span>}
-            {t.id === "layers" && many && tab === t.id && <span className="rounded-full bg-accent-soft px-1.5 text-caption tabular-nums text-accent-ink">{ed.layers.list.length}</span>}
+      <div className="mx-3 mt-3 flex shrink-0 items-center gap-1">
+        <div role="tablist" aria-label="Painel" className="flex min-w-0 flex-1 gap-0.5 rounded-xl bg-subtle p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              aria-label={t.label}
+              title={t.label}
+              className={cn(
+                // The open tab shows its name; the others only their icon.
+                "inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg text-body font-medium transition-colors [&_svg]:size-3.5 [&_svg]:shrink-0",
+                tab === t.id ? "flex-1 bg-surface px-2 text-ink shadow-rest" : "w-8 shrink-0 text-ink-2 hover:bg-surface/60 hover:text-ink",
+              )}
+            >
+              <t.icon strokeWidth={2} />
+              {tab === t.id && <span className="truncate">{t.label}</span>}
+            </button>
+          ))}
+        </div>
+        <Tooltip content="Recolher o painel" side="right">
+          <button type="button" aria-label="Recolher o painel" onClick={() => p.setLeftCollapsed(true)} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink [&_svg]:size-4">
+            <PanelLeftClose strokeWidth={1.75} />
           </button>
-        ))}
+        </Tooltip>
       </div>
       <div role="tabpanel" className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto p-4">
-        {tab === "insert" && <InsertTab />}
-        {tab === "library" && <LibraryPanel />}
-        {tab === "layers" && <LayersPanel />}
-        {tab === "outline" && <Outline />}
+        <TabBody tab={tab} />
       </div>
     </aside>
   );
+}
+
+function TabBody({ tab }: { tab: Tab }) {
+  if (tab === "insert") return <InsertTab />;
+  if (tab === "library") return <LibraryPanel />;
+  if (tab === "layers") return <LayersPanel />;
+  return <Outline />;
 }
 
 /** Where new things go: a reminder (and switch) in the insert tab when the plan has layers. */

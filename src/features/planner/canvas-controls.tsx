@@ -7,7 +7,6 @@ import {
   Eraser,
   Frame,
   Grid3x3,
-  Group,
   Hand,
   Highlighter,
   ImagePlus,
@@ -37,7 +36,6 @@ import { ConnectorIcon, KIND_ICON } from "./icons";
 import { KIND_LABEL } from "./defaults";
 import { ArrowheadPicker, FillColors, FontPicker, RoughnessPicker, RoutingPicker, SizePicker, StrokeColors, WidthPicker } from "./style-controls";
 import { EdgeSample } from "./edges";
-import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "./inspector";
 import { ZoomControls, pillBtn } from "./zoom-controls";
 import { HIGHLIGHTER_COLOR, INK_COLORS, INK_SIZES, type InkMode } from "./ink-geometry";
 
@@ -420,38 +418,6 @@ export function SelectionBar() {
         <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Sair do modo conexão">
           <X /> <span className="pr-1">Concluir</span>
         </button>
-      </div>
-    );
-  }
-  if (ed.selectedNodes.length >= 2) {
-    return (
-      <div className={barCls} role="toolbar" aria-label="Organizar seleção">
-        {ALIGN_ACTIONS.map((a) => (
-          <Tooltip key={a.mode} content={a.label}>
-            <button type="button" aria-label={a.label} className={barBtn} onClick={() => ed.align(a.mode)}>
-              <a.icon />
-            </button>
-          </Tooltip>
-        ))}
-        <Sep />
-        {DISTRIBUTE_ACTIONS.map((a) => (
-          <Tooltip key={a.axis} content={ed.selectedNodes.length < 3 ? "Selecione 3 ou mais" : a.label}>
-            <button type="button" aria-label={a.label} disabled={ed.selectedNodes.length < 3} className={cn(barBtn, "disabled:opacity-40")} onClick={() => ed.distribute(a.axis)}>
-              <a.icon />
-            </button>
-          </Tooltip>
-        ))}
-        <Sep />
-        <Tooltip content="Numerar as conexões entre os selecionados, na ordem do fluxo">
-          <button type="button" className={barBtn} onClick={() => ed.numberSteps()} aria-label="Numerar passos">
-            <ListOrdered />
-          </button>
-        </Tooltip>
-        <Tooltip content="Agrupar (⌘G)">
-          <button type="button" className={barBtn} onClick={ed.group} aria-label="Agrupar">
-            <Group /> <span className="pr-1">Agrupar</span>
-          </button>
-        </Tooltip>
       </div>
     );
   }

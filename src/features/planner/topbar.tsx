@@ -41,7 +41,7 @@ export function SaveIndicator({ status, error, savedAt }: { status: SaveStatus; 
   };
   const m = map[status];
   return (
-    <span role="status" aria-live="polite" className={cn("ml-1 inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-xs", m.cls)}>
+    <span role="status" aria-live="polite" className={cn("ml-1 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs", m.cls)}>
       {m.icon}
       <span className="truncate max-sm:sr-only">{m.text}</span>
     </span>
@@ -52,9 +52,13 @@ export function PublishBadge({ published, unpublished }: { published: number | n
   if (published == null) return <Badge tone="amber">Rascunho</Badge>;
   if (unpublished)
     return (
-      <Badge tone="amber" className="whitespace-nowrap">
-        Alterações não publicadas
-      </Badge>
+      <Tooltip content="Há alterações que quem tem acesso ainda não vê: eles veem a última versão publicada">
+        <span>
+          <Badge tone="amber" className="whitespace-nowrap">
+            Não publicado
+          </Badge>
+        </span>
+      </Tooltip>
     );
   return <Badge tone="success">Publicado v{published}</Badge>;
 }
@@ -225,6 +229,8 @@ export function EditorTopbar(props: {
   people: { name: string; email: string }[];
   onExport: (k: ExportKind, viewId?: string) => void;
   onImport?: () => void;
+  /** Next to the title: the plan's details (description, tags, visibility). */
+  details?: React.ReactNode;
   /** Frames in the plan (export menu: one PDF page per frame). */
   frames?: number;
   /** Saved views (export menu). */
@@ -284,6 +290,7 @@ export function EditorTopbar(props: {
           className="min-w-[80px] max-w-[320px] truncate rounded-md bg-transparent px-1 py-0.5 font-semibold outline-none hover:bg-hover focus:bg-surface focus:ring-2 focus:ring-accent/30"
           style={{ width: `${Math.max(8, title.length + 2)}ch` }}
         />
+        {props.details}
         <span className="hidden sm:contents">
           <PublishBadge published={props.published} unpublished={props.unpublished} />
         </span>

@@ -114,7 +114,7 @@ describe("planner SSR", () => {
     expect(html).toContain("Elementos");
     expect(html).toContain("Camadas");
     expect(html).toContain("Publicar");
-    expect(html).toContain("Alterações não publicadas");
+    expect(html).toContain("Não publicado");
   });
 
   it("renders the inspector for nodes, edges and multi-selection", async () => {

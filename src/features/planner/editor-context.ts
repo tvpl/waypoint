@@ -8,6 +8,8 @@ import type { LayoutDirection } from "./auto-layout";
 import type { ResolvedResource } from "./resource-types";
 import type { InkMode, Point } from "./ink-geometry";
 import type { DrawStyle, Pt } from "./shape-geometry";
+import type { Panels } from "./panels";
+import type { ConvertTarget } from "./convert";
 
 /**
  * "draw": pen or highlighter (see `ink`); "erase": removes drawings under the pointer; the shape
@@ -127,6 +129,12 @@ export type EditorApi = {
   /** Style new shapes and arrows are drawn with; changing it restyles the selection too. */
   style: DrawStyle;
   setStyle: (patch: Partial<DrawStyle>) => void;
+  /** Turns the selected blocks, notes, texts and shapes into another kind ("Converter em…"). */
+  convertTo: (to: ConvertTarget) => void;
+  /** Copies the first selected element's look; pastes it onto the selection (⌘⌥C / ⌘⌥V). */
+  copyStyle: () => void;
+  pasteStyle: () => void;
+  hasCopiedStyle: boolean;
   /** A shape, text or frame drawn on the canvas (canvas coordinates; a click gives a default size). */
   addShape: (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: Pt) => void;
   /** An icon from the library (canvas point; default the view's center). */
@@ -148,6 +156,8 @@ export type EditorApi = {
   snap: boolean;
   minimap: boolean;
   setMinimap: (v: boolean) => void;
+  /** Side panels: properties (floating or pinned), the left panel, focus mode. */
+  panels: Panels;
   setSnap: (v: boolean) => void;
 
   inspectorTab: InspectorTab;

@@ -9,6 +9,8 @@ Waypoint tem dois módulos que compartilham workspace, tags, busca e compartilha
 
 Além do essencial, o Planner tem **layout automático** (vertical ou horizontal, também só para a seleção), **modo apresentação** (passo a passo por seções, em tela cheia, com teclado ou gesto no celular; `?present=1` abre direto) e **comentários** por plan ou por bloco, com respostas, @menções e resolução. Um plan novo pode partir de **modelos prontos** (roadmap, arquitetura, quadro de status, registro de decisão, retrospectiva); colar ou soltar uma URL no canvas cria um cartão de link já com título, descrição e capa; há **guias de alinhamento** ao arrastar (Alt desliga), **minimapa** (M) e o canvas reabre onde você parou. A Link Library verifica **links quebrados** e redirecionamentos, e uma **extensão de navegador** salva a página atual direto numa coleção.
 
+**Painéis que aparecem só quando precisa.** Ao selecionar algo, uma **barra rápida** surge acima da seleção (cores, traço, texto, camada, alinhar, duplicar, excluir) e as **propriedades** flutuam à direita; sem seleção, o canvas fica livre. `I` recolhe ou mostra as propriedades, o alfinete as **fixa** ao lado do canvas, e o painel esquerdo recolhe para uma faixa de ícones que abre como gaveta. `⌘\` liga o **modo foco** (só o desenho). Título, descrição e tags do plan ficam no botão ⓘ ao lado do título. No clique direito: **Converter em…** (bloco, nota, retângulo, elipse, losango, texto) e **copiar/colar estilo** (`⌘⌥C` / `⌘⌥V`).
+
 **Camadas e desenho.** Um plan pode ter várias **camadas** empilhadas: a base (o que existe hoje) e, por cima, fluxos alternativos, versões, complementos ou anotações. Cada camada pode ser:
 
 - ocultada (`⌥` + clique no olho mostra só ela);

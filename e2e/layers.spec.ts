@@ -180,8 +180,10 @@ test("overlays: another plan shown live on a layer, never copied into this one",
   // The plan to overlay.
   await page.getByRole("button", { name: "Novo diagrama em branco" }).click();
   await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
+  await page.getByRole("button", { name: "Detalhes do plan" }).click();
   await page.locator("#plan-title").fill("Arquitetura atual");
-  await page.locator("#plan-title").press("Tab");
+  await page.locator("#plan-title").press("Enter");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /^Bloco/ }).first().click();
   await page.keyboard.press("Escape");
   await expect(page.getByText("Salvo")).toBeVisible({ timeout: 15_000 });

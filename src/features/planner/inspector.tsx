@@ -25,6 +25,11 @@ import {
   Search,
   SendToBack,
   Trash2,
+  Info,
+  PanelRightClose,
+  PanelRightOpen,
+  Pin,
+  PinOff,
   Ungroup,
   Upload,
   X,
@@ -42,6 +47,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/popover";
 import { useEditor, type InspectorTab } from "./editor-context";
+import { openShortcuts } from "@/components/shell/shortcuts";
 import { KIND_LABEL, PARENT_KINDS, STATUS_META, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { GlyphSvg } from "./glyph";
@@ -78,22 +84,114 @@ const VISIBILITY_LABEL: Record<string, string> = {
   public: "Público",
 };
 
-export function Inspector() {
+/** What the properties show for the current selection (the plan's own when nothing is selected). */
+function InspectorBody({ empty }: { empty?: React.ReactNode }) {
   const ed = useEditor();
   const nodes = ed.selectedNodes;
   const edges = ed.selectedEdges;
-  let body: React.ReactNode;
-  if (nodes.length >= 1 && nodes.every((n) => n.type === "shape")) body = <DrawInspector key={nodes.map((n) => n.id).join()} />;
-  else if (nodes.length === 1 && nodes[0].type === "ink") body = <InkInspector key={nodes[0].id} node={nodes[0]} />;
-  else if (nodes.length === 1) body = <NodeInspector key={nodes[0].id} node={nodes[0]} />;
-  else if (nodes.length > 1) body = <MultiInspector />;
-  else if (edges.length === 1) body = <EdgeInspector key={edges[0].id} edge={edges[0]} />;
-  else if (edges.length > 1) body = <MultiEdgeInspector />;
-  else body = <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
+  if (nodes.length >= 1 && nodes.every((n) => n.type === "shape")) return <DrawInspector key={nodes.map((n) => n.id).join()} />;
+  if (nodes.length === 1 && nodes[0].type === "ink") return <InkInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1) return <NodeInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length > 1) return <MultiInspector />;
+  if (edges.length === 1) return <EdgeInspector key={edges[0].id} edge={edges[0]} />;
+  if (edges.length > 1) return <MultiEdgeInspector />;
+  return empty ?? <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
+}
+
+/** Phones: the whole panel, opened from the "Propriedades" button. */
+export function Inspector() {
   return (
     <aside aria-label="Propriedades" className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-line bg-surface">
-      {body}
+      <InspectorBody />
     </aside>
+  );
+}
+
+const chromeBtn = "inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-ink [&_svg]:size-3.5";
+
+/** The panel's own controls: pin beside the canvas or float over it, and fold it away. */
+function PanelChrome() {
+  const p = useEditor().panels;
+  const pinned = p.inspector === "pinned";
+  return (
+    <div className="flex h-9 shrink-0 items-center justify-between border-b border-line pl-[18px] pr-1.5">
+      <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Propriedades</span>
+      <span className="flex items-center gap-0.5">
+        <Tooltip content={pinned ? "Soltar: aparece só ao selecionar" : "Fixar ao lado do canvas"}>
+          <button type="button" aria-label={pinned ? "Soltar as propriedades" : "Fixar as propriedades"} aria-pressed={pinned} className={cn(chromeBtn, pinned && "text-accent-ink")} onClick={() => p.setInspector(pinned ? "auto" : "pinned")}>
+            {pinned ? <PinOff /> : <Pin />}
+          </button>
+        </Tooltip>
+        <Tooltip content="Recolher (I)">
+          <button type="button" aria-label="Recolher propriedades" className={chromeBtn} onClick={() => p.setInspectorOpen(false)}>
+            <PanelRightClose />
+          </button>
+        </Tooltip>
+      </span>
+    </div>
+  );
+}
+
+/** Pinned properties, beside the canvas (the plan's own when nothing is selected). */
+export function InspectorDock() {
+  const p = useEditor().panels;
+  if (p.focus || p.inspector !== "pinned" || !p.inspectorOpen) return null;
+  return (
+    <aside aria-label="Propriedades" className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-line bg-surface max-md:hidden">
+      <PanelChrome />
+      <InspectorBody />
+    </aside>
+  );
+}
+
+/**
+ * Floating properties, over the canvas, only while something is selected; folded, a small button
+ * brings them back.
+ */
+export function InspectorFloat() {
+  const ed = useEditor();
+  const p = ed.panels;
+  const has = ed.selectedNodes.length > 0 || ed.selectedEdges.length > 0;
+  if (p.focus || !has || ed.tool !== "select") return null;
+  if (!p.inspectorOpen) {
+    return (
+      <div className="wp-no-print wp-no-export absolute right-3 top-3 z-20 max-md:hidden">
+        <Tooltip content="Propriedades (I)" side="left">
+          <button type="button" aria-label="Mostrar propriedades" onClick={() => p.setInspectorOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-2.5 text-body font-medium text-ink-2 shadow-float hover:text-ink [&_svg]:size-4">
+            <PanelRightOpen /> Propriedades
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
+  if (p.inspector === "pinned") return null;
+  return (
+    <aside
+      aria-label="Propriedades"
+      className="wp-no-print wp-no-export wp-float-panel absolute right-3 top-3 z-20 flex max-h-[calc(100%-88px)] w-[296px] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-float animate-in max-md:hidden"
+    >
+      <PanelChrome />
+      <InspectorBody />
+    </aside>
+  );
+}
+
+/** The plan's title, description, tags and visibility, from the title in the top bar. */
+export function PlanDetailsButton() {
+  const ed = useEditor();
+  return (
+    <Popover>
+      <Tooltip content="Detalhes do plan">
+        <PopoverTrigger asChild>
+          <button type="button" aria-label="Detalhes do plan" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-4">
+            <Info />
+          </button>
+        </PopoverTrigger>
+      </Tooltip>
+      <PopoverContent align="start" className="flex max-h-[min(640px,80vh)] w-[340px] flex-col overflow-hidden p-0">
+        <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -151,6 +249,35 @@ function LayerField() {
         </select>
       </div>
     </F>
+  );
+}
+
+/** A titled group that folds; remembers whether you left it open. */
+function Section({ id, title, children, defaultOpen = true }: { id: string; title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const key = `wp-insp-${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? defaultOpen : v === "1";
+    } catch {
+      return defaultOpen;
+    }
+  });
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem(key, o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
+  return (
+    <section className="-mx-[18px] border-t border-line px-[18px] pt-3">
+      <button type="button" aria-expanded={open} onClick={toggle} className="group flex w-full items-center justify-between py-0.5 text-left">
+        <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted group-hover:text-ink-2">{title}</span>
+        <ChevronDown className={cn("size-3.5 text-muted transition-transform", !open && "-rotate-90")} aria-hidden />
+      </button>
+      {open && <div className="flex flex-col gap-4 pb-1 pt-3">{children}</div>}
+    </section>
   );
 }
 
@@ -221,36 +348,38 @@ function DrawInspector() {
           <Textarea id={`st-${one.id}`} rows={2} maxLength={300} className="min-h-[56px] rounded-lg text-body" value={one.data.title} onChange={(e) => setText(e.target.value)} />
         </F>
       )}
-      <Row label={onlyIcons ? "Cor" : "Traço"}>
-        <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
-      </Row>
-      {onlyIcons && (
-        <>
+      <Section id="draw-colors" title="Cores">
+        <Row label={onlyIcons ? "Cor" : "Traço"}>
+          <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
+        </Row>
+        {!onlyText && (
           <Row label="Fundo">
             <FillColors value={s.fill} onChange={(fill) => set({ fill })} />
           </Row>
-          {!glyph?.filled && (
-            <Row label="Espessura">
-              <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
-            </Row>
-          )}
-        </>
+        )}
+        {s.fill && !onlyText && !onlyIcons && (
+          <Row label="Preenchimento">
+            <FillStylePicker value={s.fillStyle} onChange={(fillStyle) => set({ fillStyle })} />
+          </Row>
+        )}
+        <Row label="Opacidade">
+          <OpacitySlider value={s.opacity} onChange={(opacity) => set({ opacity })} />
+        </Row>
+      </Section>
+      {onlyIcons && !glyph?.filled && (
+        <Section id="draw-stroke" title="Traço">
+          <Row label="Espessura">
+            <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+          </Row>
+        </Section>
       )}
       {!onlyText && !onlyIcons && (
-        <>
-          <Row label="Fundo">
-            <FillColors value={s.fill} onChange={(fill) => set({ fill })} />
-          </Row>
-          {s.fill && (
-            <Row label="Preenchimento">
-              <FillStylePicker value={s.fillStyle} onChange={(fillStyle) => set({ fillStyle })} />
-            </Row>
-          )}
+        <Section id="draw-stroke" title="Traço">
           <div className="grid grid-cols-2 gap-x-3 gap-y-4">
             <Row label="Espessura">
               <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
             </Row>
-            <Row label="Estilo do traço">
+            <Row label="Estilo">
               <StrokeStylePicker value={s.strokeStyle} onChange={(strokeStyle) => set({ strokeStyle })} />
             </Row>
             <Row label="Traçado">
@@ -262,10 +391,10 @@ function DrawInspector() {
               </Row>
             )}
           </div>
-        </>
+        </Section>
       )}
       {!onlyIcons && (
-        <>
+        <Section id="draw-text" title="Texto">
           <Row label="Fonte">
             <FontPicker value={s.font} onChange={(font) => set({ font })} />
           </Row>
@@ -277,23 +406,22 @@ function DrawInspector() {
               <AlignPicker value={s.align} onChange={(align) => set({ align })} />
             </Row>
           </div>
-        </>
+        </Section>
       )}
-      <Row label="Opacidade">
-        <OpacitySlider value={s.opacity} onChange={(opacity) => set({ opacity })} />
-      </Row>
-      <LayerField />
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
-          <BringToFront /> Frente
+      <Section id="draw-arrange" title="Organizar" defaultOpen={false}>
+        <LayerField />
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+            <BringToFront /> Frente
+          </Button>
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+            <SendToBack /> Trás
+          </Button>
+        </div>
+        <Button size="sm" variant="danger" onClick={ed.remove}>
+          <Trash2 /> Excluir
         </Button>
-        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
-          <SendToBack /> Trás
-        </Button>
-      </div>
-      <Button size="sm" variant="danger" onClick={ed.remove}>
-        <Trash2 /> Excluir
-      </Button>
+      </Section>
     </Scroll>
   );
 }
@@ -1182,7 +1310,7 @@ function PlanInspector() {
     <Scroll>
       <div className="flex flex-col gap-0.5">
         <SectionLabel>Plan</SectionLabel>
-        <p className="text-xs text-muted">Nada selecionado — estas são as propriedades do plan.</p>
+        <p className="text-xs text-muted">Título, descrição e quem pode ver.</p>
       </div>
       <F label="Título" htmlFor="plan-title">
         <Input id="plan-title" className={smallInput} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() !== m.title && ed.saveMeta({ title })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
@@ -1205,31 +1333,9 @@ function PlanInspector() {
       <p className="text-xs text-muted">
         {nodeCount} {nodeCount === 1 ? "elemento" : "elementos"} · {edgeCount} {edgeCount === 1 ? "conexão" : "conexões"}
       </p>
-      <div className="h-px bg-line" />
-      <div className="flex flex-col gap-2">
-        <SectionLabel>Atalhos</SectionLabel>
-        <ul className="flex flex-col gap-1.5 text-xs text-ink-2">
-          {[
-            ["Selecionar / mover canvas / conectar", "V · H · C"],
-            ["Retângulo / losango / elipse", "R · D · O"],
-            ["Seta / linha / texto / quadro", "A · L · T · F"],
-            ["Lápis / borracha", "P · E"],
-            ["Duplicar", "⌘D"],
-            ["Copiar / colar", "⌘C · ⌘V"],
-            ["Agrupar / desagrupar", "⌘G · ⇧⌘G"],
-            ["Organizar (vertical / horizontal)", "⇧L · ⌥⇧L"],
-            ["Desfazer / refazer", "⌘Z · ⇧⌘Z"],
-            ["Ajustar à tela / 100%", "1 · 0"],
-            ["Editar título", "Enter · duplo clique"],
-            ["Buscar no Waypoint", "⌘K"],
-          ].map(([l, k]) => (
-            <li key={l} className="flex items-center justify-between gap-2">
-              <span>{l}</span>
-              <Kbd>{k}</Kbd>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <button type="button" onClick={openShortcuts} className="self-start text-caption font-medium text-accent-ink hover:underline">
+        Atalhos do teclado <Kbd>?</Kbd>
+      </button>
     </Scroll>
   );
 }

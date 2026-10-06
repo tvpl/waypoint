@@ -209,20 +209,34 @@ function createQuickWindow(): BrowserWindow {
   return win;
 }
 
+/** Whether the capture window shows the capture page (not the lock screen it lands on while locked). */
+function quickReady(win: BrowserWindow) {
+  try {
+    return new URL(win.webContents.getURL()).pathname === "/quick";
+  } catch {
+    return false;
+  }
+}
+
 function toggleQuick() {
   if (!server) return void showMain();
   const win = quickWindow ?? createQuickWindow();
   if (win.isVisible() && win.isFocused()) return win.hide();
-  // Upper third of the screen the pointer is on.
-  const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  win.setBounds({ x: Math.round(x + (width - QUICK_SIZE.width) / 2), y: Math.round(y + height * 0.18), ...QUICK_SIZE });
-  const show = () => {
+  const present = () => {
+    // Upper third of the screen the pointer is on.
+    const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    win.setBounds({ x: Math.round(x + (width - QUICK_SIZE.width) / 2), y: Math.round(y + height * 0.18), ...QUICK_SIZE });
     win.show();
     win.focus();
     win.webContents.send("wp:command", "app:quick-show");
   };
-  if (win.webContents.isLoading()) win.webContents.once("did-finish-load", show);
-  else show();
+  // While locked the window holds the lock screen: the person unlocks in the main window.
+  const presentOrUnlock = () => (quickReady(win) ? present() : showMain());
+  if (win.webContents.isLoading()) return void win.webContents.once("did-finish-load", presentOrUnlock);
+  if (quickReady(win)) return present();
+  // Loaded while the app was locked: load it again, it may have been unlocked since.
+  win.webContents.once("did-finish-load", presentOrUnlock);
+  void win.loadURL(`${server.origin}/quick`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -487,6 +501,13 @@ app.on("web-contents-created", (_, wc) => {
     openExternal(url);
   });
   wc.on("context-menu", (_, params) => contextMenu(wc, params));
+  // A window went to the lock screen (locked by hand or on sleep): the capture window reloads
+  // too, so it can't be used until the app is unlocked.
+  wc.on("did-navigate", (_e, url) => {
+    if (!server || wc === quickWindow?.webContents || !quickWindow || quickWindow.isDestroyed() || !url.startsWith(`${server.origin}/login`)) return;
+    quickWindow.hide();
+    void quickWindow.loadURL(`${server.origin}/quick`);
+  });
   wc.on("did-finish-load", () => {
     if (!pendingCommand || !server || !wc.getURL().startsWith(server.origin) || wc === quickWindow?.webContents) return;
     const { id, arg } = pendingCommand;

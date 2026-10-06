@@ -37,9 +37,19 @@ export function PlanThumb({ thumb, height = 116 }: { thumb: Thumb; height?: numb
           );
         })}
         {nodes.map((n, i) => {
-          const area = n.kind === "container" || n.kind === "section";
-          const text = n.kind === "text";
-          if (text) return <rect key={i} x={n.x} y={n.y + n.h * 0.3} width={n.w * 0.7} height={n.h * 0.4} rx={unit * 2} fill="var(--line-2)" />;
+          const area = n.kind === "container" || n.kind === "section" || n.kind === "frame";
+          const text = n.kind === "text" || n.shape === "text";
+          if (text) return <rect key={i} x={n.x} y={n.y + n.h * 0.3} width={n.w * 0.7} height={n.h * 0.4} rx={unit * 2} fill={n.stroke ?? "var(--line-2)"} fillOpacity={n.stroke ? 0.7 : 1} />;
+          if (n.shape === "ellipse" || n.shape === "diamond") {
+            const common = { fill: n.color ? tinted(n.color, false) : "none", stroke: n.stroke ?? "var(--muted)", strokeWidth: unit * 1.2 };
+            return n.shape === "ellipse" ? (
+              <ellipse key={i} cx={n.x + n.w / 2} cy={n.y + n.h / 2} rx={n.w / 2} ry={n.h / 2} {...common} />
+            ) : (
+              <polygon key={i} points={`${n.x + n.w / 2},${n.y} ${n.x + n.w},${n.y + n.h / 2} ${n.x + n.w / 2},${n.y + n.h} ${n.x},${n.y + n.h / 2}`} {...common} />
+            );
+          }
+          if (n.shape === "rect")
+            return <rect key={i} x={n.x} y={n.y} width={n.w} height={n.h} rx={unit * 4} fill={n.color ? tinted(n.color, false) : "none"} stroke={n.stroke ?? "var(--muted)"} strokeWidth={unit * 1.2} />;
           return (
             <rect
               key={i}

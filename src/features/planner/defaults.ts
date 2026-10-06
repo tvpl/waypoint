@@ -11,6 +11,8 @@ export const KIND_DEFAULTS: Record<NodeKind, { width: number; height: number; ti
   image: { width: 260, height: 190, title: "" },
   text: { width: 240, height: 44, title: "Texto" },
   ink: { width: 40, height: 40, title: "" },
+  shape: { width: 180, height: 100, title: "", data: { shape: { type: "rect" } } },
+  frame: { width: 640, height: 420, title: "Quadro" },
 };
 
 export const KIND_LABEL: Record<NodeKind, string> = {
@@ -22,10 +24,12 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   image: "Imagem",
   text: "Texto",
   ink: "Desenho",
+  shape: "Forma",
+  frame: "Quadro",
 };
 
 /** Kinds that can hold children (drop target / group). */
-export const PARENT_KINDS: ReadonlySet<NodeKind> = new Set(["container", "section"]);
+export const PARENT_KINDS: ReadonlySet<NodeKind> = new Set(["container", "section", "frame"]);
 
 export function createNode(kind: NodeKind, pos: { x: number; y: number }, extra: Partial<NodeData> = {}, opts: { center?: boolean } = {}): PlanNode {
   const d = KIND_DEFAULTS[kind];

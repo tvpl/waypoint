@@ -171,6 +171,7 @@ export function arrowHead(a: Point, b: Point, size: number): string {
 /** Everything the canvas draws for a stored stroke, in its own box (`ink.w` × `ink.h`). */
 export function inkPaths(ink: Ink): { fill: string; line: string; head?: string } {
   const pts = pairsOf(ink.points);
+  if (ink.line && pts.length >= 2) return { fill: "", line: centerline([pts[0], pts[pts.length - 1]]) };
   if (ink.arrow && pts.length >= 2) {
     const a = pts[0];
     const b = pts[pts.length - 1];

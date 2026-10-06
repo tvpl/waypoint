@@ -3,7 +3,7 @@ import type { PlanDocument } from "./plan";
 import { hiddenByLayers, layerVisibility } from "./layers";
 
 /** Lightweight shape for list thumbnails. */
-export type ThumbNode = { x: number; y: number; w: number; h: number; color?: string; kind: string };
+export type ThumbNode = { x: number; y: number; w: number; h: number; color?: string; kind: string; shape?: string; stroke?: string };
 /** Nodes (absolute boxes) plus connections as [from, to] indexes into `nodes`. */
 export type Thumb = { nodes: ThumbNode[]; edges: [number, number][] };
 
@@ -28,7 +28,14 @@ export function planThumb(doc: PlanDocument): Thumb {
   const nodes = shown.map((n) => {
     const p = abs(n.id);
     const collapsed = n.data.collapsed && (n.kind === "container" || n.kind === "section");
-    return { x: p.x, y: p.y, w: n.width, h: collapsed ? COLLAPSED_HEIGHT : n.height, color: n.data.color, kind: n.kind };
+    const out: ThumbNode = { x: p.x, y: p.y, w: n.width, h: collapsed ? COLLAPSED_HEIGHT : n.height, color: n.data.color, kind: n.kind };
+    // Drawn shapes keep their outline and background in the miniature.
+    if (n.kind === "shape" && n.data.shape) {
+      out.shape = n.data.shape.type;
+      out.color = n.data.shape.fill;
+      if (n.data.shape.stroke) out.stroke = n.data.shape.stroke;
+    }
+    return out;
   });
   const edges = doc.edges
     .map((e) => [index.get(e.source), index.get(e.target)] as const)

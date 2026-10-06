@@ -233,15 +233,18 @@
 /* Containers and sections behave like frames: only the header grabs the
    pointer, so the area itself lets you marquee-select and click through. */
 .wp-flow .react-flow__node-container,
-.wp-flow .react-flow__node-section {
+.wp-flow .react-flow__node-section,
+.wp-flow .react-flow__node-frame {
   pointer-events: none !important;
 }
 .wp-flow .react-flow__node-container .wp-hit,
 .wp-flow .react-flow__node-section .wp-hit,
+.wp-flow .react-flow__node-frame .wp-hit,
 .wp-flow .react-flow__node-container .react-flow__handle,
 .wp-flow .react-flow__node-section .react-flow__handle,
 .wp-flow .react-flow__node-container .react-flow__resize-control,
-.wp-flow .react-flow__node-section .react-flow__resize-control {
+.wp-flow .react-flow__node-section .react-flow__resize-control,
+.wp-flow .react-flow__node-frame .react-flow__resize-control {
   pointer-events: all;
 }
 .wp-flow.wp-view .react-flow__node-container .react-flow__handle,
@@ -409,7 +412,9 @@
 .wp-flow .react-flow__node-ink.selected .wp-ink-stroke {
   filter: drop-shadow(0 0 1.5px var(--accent));
 }
-.wp-flow .react-flow__node-ink.is-erasing {
+.wp-flow .react-flow__node-ink.is-erasing,
+.wp-flow .react-flow__node-shape.is-erasing,
+.wp-flow .react-flow__edge.is-erasing {
   opacity: 0.2;
 }
 /* Drawing and erasing tools. */
@@ -538,4 +543,53 @@
 }
 .wp-edge-label.wp-diff-same {
   opacity: 0.45;
+}
+
+/* ---------------------------------------------------------------- drawn shapes and frames */
+.wp-shape.is-selected {
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.wp-shape-svg path {
+  vector-effect: none;
+}
+.wp-shape-input {
+  width: 100%;
+  min-height: 1.4em;
+  line-height: 1.25;
+  font-weight: inherit;
+}
+.wp-flow .react-flow__node-shape .wp-shape.is-text .wp-shape-text {
+  white-space: pre;
+}
+.wp-frame {
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
+}
+.wp-view .wp-frame {
+  background: transparent;
+}
+.wp-frame.is-selected {
+  outline-offset: 2px;
+}
+
+/* Shape, arrow, line, text and frame tools. */
+:is(.wp-tool-rect, .wp-tool-diamond, .wp-tool-ellipse, .wp-tool-arrow, .wp-tool-line, .wp-tool-frame) :is(.react-flow__pane, .react-flow__node) {
+  cursor: crosshair !important;
+}
+.wp-tool-text :is(.react-flow__pane, .react-flow__node) {
+  cursor: text !important;
+}
+:is(.wp-tool-rect, .wp-tool-diamond, .wp-tool-ellipse, .wp-tool-arrow, .wp-tool-line, .wp-tool-text, .wp-tool-frame) .wp-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+/* The element an arrow being drawn will attach to. */
+.wp-flow .react-flow__node.wp-bind-target > :not(.react-flow__handle):first-child,
+.wp-flow .react-flow__node.wp-bind-target .wp-node {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+.wp-flow .react-flow__edge.wp-drawn-edge .wp-edge-head {
+  pointer-events: none;
 }

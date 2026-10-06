@@ -12,6 +12,7 @@ import { KIND_LABEL, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { PlanIcon } from "./icons";
 import { HIGHLIGHTER_COLOR, inkFontSize, inkPaths, shapePath } from "./ink-geometry";
+import { FONT_STACK, resolveShape, seedOf, shapePaths } from "./shape-geometry";
 
 type P = NodeProps<PlanFlowNode>;
 
@@ -31,6 +32,8 @@ const MIN: Record<NodeKind, [number, number]> = {
   image: [80, 60],
   text: [40, 24],
   ink: [6, 6],
+  shape: [16, 16],
+  frame: [120, 80],
 };
 
 function Handles({ connectable }: { connectable: boolean }) {
@@ -459,7 +462,9 @@ export const InkNode = memo(function InkNode(p: P) {
         aria-label={ink.arrow ? "Seta desenhada" : ink.highlighter ? "Destaque" : "Desenho"}
       >
         <path d={paths.line} className="wp-ink-hit" fill="none" stroke="transparent" strokeWidth={ink.size + 12} strokeLinecap="round" strokeLinejoin="round" />
-        {ink.arrow ? (
+        {ink.line ? (
+          <path d={paths.line} className="wp-ink-stroke" fill="none" stroke={color} strokeWidth={ink.size} strokeLinecap="round" />
+        ) : ink.arrow ? (
           <>
             <path d={paths.line} className="wp-ink-stroke" fill="none" stroke={color} strokeWidth={ink.size} strokeLinecap="round" />
             <path d={paths.head} className="wp-ink-stroke" fill={color} stroke={color} strokeWidth={Math.max(1, ink.size / 2)} strokeLinejoin="round" />
@@ -515,6 +520,74 @@ function InkText({ p }: { p: P }) {
   );
 }
 
+// ------------------------------------------------------------------ shapes (drawing tools)
+
+/**
+ * A drawn rectangle, diamond or ellipse with text inside, or a free text. Clean or hand-drawn
+ * (rough.js); colors, fill pattern, stroke and font come from the shape's style.
+ */
+export const ShapeNode = memo(function ShapeNode(p: P) {
+  const { cls, editing } = useNodeState(p);
+  const shape = p.data.shape ?? { type: "rect" as const };
+  const sketch = !!p.data._sketch;
+  const w = p.width ?? 180;
+  const h = p.height ?? 100;
+  const s = resolveShape(shape, sketch);
+  const seed = shape.seed ?? seedOf(p.id);
+  const paths = useMemo(() => shapePaths(shape, w, h, { seed, sketch, ink: "var(--ink)" }), [shape, w, h, seed, sketch]);
+  const text = s.type === "text";
+  const color = s.stroke ?? "var(--ink)";
+  const style: CSSProperties = {
+    fontFamily: FONT_STACK[s.font],
+    fontSize: s.fontSize,
+    color,
+    textAlign: s.align,
+    justifyContent: s.align === "left" ? "flex-start" : s.align === "right" ? "flex-end" : "center",
+  };
+  return (
+    <Chrome p={p} kind="shape" handles={!text}>
+      <div className={cn(cls, "wp-shape relative h-full w-full", text && "is-text")} style={{ opacity: s.opacity }}>
+        {!text && (
+          <svg className="wp-shape-svg absolute inset-0 overflow-visible" width={w} height={h} aria-hidden>
+            {paths.map((d, i) => (
+              <path
+                key={i}
+                d={d.d}
+                style={{ fill: d.fill ?? "none", stroke: d.stroke ?? "none", strokeWidth: d.strokeWidth, strokeDasharray: d.dash }}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </svg>
+        )}
+        <div className={cn("wp-shape-text absolute inset-0 flex items-center overflow-hidden leading-[1.25]", text ? "px-1" : "px-3 py-2")} style={style}>
+          {editing ? (
+            <InlineTitle id={p.id} value={p.data.title} multiline className="wp-shape-input bg-transparent" style={{ fontFamily: style.fontFamily, fontSize: style.fontSize, textAlign: s.align, color }} />
+          ) : p.data.title ? (
+            <span className="whitespace-pre-wrap break-words">{p.data.title}</span>
+          ) : (
+            text && <span className="opacity-40">Texto</span>
+          )}
+        </div>
+      </div>
+    </Chrome>
+  );
+});
+
+/** A frame: a named area (like an artboard) that holds what is drawn inside it. */
+export const FrameNode = memo(function FrameNode(p: P) {
+  const { cls, editing } = useNodeState(p);
+  return (
+    <Chrome p={p} kind="frame" handles={false}>
+      <div className={cn(cls, "wp-frame h-full w-full rounded-md border-[1.5px] border-line-2")}>
+        <div className="wp-hit absolute -top-7 left-0 flex h-6 max-w-full items-center gap-1.5 text-[13px] font-medium text-muted">
+          {editing ? <InlineTitle id={p.id} value={p.data.title} className="text-[13px] font-medium" /> : <span className="truncate">{p.data.title || "Quadro"}</span>}
+        </div>
+      </div>
+    </Chrome>
+  );
+});
+
 export const nodeTypes: NodeTypes = {
   block: BlockNode,
   container: ContainerNode,
@@ -524,4 +597,6 @@ export const nodeTypes: NodeTypes = {
   image: ImageNode,
   text: TextNode,
   ink: InkNode,
+  shape: ShapeNode,
+  frame: FrameNode,
 };

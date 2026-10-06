@@ -29,7 +29,7 @@ export type OpenIn = (typeof OPEN_IN)[number];
 
 // ------------------------------------------------------------------ nodes
 
-export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink"] as const;
+export const NODE_KINDS = ["block", "container", "note", "link", "section", "image", "text", "ink", "shape", "frame"] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 
 export const NODE_STATUSES = ["none", "idea", "planned", "in-progress", "production", "deprecated"] as const;
@@ -50,6 +50,8 @@ export const inkSchema = z.object({
   highlighter: z.boolean().optional(),
   /** Straight line with an arrowhead at the end. */
   arrow: z.boolean().optional(),
+  /** Straight line without heads (the line tool, when it doesn't connect two elements). */
+  line: z.boolean().optional(),
   /**
    * Drawn shape instead of a freehand line: a rectangle or an ellipse filling the node box, or
    * handwritten-style text (the node title, `size` sets the type size).
@@ -57,6 +59,54 @@ export const inkSchema = z.object({
   shape: z.enum(["rect", "ellipse", "text"]).optional(),
 });
 export type Ink = z.infer<typeof inkSchema>;
+
+/**
+ * Drawing styles shared by shapes and styled connections (the same vocabulary as Excalidraw, so
+ * drawings convert both ways). Missing values fall back to the defaults in src/domain/shapes.ts.
+ */
+export const STROKE_STYLES = ["solid", "dashed", "dotted"] as const;
+export const FILL_STYLES = ["solid", "hachure", "cross-hatch", "dots"] as const;
+export const FONT_FAMILIES = ["hand", "sans", "mono"] as const;
+
+/** A drawn shape ("shape" node): a box, diamond or ellipse with text inside, or a free text. */
+export const shapeSchema = z.object({
+  type: z.enum(["rect", "diamond", "ellipse", "text"]),
+  /** Stroke and text color; missing = the theme's ink. */
+  stroke: hexColor.optional(),
+  /** Background; missing = transparent. */
+  fill: hexColor.optional(),
+  fillStyle: z.enum(FILL_STYLES).optional(),
+  strokeWidth: z.number().finite().min(0.5).max(16).optional(),
+  strokeStyle: z.enum(STROKE_STYLES).optional(),
+  /** 0 = clean lines; 1–3 = hand-drawn (sketch). Missing = the layer's style. */
+  roughness: z.number().finite().min(0).max(3).optional(),
+  /** Rounded corners (rectangles, diamonds). */
+  round: z.boolean().optional(),
+  opacity: z.number().finite().min(0.1).max(1).optional(),
+  font: z.enum(FONT_FAMILIES).optional(),
+  fontSize: z.number().finite().min(8).max(160).optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
+  /** Keeps the hand-drawn wobble the same between renders. */
+  seed: z.number().int().min(0).max(2 ** 31).optional(),
+});
+export type Shape = z.infer<typeof shapeSchema>;
+
+export const ARROWHEADS = ["none", "arrow", "triangle", "dot", "bar"] as const;
+export type Arrowhead = (typeof ARROWHEADS)[number];
+
+/** Look of a connection drawn with the arrow/line tools (overrides its kind's appearance). */
+export const edgeStyleSchema = z.object({
+  stroke: hexColor.optional(),
+  strokeWidth: z.number().finite().min(0.5).max(16).optional(),
+  strokeStyle: z.enum(STROKE_STYLES).optional(),
+  roughness: z.number().finite().min(0).max(3).optional(),
+  start: z.enum(ARROWHEADS).optional(),
+  end: z.enum(ARROWHEADS).optional(),
+  /** "straight" and "curve" leave from the shapes' outlines; "elbow" uses the connection handles. */
+  routing: z.enum(["straight", "curve", "elbow"]).optional(),
+  seed: z.number().int().min(0).max(2 ** 31).optional(),
+});
+export type EdgeStyle = z.infer<typeof edgeStyleSchema>;
 
 export const nodeDataSchema = z.object({
   title: z.string().max(300).default(""),
@@ -70,6 +120,7 @@ export const nodeDataSchema = z.object({
   openIn: z.enum(OPEN_IN).optional(),
   collapsed: z.boolean().optional(),
   ink: inkSchema.optional(),
+  shape: shapeSchema.optional(),
   /**
    * Presentation mode. Without any `order` in the plan, steps are the
    * top-level areas then the other top-level nodes (reading order) minus
@@ -117,6 +168,7 @@ export const planEdgeSchema = z.object({
   layer: z.string().max(64).optional(),
   /** Numbered step of a flow (badge on the connection). */
   step: z.number().int().min(1).max(999).optional(),
+  style: edgeStyleSchema.optional(),
 });
 export type PlanEdge = z.infer<typeof planEdgeSchema>;
 
@@ -150,6 +202,8 @@ export const planLayerSchema = z.object({
   opacity: z.number().min(0.1).max(1).optional(),
   /** Presentation: starts hidden and appears as a step of its own ("revelar"). */
   reveal: z.boolean().optional(),
+  /** Draws this layer's shapes and drawn connections hand-drawn unless they set their own style. */
+  sketch: z.boolean().optional(),
   /** Folder in the layers panel ("Versões" › v1, v2…). Layers of a folder stay next to each other. */
   group: z.string().max(80).optional(),
   description: z.string().max(500).optional(),

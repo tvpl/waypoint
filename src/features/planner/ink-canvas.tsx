@@ -37,7 +37,7 @@ export function InkCanvas({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nul
     };
     const eraseAt = (e: PointerEvent) => {
       for (const hit of document.elementsFromPoint(e.clientX, e.clientY)) {
-        const node = hit.closest<HTMLElement>(".react-flow__node-ink");
+        const node = hit.closest<HTMLElement>(".react-flow__node-ink, .react-flow__node-shape, .react-flow__edge.wp-drawn-edge");
         const id = node?.dataset.id;
         if (!node || !id || !el.contains(node) || erasing!.has(id)) continue;
         erasing!.add(id);

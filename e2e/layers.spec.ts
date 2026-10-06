@@ -67,8 +67,7 @@ test("layer templates, shapes and text, and comparing views", async ({ page }) =
   await expect(page.getByRole("button", { name: "Ocultar Riscos" })).toBeVisible();
 
   // A rectangle and a text annotation on "Proposta".
-  await page.keyboard.press("p");
-  await page.getByRole("radio", { name: "Retângulo" }).click();
+  await page.keyboard.press("r");
   const pane = (await page.locator(".react-flow__pane").boundingBox())!;
   const x = pane.x + pane.width * 0.25;
   const y = pane.y + pane.height * 0.7;
@@ -76,13 +75,13 @@ test("layer templates, shapes and text, and comparing views", async ({ page }) =
   await page.mouse.down();
   await page.mouse.move(x + 180, y + 80, { steps: 8 });
   await page.mouse.up();
-  await page.getByRole("radio", { name: /Texto à mão/ }).click();
-  await page.mouse.click(x, y - 40);
-  await expect(page.locator(".react-flow__node-ink input")).toBeFocused();
+  await page.keyboard.press("t");
+  await page.mouse.click(x, y - 60);
+  await expect(page.locator(".react-flow__node-shape textarea")).toBeFocused();
   await page.keyboard.type("Nova fila");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".react-flow__node-ink")).toHaveCount(2);
-  await expect(page.locator(".wp-ink-text", { hasText: "Nova fila" })).toBeVisible();
+  await expect(page.locator(".react-flow__node-shape")).toHaveCount(2);
+  await expect(page.locator(".react-flow__node-shape", { hasText: "Nova fila" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByText("Salvo")).toBeVisible({ timeout: 15_000 });
 
@@ -98,7 +97,7 @@ test("layer templates, shapes and text, and comparing views", async ({ page }) =
   await expect(bar).toContainText("+2");
   await expect(page.locator(".react-flow__node.wp-diff-added")).toHaveCount(2);
   await bar.getByRole("radio", { name: "A", exact: true }).click();
-  await expect(page.locator(".react-flow__node-ink")).toHaveCount(0);
+  await expect(page.locator(".react-flow__node-shape")).toHaveCount(0);
 });
 
 test("layers panel: folders, isolating a layer, moving an element by dragging", async ({ page }) => {
@@ -136,4 +135,42 @@ test("layers panel: folders, isolating a layer, moving an element by dragging", 
   await page.getByRole("dialog").getByRole("button", { name: "Criar" }).click();
   await page.getByRole("button", { name: "Ocultar pasta Versões" }).click();
   await expect(page.locator(".react-flow__node-block")).toBeHidden();
+});
+
+test("drawing: shapes, an arrow bound between them, and text", async ({ page }) => {
+  await signUp(page);
+  await page.getByRole("button", { name: "Todos os modelos" }).click();
+  await page.getByRole("button", { name: "Criar plan" }).click();
+  await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
+
+  const pane = (await page.locator(".react-flow__pane").boundingBox())!;
+  const at = (fx: number, fy: number) => ({ x: pane.x + pane.width * fx, y: pane.y + pane.height * fy });
+  const drag = async (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 10 });
+    await page.mouse.up();
+  };
+
+  // Two boxes: R draws a rectangle, O an ellipse.
+  await page.keyboard.press("r");
+  await expect(page.getByRole("toolbar", { name: "Estilo do desenho" })).toBeVisible();
+  await drag(at(0.2, 0.3), at(0.35, 0.45));
+  await page.keyboard.press("o");
+  await drag(at(0.6, 0.3), at(0.75, 0.45));
+  await expect(page.locator(".react-flow__node-shape")).toHaveCount(2);
+
+  // An arrow from one to the other becomes a connection between them.
+  await page.keyboard.press("a");
+  await drag(at(0.27, 0.37), at(0.67, 0.37));
+  await expect(page.locator(".react-flow__edge.wp-drawn-edge")).toHaveCount(1);
+
+  // Text: click, type, click away.
+  await page.keyboard.press("t");
+  const t = at(0.4, 0.7);
+  await page.mouse.click(t.x, t.y);
+  await page.keyboard.type("Revisar");
+  const away = at(0.85, 0.8);
+  await page.mouse.click(away.x, away.y);
+  await expect(page.locator(".react-flow__node-shape").filter({ hasText: "Revisar" })).toHaveCount(1);
 });

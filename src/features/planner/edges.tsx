@@ -1,7 +1,8 @@
 "use client";
 import { memo, useEffect, useRef, useState } from "react";
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, type EdgeProps, type EdgeTypes } from "@xyflow/react";
-import { EDGE_KINDS, type EdgeKind } from "@/domain/plan";
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, useInternalNode, type EdgeProps, type EdgeTypes, type InternalNode } from "@xyflow/react";
+import { EDGE_KINDS, type EdgeKind, type EdgeStyle } from "@/domain/plan";
+import { arrowheadPath, curveControl, dashFor, DEFAULT_STYLE, endTangent, floatingEnds, headInset, linkPaths, seedOf, type Pt } from "./shape-geometry";
 import { EDGE_APPEARANCE, type PlanFlowEdge } from "@/domain/canvas-adapter";
 import { cn } from "@/lib/utils";
 import { usePlanner } from "./context";
@@ -14,9 +15,121 @@ const ENTRY_ANGLE: Record<Position, number> = {
   [Position.Bottom]: -90,
 };
 
+/** Outline used when a styled connection leaves from an element's border. */
+function outlineOf(n: InternalNode): { x: number; y: number; w: number; h: number; type: "rect" | "diamond" | "ellipse" } {
+  const shape = (n.data as { shape?: { type?: string } } | undefined)?.shape?.type;
+  return {
+    x: n.internals.positionAbsolute.x,
+    y: n.internals.positionAbsolute.y,
+    w: n.measured.width ?? n.width ?? 0,
+    h: n.measured.height ?? n.height ?? 0,
+    type: shape === "ellipse" ? "ellipse" : shape === "diamond" ? "diamond" : "rect",
+  };
+}
+
 export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
+  const style = p.data?.style;
+  if (style && style.routing !== "elbow") return <StyledEdge {...p} style={undefined} edgeStyle={style} />;
+  return <KindEdge {...p} />;
+});
+
+/**
+ * A connection drawn with the arrow/line tools: leaves from the shapes' outlines (straight or
+ * curved), with its own color, width, dash, hand-drawn wobble and arrowheads at either end.
+ */
+function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
+  const st = p.edgeStyle;
+  const src = useInternalNode(p.source);
+  const tgt = useInternalNode(p.target);
+  const { mode, editingId, setEditingId, commitEdgeLabel } = usePlanner();
+  const editing = mode === "edit" && editingId === p.id && !!commitEdgeLabel;
+  if (!src || !tgt) return null;
+  const width = st.strokeWidth ?? DEFAULT_STYLE.strokeWidth;
+  const roughness = st.roughness ?? (p.data?._sketch ? 1 : 0);
+  const curve = st.routing === "curve";
+  const startHead = st.start ?? "none";
+  const endHead = st.end ?? "arrow";
+  const { start, end } = floatingEnds(outlineOf(src), outlineOf(tgt), 4 + width / 2);
+  // Stop the line short of filled heads so their tips stay crisp.
+  const shorten = (from: Pt, to: Pt, by: number): Pt => {
+    const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    return { x: to.x - ((to.x - from.x) / len) * by, y: to.y - ((to.y - from.y) / len) * by };
+  };
+  const a = startHead === "none" ? start : shorten(end, start, headInset(startHead, width));
+  const b = endHead === "none" ? end : shorten(start, end, headInset(endHead, width));
+  const seed = st.seed ?? seedOf(p.id);
+  const lines = linkPaths(a, b, { curve, roughness, seed, strokeWidth: width });
+  const heads = [
+    arrowheadPath(startHead, start, endTangent(start, end, curve, false).angle, width),
+    arrowheadPath(endHead, end, endTangent(start, end, curve, true).angle, width),
+  ];
+  const color = st.stroke ?? "var(--wp-edge-ink)";
+  const mid = curve ? curveControl(start, end) : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const labelAt = curve ? { x: (start.x + end.x) / 4 + mid.x / 2, y: (start.y + end.y) / 4 + mid.y / 2 } : mid;
+  const label = p.data?.label;
+  const step = p.data?.step;
+  const opacity = p.data?._opacity;
+  const faded = opacity !== undefined ? { opacity } : undefined;
+  return (
+    <g style={faded} className="wp-styled-edge">
+      {/* wide invisible path for hover and clicks */}
+      <path d={`M${start.x} ${start.y} ${curve ? `Q${mid.x} ${mid.y}` : "L"} ${end.x} ${end.y}`} fill="none" stroke="transparent" strokeWidth={18} className="react-flow__edge-interaction" />
+      {p.selected && <path d={`M${start.x} ${start.y} ${curve ? `Q${mid.x} ${mid.y}` : "L"} ${end.x} ${end.y}`} fill="none" stroke="var(--accent)" strokeOpacity={0.28} strokeWidth={width + 8} strokeLinecap="round" />}
+      {lines.map((d, i) => (
+        <path key={i} d={d} fill="none" className="wp-edge-path" style={{ stroke: color, strokeWidth: width, strokeDasharray: dashFor(st.strokeStyle ?? "solid", width) }} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+      {heads.map(
+        (h, i) =>
+          h && (
+            <path
+              key={i}
+              d={h.d}
+              className="wp-edge-head"
+              style={{ stroke: color, fill: h.filled ? color : "none", strokeWidth: width }}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ),
+      )}
+      {editing && (
+        <EdgeLabelRenderer>
+          <EdgeLabelInput
+            x={labelAt.x}
+            y={labelAt.y}
+            initial={label ?? ""}
+            onDone={(v) => {
+              if (v !== null && v !== (label ?? "")) commitEdgeLabel!(p.id, v);
+              setEditingId(null);
+            }}
+          />
+        </EdgeLabelRenderer>
+      )}
+      {(label || step) && !editing && (
+        <EdgeLabelRenderer>
+          <div
+            className={cn("wp-edge-label nodrag nopan", !label && "is-step-only", p.selected && "is-selected", p.data?._dim === true && "is-dim", p.data?._diff && `wp-diff-${p.data._diff}`)}
+            style={{ transform: `translate(-50%, -50%) translate(${labelAt.x}px, ${labelAt.y}px)`, ...faded }}
+            title={p.data?.description || label || `Passo ${step}`}
+          >
+            {step && (
+              <span className="wp-edge-step" aria-label={`Passo ${step}`}>
+                {step}
+              </span>
+            )}
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </g>
+  );
+}
+
+/** A connection between handles, drawn in its kind's look (relation, flow, dependency, strong). */
+const KindEdge = memo(function KindEdge(p: EdgeProps<PlanFlowEdge>) {
   const kind: EdgeKind = p.data?.kind ?? "flow";
   const app = EDGE_APPEARANCE[kind];
+  // An elbow connection drawn with the arrow tool keeps its color, width and dash.
+  const st = p.data?.style;
   const [path, lx, ly] = getSmoothStepPath({
     sourceX: p.sourceX,
     sourceY: p.sourceY,
@@ -40,7 +153,13 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
         path={path}
         interactionWidth={18}
         className="wp-edge-path"
-        style={{ strokeWidth: app.strokeWidth, strokeDasharray: app.dash, strokeLinecap: "round", strokeLinejoin: "round" }}
+        style={{
+          strokeWidth: st?.strokeWidth ?? app.strokeWidth,
+          strokeDasharray: st?.strokeStyle ? dashFor(st.strokeStyle, st.strokeWidth ?? app.strokeWidth) : app.dash,
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
+          ...(st?.stroke && !p.selected ? { stroke: st.stroke } : {}),
+        }}
       />
       {app.double && <path d={path} fill="none" pointerEvents="none" style={{ stroke: "var(--wp-canvas-bg, var(--canvas))", strokeWidth: 1.5 }} />}
       {/* Drawn here instead of an SVG <marker> (shared, one fixed color) so it follows hover, selection and theme. */}
@@ -49,6 +168,7 @@ export const PlanEdge = memo(function PlanEdge(p: EdgeProps<PlanFlowEdge>) {
           d="M -9 -5 L 0 0 L -9 5 Z"
           className="wp-edge-arrow"
           pointerEvents="none"
+          style={st?.stroke && !p.selected ? { fill: st.stroke, stroke: st.stroke } : undefined}
           strokeLinejoin="round"
           transform={`translate(${p.targetX} ${p.targetY}) rotate(${ENTRY_ANGLE[p.targetPosition]})`}
         />

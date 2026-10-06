@@ -123,6 +123,7 @@ describe("planner SSR", () => {
     const { EditorContext } = await import("./editor-context");
     const { TooltipProvider } = await import("@/components/ui/popover");
     const { toFlowEdges, toFlowNodes } = await import("@/domain/canvas-adapter");
+    const { DEFAULT_STYLE } = await import("./shape-geometry");
     const nodes = toFlowNodes(doc);
     const edges = toFlowEdges(doc);
     const noop = () => {};
@@ -133,6 +134,7 @@ describe("planner SSR", () => {
       meta: { title: "Plan", description: null, tags: ["a"], visibility: "link" },
       tool: "select",
       ink: { mode: "pen", color: undefined, size: 4 },
+      style: DEFAULT_STYLE,
       layers: {
         list: [
           { id: "base", name: "Base", visible: true },
@@ -172,7 +174,13 @@ describe("planner SSR", () => {
     const [ink] = toFlowNodes({ nodes: [{ id: "ink1", kind: "ink", x: 0, y: 0, width: 40, height: 20, data: { title: "", ink: { points: [2, 2, 38, 18], w: 40, h: 20, size: 2, arrow: true } } }] });
     expect(render({ selectedNodes: [ink], selectedEdges: [] })).toContain("Apagar desenho");
     // shapes and text in the drawing bar; a text annotation and a numbered connection
-    expect(render({ selectedNodes: [], selectedEdges: [], tool: "draw" })).toContain("Retângulo");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "rect" })).toContain("Arraste para desenhar");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "arrow" })).toContain("Ponta final");
+    const [shape] = toFlowNodes({ nodes: [{ id: "s1", kind: "shape", x: 0, y: 0, width: 120, height: 80, data: { title: "Fila", shape: { type: "diamond", fill: "#A5D8FF", roughness: 1 } } }] });
+    const shapeHtml = render({ selectedNodes: [shape], selectedEdges: [] });
+    expect(shapeHtml).toContain("Losango");
+    expect(shapeHtml).toContain("Preenchimento");
+    expect(shapeHtml).toContain("Traçado");
     const [note] = toFlowNodes({ nodes: [{ id: "t1", kind: "ink", x: 0, y: 0, width: 80, height: 30, data: { title: "Olhe aqui", ink: { points: [0, 0, 80, 30], w: 80, h: 30, size: 4, shape: "text" } } }] });
     const textHtml = render({ selectedNodes: [note], selectedEdges: [] });
     expect(textHtml).toContain("Texto à mão");

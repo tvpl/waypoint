@@ -51,6 +51,23 @@ import { ResourceIcon, ResourceRow, useResourceSearch } from "./resource-picker"
 import { parseUserUrl, fallbackResource } from "./resource-types";
 import { BASE_LAYER_ID } from "@/domain/layers";
 import { HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, INK_COLORS, INK_SIZES, textBox } from "./ink-geometry";
+import { styleOfSelection } from "./shape-style";
+import { DEFAULT_STYLE, measureText } from "./shape-geometry";
+import {
+  AlignPicker,
+  ArrowheadPicker,
+  CornersPicker,
+  FillColors,
+  FillStylePicker,
+  FontPicker,
+  OpacitySlider,
+  RoughnessPicker,
+  RoutingPicker,
+  SizePicker,
+  StrokeColors,
+  StrokeStylePicker,
+  WidthPicker,
+} from "./style-controls";
 
 const VISIBILITY_LABEL: Record<string, string> = {
   private: "Privado",
@@ -65,7 +82,8 @@ export function Inspector() {
   const nodes = ed.selectedNodes;
   const edges = ed.selectedEdges;
   let body: React.ReactNode;
-  if (nodes.length === 1 && nodes[0].type === "ink") body = <InkInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length >= 1 && nodes.every((n) => n.type === "shape")) body = <DrawInspector key={nodes.map((n) => n.id).join()} />;
+  else if (nodes.length === 1 && nodes[0].type === "ink") body = <InkInspector key={nodes[0].id} node={nodes[0]} />;
   else if (nodes.length === 1) body = <NodeInspector key={nodes[0].id} node={nodes[0]} />;
   else if (nodes.length > 1) body = <MultiInspector />;
   else if (edges.length === 1) body = <EdgeInspector key={edges[0].id} edge={edges[0]} />;
@@ -132,6 +150,161 @@ function LayerField() {
         </select>
       </div>
     </F>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <div className="-ml-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Drawn shapes (one or many, with any drawn connections also selected): stroke, background and
+ * pattern, width, dash, clean or hand-drawn, corners, font, size, alignment, opacity.
+ */
+function DrawInspector() {
+  const ed = useEditor();
+  const nodes = ed.selectedNodes;
+  const one = nodes.length === 1 ? nodes[0] : null;
+  const s = styleOfSelection(ed.style, nodes.map((n) => n.data), ed.selectedEdges.map((e) => e.data?.style));
+  const types = new Set(nodes.map((n) => n.data.shape?.type));
+  const onlyText = types.size === 1 && types.has("text");
+  const boxes = types.has("rect") || types.has("diamond");
+  const set = ed.setStyle;
+  const label = one ? (one.data.shape?.type === "text" ? "Texto" : one.data.shape?.type === "ellipse" ? "Elipse" : one.data.shape?.type === "diamond" ? "Losango" : "Retângulo") : `${nodes.length} formas`;
+  const Icon = KIND_ICON.shape;
+  const setText = (title: string) =>
+    ed.mutate(
+      (d) => ({
+        ...d,
+        nodes: d.nodes.map((n) => {
+          if (n.id !== one!.id) return n;
+          if (n.data.shape?.type !== "text") return { ...n, data: { ...n.data, title } };
+          const box = measureText(title, n.data.shape.font ?? DEFAULT_STYLE.font, n.data.shape.fontSize ?? DEFAULT_STYLE.fontSize);
+          return { ...n, width: box.width, height: box.height, data: { ...n.data, title } };
+        }),
+      }),
+      { key: `shape-text:${one!.id}` },
+    );
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle" style={{ color: s.stroke ?? "var(--ink)" }}>
+            <Icon className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker={one ? "Forma" : "Seleção"}
+        title={label}
+      />
+      {one && (
+        <F label="Texto" htmlFor={`st-${one.id}`}>
+          <Textarea id={`st-${one.id}`} rows={2} maxLength={300} className="min-h-[56px] rounded-lg text-body" value={one.data.title} onChange={(e) => setText(e.target.value)} />
+        </F>
+      )}
+      <Row label="Traço">
+        <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
+      </Row>
+      {!onlyText && (
+        <>
+          <Row label="Fundo">
+            <FillColors value={s.fill} onChange={(fill) => set({ fill })} />
+          </Row>
+          {s.fill && (
+            <Row label="Preenchimento">
+              <FillStylePicker value={s.fillStyle} onChange={(fillStyle) => set({ fillStyle })} />
+            </Row>
+          )}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+            <Row label="Espessura">
+              <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+            </Row>
+            <Row label="Estilo do traço">
+              <StrokeStylePicker value={s.strokeStyle} onChange={(strokeStyle) => set({ strokeStyle })} />
+            </Row>
+            <Row label="Traçado">
+              <RoughnessPicker value={s.roughness} onChange={(roughness) => set({ roughness })} />
+            </Row>
+            {boxes && (
+              <Row label="Cantos">
+                <CornersPicker value={s.round} onChange={(round) => set({ round })} />
+              </Row>
+            )}
+          </div>
+        </>
+      )}
+      <Row label="Fonte">
+        <FontPicker value={s.font} onChange={(font) => set({ font })} />
+      </Row>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+        <Row label="Tamanho">
+          <SizePicker value={s.fontSize} onChange={(fontSize) => set({ fontSize })} />
+        </Row>
+        <Row label="Alinhamento">
+          <AlignPicker value={s.align} onChange={(align) => set({ align })} />
+        </Row>
+      </div>
+      <Row label="Opacidade">
+        <OpacitySlider value={s.opacity} onChange={(opacity) => set({ opacity })} />
+      </Row>
+      <LayerField />
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+          <BringToFront /> Frente
+        </Button>
+        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+          <SendToBack /> Trás
+        </Button>
+      </div>
+      <Button size="sm" variant="danger" onClick={ed.remove}>
+        <Trash2 /> Excluir
+      </Button>
+    </Scroll>
+  );
+}
+
+/** How a connection is drawn: color, width, dash, clean or hand-drawn, heads and route. */
+function EdgeDrawSection({ edgeId }: { edgeId: string }) {
+  const ed = useEditor();
+  const edge = ed.edges.find((e) => e.id === edgeId);
+  const st = edge?.data?.style;
+  const s = styleOfSelection(ed.style, [], [st ?? { routing: "elbow", end: "arrow" }]);
+  const set = ed.setStyle;
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-line p-3">
+      <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Desenho</span>
+      <Row label="Traço">
+        <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
+      </Row>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+        <Row label="Espessura">
+          <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+        </Row>
+        <Row label="Estilo do traço">
+          <StrokeStylePicker value={s.strokeStyle} onChange={(strokeStyle) => set({ strokeStyle })} />
+        </Row>
+        <Row label="Traçado">
+          <RoughnessPicker value={s.roughness} onChange={(roughness) => set({ roughness })} />
+        </Row>
+        <Row label="Trajeto">
+          <RoutingPicker value={s.routing} onChange={(routing) => set({ routing })} />
+        </Row>
+      </div>
+      {s.routing !== "elbow" && (
+        <>
+          <Row label="Ponta inicial">
+            <ArrowheadPicker label="Ponta inicial" value={s.start} onChange={(start) => set({ start })} flip />
+          </Row>
+          <Row label="Ponta final">
+            <ArrowheadPicker label="Ponta final" value={s.end} onChange={(end) => set({ end })} />
+          </Row>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -820,6 +993,7 @@ function EdgeInspector({ edge }: { edge: PlanFlowEdge }) {
           <Textarea id={`ed-${edge.id}`} rows={3} maxLength={2000} className="min-h-[72px] rounded-lg text-body" value={d.description ?? ""} onChange={(e) => ed.updateEdge(edge.id, { description: e.target.value }, `edesc:${edge.id}`)} />
         </F>
         <LayerField />
+        <EdgeDrawSection edgeId={edge.id} />
         <F label="Passo do fluxo" htmlFor={`es-${edge.id}`}>
           <div className="flex items-center gap-2">
             <Input
@@ -1006,11 +1180,15 @@ function PlanInspector() {
         <ul className="flex flex-col gap-1.5 text-xs text-ink-2">
           {[
             ["Selecionar / mover canvas / conectar", "V · H · C"],
+            ["Retângulo / losango / elipse", "R · D · O"],
+            ["Seta / linha / texto / quadro", "A · L · T · F"],
+            ["Lápis / borracha", "P · E"],
             ["Duplicar", "⌘D"],
             ["Copiar / colar", "⌘C · ⌘V"],
             ["Agrupar / desagrupar", "⌘G · ⇧⌘G"],
             ["Organizar (vertical / horizontal)", "⇧L · ⌥⇧L"],
             ["Desfazer / refazer", "⌘Z · ⇧⌘Z"],
+            ["Ajustar à tela / 100%", "⇧1 · ⇧0"],
             ["Editar título", "Enter · duplo clique"],
             ["Buscar no Waypoint", "⌘K"],
           ].map(([l, k]) => (

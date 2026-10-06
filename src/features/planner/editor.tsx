@@ -65,7 +65,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
-import { EditorContext, type EditorApi, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
+import { CREATE_TOOLS, EditorContext, type EditorApi, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
+import { DEFAULT_STYLE, measureText, seedOf, type DrawStyle } from "./shape-geometry";
+import { applyStyle, edgeStyleFromStyle, shapeFromStyle } from "./shape-style";
+import { ShapeTools } from "./draw-tools";
 import { buildInk, buildTextInk, INK_SIZES, textBox, type Point } from "./ink-geometry";
 import { clearSteps as clearFlowSteps, numberFlow, stepTargets } from "./flow-steps";
 import { InkCanvas } from "./ink-canvas";
@@ -183,6 +186,7 @@ const normalizeForCanvas = (doc: PlanDocument): PlanDocument => ({
 
 type LayerState = { layers?: PlanLayer[]; views?: PlanView[] };
 const INK_KEY = "wp-planner-ink";
+const STYLE_KEY = "wp-planner-style";
 
 function EditorShell(props: PlanEditorProps) {
   const planId = props.plan.id;
@@ -220,7 +224,18 @@ function EditorShell(props: PlanEditorProps) {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(INK_KEY) ?? "null") as Partial<InkSettings> | null;
-      if (saved) setInkState((cur) => ({ ...cur, ...saved }));
+      // Arrows, boxes and text have their own tools now: the pencil keeps pen or highlighter.
+      if (saved) setInkState((cur) => ({ ...cur, ...saved, mode: saved.mode === "highlighter" ? "highlighter" : "pen" }));
+    } catch {}
+  }, []);
+  // Style new shapes and arrows are drawn with (kept between sessions).
+  const [style, setStyleState] = useState<DrawStyle>(DEFAULT_STYLE);
+  const styleRef = useRef(style);
+  styleRef.current = style;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STYLE_KEY) ?? "null") as Partial<DrawStyle> | null;
+      if (saved) setStyleState((cur) => ({ ...cur, ...saved }));
     } catch {}
   }, []);
   const setInk = useCallback((patch: Partial<InkSettings>) => {
@@ -776,11 +791,89 @@ function EditorShell(props: PlanEditorProps) {
     (ids: string[]) => {
       const set = new Set(ids);
       mutate((d) => {
-        const drop = d.nodes.filter((n) => set.has(n.id) && n.kind === "ink").map((n) => n.id);
-        return drop.length ? removeNodes(d, drop) : d;
+        // The eraser takes drawings, drawn shapes and connections drawn with the arrow/line tools.
+        const drop = d.nodes.filter((n) => set.has(n.id) && (n.kind === "ink" || n.kind === "shape")).map((n) => n.id);
+        const dropEdges = d.edges.filter((e) => set.has(e.id) && e.style).map((e) => e.id);
+        if (!drop.length && !dropEdges.length) return d;
+        return removeEdges(removeNodes(d, drop), dropEdges);
       });
     },
     [mutate],
+  );
+
+  // ---------------------------------------------------------------- shapes, arrows, style
+  const setStyle = useCallback(
+    (patch: Partial<DrawStyle>) => {
+      setStyleState((cur) => {
+        const next = { ...cur, ...patch };
+        try {
+          localStorage.setItem(STYLE_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      const ns = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+      const es = edgesRef.current.filter((e) => e.selected).map((e) => e.id);
+      if (ns.length || es.length) mutate((d) => applyStyle(d, { nodes: ns, edges: es }, patch), { key: `style:${Object.keys(patch).sort().join(",")}` });
+    },
+    [mutate],
+  );
+
+  const addShape = useCallback(
+    (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }) => {
+      const s = styleRef.current;
+      const id = newId();
+      let node: PlanNode;
+      if (type === "frame") {
+        const count = nodesRef.current.filter((n) => n.type === "frame").length;
+        const w = box?.w ?? 640;
+        const h = box?.h ?? 420;
+        node = { id, kind: "frame", x: box?.x ?? at.x - w / 2, y: box?.y ?? at.y - h / 2, width: w, height: h, data: { title: `Quadro ${count + 1}` } };
+      } else {
+        const shape = shapeFromStyle(type, s, seedOf(id));
+        const size =
+          type === "text"
+            ? measureText("", s.font, s.fontSize)
+            : { width: box?.w ?? (type === "diamond" ? 160 : 180), height: box?.h ?? (type === "diamond" ? 120 : type === "ellipse" ? 110 : 100) };
+        const x = box?.x ?? (type === "text" ? at.x : at.x - size.width / 2);
+        const y = box?.y ?? at.y - size.height / 2;
+        node = { id, kind: "shape", x, y, width: Math.max(16, size.width), height: Math.max(16, size.height), data: { title: "", shape } };
+      }
+      if (snap && type !== "text") {
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
+      }
+      pendingKey.current = null;
+      let doc = placeInActive(addNodes(docOf(), [node]), [id]);
+      // Drawn inside a frame or area: it goes in it.
+      const parent = type === "frame" ? undefined : findDropTarget(doc, id, canHold);
+      if (parent) doc = reparent(doc, id, parent);
+      applyDoc(doc, { nodes: [id] });
+      setToolState("select");
+      if (type === "text") setTimeout(() => setEditingId(id), 30);
+    },
+    [docOf, applyDoc, placeInActive, canHold, snap],
+  );
+
+  const addLink = useCallback(
+    (kind: "arrow" | "line", from: { x: number; y: number }, to: { x: number; y: number }, source?: string | null, target?: string | null) => {
+      const s = styleRef.current;
+      pendingKey.current = null;
+      if (source && target && source !== target) {
+        const id = newId();
+        const edge: PlanEdge = { id, source, target, kind: kind === "arrow" ? "flow" : "relation", style: edgeStyleFromStyle(kind, s, seedOf(id)) };
+        const base = docOf();
+        applyDoc(placeInActive({ ...base, edges: [...base.edges, edge] }, [], [id]), { nodes: [], edges: [id] });
+      } else {
+        // Not between two elements: a free line or arrow.
+        const built = buildInk([[from.x, from.y], [to.x, to.y]], { size: s.strokeWidth, mode: "arrow" });
+        if (!built) return void setToolState("select");
+        const ink = kind === "line" ? { ...built.ink, arrow: undefined, line: true } : built.ink;
+        const node: PlanNode = { id: newId(), kind: "ink", x: built.x, y: built.y, width: built.width, height: built.height, data: { title: "", ink, ...(s.stroke ? { color: s.stroke } : {}) } };
+        applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [node.id] });
+      }
+      setToolState("select");
+    },
+    [docOf, applyDoc, placeInActive],
   );
 
   const addInkText = useCallback(
@@ -818,6 +911,20 @@ function EditorShell(props: PlanEditorProps) {
     [mutate],
   );
 
+  /** Text elements: the box follows the text; one emptied goes away. */
+  const commitShapeText = useCallback(
+    (id: string, title: string) => {
+      mutate((d) => {
+        const n = d.nodes.find((x) => x.id === id);
+        if (!n?.data.shape) return d;
+        if (!title.trim()) return removeNodes(d, [id]);
+        const box = measureText(title, n.data.shape.font ?? DEFAULT_STYLE.font, n.data.shape.fontSize ?? DEFAULT_STYLE.fontSize);
+        return { ...d, nodes: d.nodes.map((x) => (x.id === id ? { ...x, width: box.width, height: box.height, data: { ...x.data, title } } : x)) };
+      });
+    },
+    [mutate],
+  );
+
   // A text annotation left empty (Esc right after placing it) disappears.
   const lastEditing = useRef<string | null>(null);
   useEffect(() => {
@@ -825,7 +932,8 @@ function EditorShell(props: PlanEditorProps) {
     lastEditing.current = editingId;
     if (!prev || prev === editingId) return;
     const n = nodesRef.current.find((x) => x.id === prev);
-    if (n?.type === "ink" && n.data.ink?.shape === "text" && !n.data.title.trim()) mutate((d) => removeNodes(d, [prev]));
+    const emptyText = (n?.type === "ink" && n.data.ink?.shape === "text") || (n?.type === "shape" && n.data.shape?.type === "text");
+    if (emptyText && !n!.data.title.trim()) mutate((d) => removeNodes(d, [prev]));
   }, [editingId, mutate]);
 
   // ---------------------------------------------------------------- layers
@@ -960,6 +1068,10 @@ function EditorShell(props: PlanEditorProps) {
     addInk,
     removeInk,
     addInkText,
+    style,
+    setStyle,
+    addShape,
+    addLink,
     numberSteps: (edgeIds) => {
       const ids = stepTargets(docOf(), edgeIds ? { nodes: new Set(), edges: new Set(edgeIds) } : selectedIds());
       if (!ids.length) return void toast.info("Selecione as conexões (ou os elementos entre elas) para numerar.");
@@ -1012,6 +1124,7 @@ function EditorShell(props: PlanEditorProps) {
       commitTitle: (id, title) => {
         const n = nodesRef.current.find((x) => x.id === id);
         if (n?.type === "ink" && n.data.ink?.shape === "text") commitInkText(id, title);
+        else if (n?.type === "shape" && n.data.shape?.type === "text") commitShapeText(id, title);
         else updateNodeData(id, { title });
       },
       commitEdgeLabel: (id, label) => updateEdge(id, { label: label.trim() || undefined }),
@@ -1025,7 +1138,7 @@ function EditorShell(props: PlanEditorProps) {
       commentCount,
       openNodeComments,
     }),
-    [resourceFor, editingId, updateNodeData, commitInkText, updateEdge, childCount, singleSelectedId, hoverId, dropTarget, connectSource, commentCount, openNodeComments],
+    [resourceFor, editingId, updateNodeData, commitInkText, commitShapeText, updateEdge, childCount, singleSelectedId, hoverId, dropTarget, connectSource, commentCount, openNodeComments],
   );
 
   const commentNodes = useMemo(
@@ -1087,21 +1200,36 @@ function EditorShell(props: PlanEditorProps) {
       if (k === "delete" || k === "backspace") return run(a.remove);
       if (k === "escape") {
         setEditingId(null);
-        if (a.tool === "connect" || a.tool === "draw" || a.tool === "erase") return run(() => a.setTool("select"));
+        if (a.tool === "connect" || CREATE_TOOLS.has(a.tool)) return run(() => a.setTool("select"));
         // nothing to let go of: leave an isolated layer
         if (!a.selectedNodes.length && !a.selectedEdges.length && a.layers.isolated) return run(() => a.layers.setIsolated(null));
         return run(() => a.select([]));
       }
       if (k === "enter" && a.selectedNodes.length === 1) return run(() => a.startEditing(a.selectedNodes[0].id));
+      // Excalidraw's keys: numbers and letters pick the drawing tools; ⇧1 fits, ⇧0 is 100%.
+      if (e.shiftKey && e.code === "Digit1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
+      if (e.shiftKey && e.code === "Digit0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
+      const digit = /^Digit(\d)$/.exec(e.code)?.[1];
+      if (digit && !e.shiftKey) {
+        const byDigit: Record<string, Tool | "image"> = { "1": "select", "2": "rect", "3": "diamond", "4": "ellipse", "5": "arrow", "6": "line", "7": "draw", "8": "text", "9": "image", "0": "erase" };
+        const t = byDigit[digit];
+        return run(() => (t === "image" ? a.addNode("image") : a.setTool(t)));
+      }
       if (k === "v") return run(() => a.setTool("select"));
       if (k === "h") return run(() => a.setTool("hand"));
       if (k === "p") return run(() => a.setTool(a.tool === "draw" ? "select" : "draw"));
       if (k === "e") return run(() => a.setTool(a.tool === "erase" ? "select" : "erase"));
+      if (k === "r") return run(() => a.setTool("rect"));
+      if (k === "d") return run(() => a.setTool("diamond"));
+      if (k === "o") return run(() => a.setTool("ellipse"));
+      if (k === "a") return run(() => a.setTool("arrow"));
+      if (k === "l") return run(() => a.setTool("line"));
+      if (k === "t") return run(() => a.setTool("text"));
+      if (k === "f") return run(() => a.setTool("frame"));
       if (k === "c") return run(() => (a.selectedNodes.length === 1 ? a.startConnectFrom(a.selectedNodes[0].id) : a.setTool("connect")));
       if (k === "+" || k === "=") return run(() => rf.zoomIn({ duration: motionMs(150) }));
       if (k === "-" || k === "_") return run(() => rf.zoomOut({ duration: motionMs(150) }));
-      if (k === "0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
-      if (k === "1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
+
       if (k === "m") return run(() => a.setMinimap(!a.minimap));
       if (k === "]") return run(a.bringToFront);
       if (k === "[") return run(a.sendToBack);
@@ -1584,8 +1712,8 @@ function EditorShell(props: PlanEditorProps) {
                     selectionMode={SelectionMode.Partial}
                     panOnDrag={tool === "hand" ? true : [1]}
                     panOnScroll
-                    nodesDraggable={tool !== "hand" && tool !== "draw" && tool !== "erase"}
-                    elementsSelectable={tool !== "draw" && tool !== "erase"}
+                    nodesDraggable={tool !== "hand" && !CREATE_TOOLS.has(tool)}
+                    elementsSelectable={!CREATE_TOOLS.has(tool)}
                     zoomOnDoubleClick={false}
                     elevateNodesOnSelect={false}
                     proOptions={{ hideAttribution: true }}
@@ -1632,6 +1760,7 @@ function EditorShell(props: PlanEditorProps) {
                     </div>
                   )}
                   {(tool === "draw" || tool === "erase") && <InkCanvas wrapRef={wrapRef} />}
+                  <ShapeTools wrapRef={wrapRef} />
                   <SelectionBar />
                   <IsolateBanner />
                   <BottomPill />

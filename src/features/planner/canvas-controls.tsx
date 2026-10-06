@@ -1,12 +1,40 @@
 "use client";
-import { ArrowLeftRight, ArrowUpRight, Circle, Eraser, Grid3x3, Group, Hand, Highlighter, Layers, ListOrdered, Magnet, Map as MapIcon, MousePointer2, Network, PenLine, Square, Trash2, Type, Workflow, X } from "lucide-react";
-import { EDGE_KINDS } from "@/domain/plan";
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  Circle,
+  Diamond,
+  Eraser,
+  Frame,
+  Grid3x3,
+  Group,
+  Hand,
+  Highlighter,
+  ImagePlus,
+  Layers,
+  ListOrdered,
+  Magnet,
+  Map as MapIcon,
+  Minus,
+  MousePointer2,
+  Network,
+  PenLine,
+  Shapes,
+  Square,
+  Trash2,
+  Type,
+  Workflow,
+  X,
+} from "lucide-react";
+import { EDGE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
-import { useEditor } from "./editor-context";
-import { ConnectorIcon } from "./icons";
+import { SHAPE_TOOLS, useEditor, type Tool } from "./editor-context";
+import { ConnectorIcon, KIND_ICON } from "./icons";
+import { KIND_LABEL } from "./defaults";
+import { ArrowheadPicker, FillColors, FontPicker, RoughnessPicker, RoutingPicker, SizePicker, StrokeColors, WidthPicker } from "./style-controls";
 import { EdgeSample } from "./edges";
 import { ALIGN_ACTIONS, DISTRIBUTE_ACTIONS } from "./inspector";
 import { ZoomControls, pillBtn } from "./zoom-controls";
@@ -18,29 +46,80 @@ function Sep() {
   return <span className="mx-1 h-5 w-px bg-line" aria-hidden />;
 }
 
+type DockTool = { id: Tool; label: string; key: string; num?: string; icon: typeof Square };
+
+const DOCK: DockTool[][] = [
+  [
+    { id: "hand", label: "Mover canvas", key: "H", icon: Hand },
+    { id: "select", label: "Selecionar", key: "V", num: "1", icon: MousePointer2 },
+  ],
+  [
+    { id: "rect", label: "Retângulo", key: "R", num: "2", icon: Square },
+    { id: "diamond", label: "Losango", key: "D", num: "3", icon: Diamond },
+    { id: "ellipse", label: "Elipse", key: "O", num: "4", icon: Circle },
+    { id: "arrow", label: "Seta (ligue duas formas arrastando de uma à outra)", key: "A", num: "5", icon: ArrowRight },
+    { id: "line", label: "Linha", key: "L", num: "6", icon: Minus },
+    { id: "draw", label: "Lápis", key: "P", num: "7", icon: PenLine },
+    { id: "text", label: "Texto", key: "T", num: "8", icon: Type },
+  ],
+];
+
+const WAYPOINT_KINDS: NodeKind[] = ["block", "container", "note", "link", "section", "text"];
+
+/**
+ * The drawing dock (bottom center): tools with Excalidraw's keys (1–0 and letters), Waypoint's
+ * own elements, then grid, snap, minimap, auto layout and zoom.
+ */
 export function BottomPill() {
   const ed = useEditor();
-  const tools = [
-    { id: "select", label: "Selecionar (V)", icon: MousePointer2 },
-    { id: "hand", label: "Mover canvas (H)", icon: Hand },
-    { id: "connect", label: "Conectar (C)", icon: ConnectorIcon },
-    { id: "draw", label: "Desenhar (P)", icon: PenLine },
-    { id: "erase", label: "Borracha (E)", icon: Eraser },
-  ] as const;
+  const tool = (t: DockTool) => (
+    <Tooltip key={t.id} content={`${t.label} — ${t.num ? `${t.key} ou ${t.num}` : t.key}`} side="top">
+      <button type="button" aria-label={t.label} aria-pressed={ed.tool === t.id} className={cn(pillBtn, "relative", ed.tool === t.id && pillOn)} onClick={() => ed.setTool(t.id)}>
+        <t.icon strokeWidth={1.75} />
+        {t.num && <span className="pointer-events-none absolute bottom-0.5 right-1 text-[8.5px] font-semibold leading-none text-muted">{t.num}</span>}
+      </button>
+    </Tooltip>
+  );
   return (
     <div
       role="toolbar"
       aria-label="Ferramentas do canvas"
-      className="wp-no-print absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-line bg-surface p-1 shadow-float"
+      className="wp-no-print absolute bottom-5 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-2xl border border-line bg-surface p-1 shadow-float"
     >
-      {tools.map((t) => (
-        <Tooltip key={t.id} content={t.label} side="top">
-          <button type="button" aria-label={t.label} aria-pressed={ed.tool === t.id} className={cn(pillBtn, ed.tool === t.id && pillOn)} onClick={() => ed.setTool(t.id)}>
-            <t.icon strokeWidth={1.75} />
-          </button>
+      {DOCK[0].map(tool)}
+      <Sep />
+      {DOCK[1].map(tool)}
+      <Tooltip content="Imagem — 9" side="top">
+        <button type="button" aria-label="Imagem" className={cn(pillBtn, "relative")} onClick={() => ed.addNode("image")}>
+          <ImagePlus strokeWidth={1.75} />
+          <span className="pointer-events-none absolute bottom-0.5 right-1 text-[8.5px] font-semibold leading-none text-muted">9</span>
+        </button>
+      </Tooltip>
+      {tool({ id: "erase", label: "Borracha", key: "E", num: "0", icon: Eraser })}
+      {tool({ id: "frame", label: "Quadro", key: "F", icon: Frame })}
+      <Sep />
+      {tool({ id: "connect", label: "Conectar pelos pontos", key: "C", icon: ConnectorIcon })}
+      <DropdownMenu>
+        <Tooltip content="Elementos do Waypoint (bloco, container, nota…)" side="top">
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-label="Elementos do Waypoint" className={pillBtn}>
+              <Shapes strokeWidth={1.75} />
+            </button>
+          </DropdownMenuTrigger>
         </Tooltip>
-      ))}
-      <span className="hidden sm:contents">
+        <DropdownMenuContent side="top" align="center" sideOffset={10} className="min-w-[200px]">
+          <DropdownMenuLabel>Adicionar</DropdownMenuLabel>
+          {WAYPOINT_KINDS.map((k) => {
+            const Icon = KIND_ICON[k];
+            return (
+              <DropdownMenuItem key={k} onSelect={() => ed.addNode(k)}>
+                <Icon /> {KIND_LABEL[k]}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <span className="hidden lg:contents">
         <Sep />
         <Tooltip content={ed.grid ? "Ocultar grade" : "Mostrar grade"} side="top">
           <button type="button" aria-label="Grade" aria-pressed={ed.grid} className={cn(pillBtn, ed.grid && "text-accent-ink")} onClick={() => ed.setGrid(!ed.grid)}>
@@ -57,11 +136,76 @@ export function BottomPill() {
             <MapIcon strokeWidth={1.75} />
           </button>
         </Tooltip>
+        <ArrangeMenu />
       </span>
       <Sep />
-      <ArrangeMenu />
-      <Sep />
       <ZoomControls />
+    </div>
+  );
+}
+
+/** While a shape, arrow, line or text tool is on: the style the next one is drawn with. */
+function StyleBar() {
+  const ed = useEditor();
+  const s = ed.style;
+  const t = ed.tool;
+  const set = ed.setStyle;
+  const shape = t === "rect" || t === "diamond" || t === "ellipse";
+  const link = t === "arrow" || t === "line";
+  const hint =
+    t === "text" ? "Clique para escrever" : link ? "Arraste de uma forma a outra para ligar — ou solte no vazio" : t === "frame" ? "Arraste para criar um quadro" : "Arraste para desenhar · ⇧ mantém a proporção";
+  return (
+    <div className={cn(barCls, "flex-wrap justify-center")} role="toolbar" aria-label="Estilo do desenho">
+      <span className="hidden px-2 text-caption text-muted 2xl:inline">{hint}</span>
+      {t !== "frame" && (
+        <>
+          <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} size={18} />
+          {shape && (
+            <>
+              <Sep />
+              <FillColors value={s.fill} onChange={(fill) => set({ fill })} size={18} />
+            </>
+          )}
+          {t !== "text" && (
+            <>
+              <Sep />
+              <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+              <Sep />
+              <RoughnessPicker value={s.roughness} onChange={(roughness) => set({ roughness })} />
+            </>
+          )}
+          {t === "arrow" && (
+            <>
+              <Sep />
+              <ArrowheadPicker label="Ponta final" value={s.end} onChange={(end) => set({ end })} />
+            </>
+          )}
+          {link && (
+            <>
+              <Sep />
+              <RoutingPicker value={s.routing} onChange={(routing) => set({ routing })} />
+            </>
+          )}
+          {t === "text" && (
+            <>
+              <Sep />
+              <FontPicker value={s.font} onChange={(font) => set({ font })} />
+              <Sep />
+              <SizePicker value={s.fontSize} onChange={(fontSize) => set({ fontSize })} />
+            </>
+          )}
+        </>
+      )}
+      {ed.layers.list.length > 1 && (
+        <>
+          <Sep />
+          <ActiveLayerPicker />
+        </>
+      )}
+      <Sep />
+      <button type="button" className={barBtn} onClick={() => ed.setTool("select")} aria-label="Concluir" title={hint}>
+        <X /> <span className="hidden pr-1 xl:inline">Concluir</span>
+      </button>
     </div>
   );
 }
@@ -112,10 +256,6 @@ const barBtn = "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 roun
 const INK_MODES: { id: InkMode; label: string; icon: typeof PenLine }[] = [
   { id: "pen", label: "Caneta", icon: PenLine },
   { id: "highlighter", label: "Marca-texto", icon: Highlighter },
-  { id: "arrow", label: "Seta", icon: ArrowUpRight },
-  { id: "rect", label: "Retângulo", icon: Square },
-  { id: "ellipse", label: "Elipse", icon: Circle },
-  { id: "text", label: "Texto à mão (clique no canvas)", icon: Type },
 ];
 
 /** Which layer new drawings and elements go to; switching it is one click away while drawing. */
@@ -209,6 +349,7 @@ function InkBar() {
 export function SelectionBar() {
   const ed = useEditor();
   if (ed.tool === "draw") return <InkBar />;
+  if (SHAPE_TOOLS.has(ed.tool)) return <StyleBar />;
   if (ed.tool === "erase") {
     return (
       <div className={barCls} role="toolbar" aria-label="Borracha">

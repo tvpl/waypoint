@@ -1,6 +1,6 @@
 "use client";
 import type { NodeKind } from "@/domain/plan";
-import { Container as ContainerIcon, Image as KindImage, Link2 as KindLink, RectangleHorizontal, Spline, SquareDashed, StickyNote, Type, PenLine } from "lucide-react";
+import { Container as ContainerIcon, Frame as KindFrame, Image as KindImage, Link2 as KindLink, RectangleHorizontal, Shapes as KindShape, Spline, SquareDashed, StickyNote, Type, PenLine } from "lucide-react";
 import {
   Activity,
   Award,
@@ -146,6 +146,8 @@ export const KIND_ICON: Record<NodeKind, LucideIcon> = {
   image: KindImage,
   text: Type,
   ink: PenLine,
+  shape: KindShape,
+  frame: KindFrame,
 };
 
 export const ConnectorIcon = Spline;

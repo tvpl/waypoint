@@ -6,9 +6,18 @@ import type { AlignMode } from "./doc-ops";
 import type { LayoutDirection } from "./auto-layout";
 import type { ResolvedResource } from "./resource-types";
 import type { InkMode, Point } from "./ink-geometry";
+import type { DrawStyle, Pt } from "./shape-geometry";
 
-/** "draw": pen, highlighter or arrow (see `ink`); "erase": removes drawings under the pointer. */
-export type Tool = "select" | "hand" | "connect" | "draw" | "erase";
+/**
+ * "draw": pen or highlighter (see `ink`); "erase": removes drawings under the pointer; the shape
+ * tools draw a box by dragging; "arrow"/"line" connect the shapes they start and end on (or draw a
+ * free line); "text" places a text where you click.
+ */
+export type Tool = "select" | "hand" | "connect" | "draw" | "erase" | "rect" | "diamond" | "ellipse" | "arrow" | "line" | "text" | "frame";
+
+/** Tools that create by pressing on the canvas (React Flow selection and dragging are off). */
+export const CREATE_TOOLS: ReadonlySet<Tool> = new Set(["draw", "erase", "rect", "diamond", "ellipse", "arrow", "line", "text", "frame"]);
+export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set(["rect", "diamond", "ellipse", "arrow", "line", "text", "frame"]);
 
 export type InkSettings = { mode: InkMode; color: string | undefined; size: number };
 
@@ -107,6 +116,13 @@ export type EditorApi = {
   removeInk: (ids: string[]) => void;
   /** Starts a text annotation at a canvas point (edited in place). */
   addInkText: (at: { x: number; y: number }) => void;
+  /** Style new shapes and arrows are drawn with; changing it restyles the selection too. */
+  style: DrawStyle;
+  setStyle: (patch: Partial<DrawStyle>) => void;
+  /** A shape, text or frame drawn on the canvas (canvas coordinates; a click gives a default size). */
+  addShape: (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: Pt) => void;
+  /** An arrow or line: connects the elements it starts and ends on, else it is a free line. */
+  addLink: (kind: "arrow" | "line", from: Pt, to: Pt, source?: string | null, target?: string | null) => void;
   /** Numbers the selected flow's connections 1…n ("Numerar passos"), or clears the numbers. */
   numberSteps: (edgeIds?: string[]) => void;
   clearSteps: (edgeIds?: string[]) => void;

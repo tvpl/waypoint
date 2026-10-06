@@ -1346,6 +1346,10 @@ function EditorShell(props: PlanEditorProps) {
       if (e.shiftKey && e.code === "Digit0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
       const digit = /^Digit(\d)$/.exec(e.code)?.[1];
       if (digit && !e.shiftKey) {
+        // With nothing selected in the select tool, 1 and 0 keep their old meaning: fit and 100%.
+        const idle = a.tool === "select" && !a.selectedNodes.length && !a.selectedEdges.length;
+        if (idle && digit === "1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
+        if (idle && digit === "0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
         const byDigit: Record<string, Tool | "image"> = { "1": "select", "2": "rect", "3": "diamond", "4": "ellipse", "5": "arrow", "6": "line", "7": "draw", "8": "text", "9": "image", "0": "erase" };
         const t = byDigit[digit];
         return run(() => (t === "image" ? a.addNode("image") : a.setTool(t)));

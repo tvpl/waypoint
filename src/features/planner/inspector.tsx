@@ -1219,7 +1219,7 @@ function PlanInspector() {
             ["Agrupar / desagrupar", "⌘G · ⇧⌘G"],
             ["Organizar (vertical / horizontal)", "⇧L · ⌥⇧L"],
             ["Desfazer / refazer", "⌘Z · ⇧⌘Z"],
-            ["Ajustar à tela / 100%", "⇧1 · ⇧0"],
+            ["Ajustar à tela / 100%", "1 · 0"],
             ["Editar título", "Enter · duplo clique"],
             ["Buscar no Waypoint", "⌘K"],
           ].map(([l, k]) => (

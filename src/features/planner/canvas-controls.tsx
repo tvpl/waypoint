@@ -16,6 +16,7 @@ import {
   Magnet,
   Map as MapIcon,
   Minus,
+  MoreHorizontal,
   MousePointer2,
   Network,
   PenLine,
@@ -29,7 +30,7 @@ import {
 import { EDGE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { SHAPE_TOOLS, useEditor, type Tool } from "./editor-context";
 import { ConnectorIcon, KIND_ICON } from "./icons";
@@ -138,9 +139,46 @@ export function BottomPill() {
         </Tooltip>
         <ArrangeMenu />
       </span>
+      <ViewOptionsMenu />
       <Sep />
       <ZoomControls />
     </div>
+  );
+}
+
+/** Narrow windows: grid, snap, minimap and arrange, folded into one menu. */
+function ViewOptionsMenu() {
+  const ed = useEditor();
+  const n = ed.selectedNodes.length;
+  const check = (on: boolean) => <span className={cn("ml-auto text-caption", on ? "text-accent-ink" : "text-muted")}>{on ? "ligado" : "desligado"}</span>;
+  return (
+    <span className="contents lg:hidden">
+      <Sep />
+      <DropdownMenu>
+        <Tooltip content="Grade, encaixe, minimapa e organizar" side="top">
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-label="Mais opções do canvas" className={pillBtn}>
+              <MoreHorizontal strokeWidth={1.75} />
+            </button>
+          </DropdownMenuTrigger>
+        </Tooltip>
+        <DropdownMenuContent side="top" align="end" sideOffset={10} className="min-w-[230px]">
+          <DropdownMenuLabel>Canvas</DropdownMenuLabel>
+          <DropdownMenuItem onSelect={() => ed.setGrid(!ed.grid)}>
+            <Grid3x3 /> Grade {check(ed.grid)}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => ed.setSnap(!ed.snap)}>
+            <Magnet /> Encaixar na grade {check(ed.snap)}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => ed.setMinimap(!ed.minimap)} shortcut="M">
+            <MapIcon /> Minimapa
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>{n > 0 ? `Organizar seleção (${n})` : "Organizar o plan"}</DropdownMenuLabel>
+          <ArrangeItems Item={DropdownMenuItem} onPick={(d) => ed.autoArrange(d)} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   );
 }
 

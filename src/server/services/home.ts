@@ -1,10 +1,10 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { planAccess } from "./permissions";
 import { listPlans, type Thumb } from "./plans";
 
-export type HomePlan = { id: string; title: string; published: boolean; updatedAt: Date; thumbnail: Thumb };
+export type HomePlan = { id: string; title: string; published: boolean; updatedAt: Date; thumbnail: Thumb; layerCount: number; viewCount: number };
 
 /** Recently opened plans, padded with recently updated ones. */
 export function recentPlans(userId: string, workspaceId: string, limit = 3): HomePlan[] {
@@ -27,7 +27,28 @@ export function recentPlans(userId: string, workspaceId: string, limit = 3): Hom
     published: p.publishedVersionId != null,
     updatedAt: p.updatedAt,
     thumbnail: p.thumbnail,
+    layerCount: p.layerCount,
+    viewCount: p.viewCount,
   }));
+}
+
+/** Plans this person can see with open (unresolved) comment threads, most active first. */
+export function plansWithOpenThreads(userId: string, workspaceId: string, limit = 4): { id: string; title: string; threads: number; lastAt: Date }[] {
+  const visible = new Map(listPlans(userId, workspaceId, "all").map((p) => [p.id, p]));
+  if (!visible.size) return [];
+  const rows = getDb()
+    .select({
+      planId: schema.planComments.planId,
+      threads: sql<number>`count(*)`,
+      lastAt: sql<number>`max(${schema.planComments.createdAt})`,
+    })
+    .from(schema.planComments)
+    .where(and(inArray(schema.planComments.planId, [...visible.keys()]), isNull(schema.planComments.parentId), isNull(schema.planComments.resolvedAt)))
+    .groupBy(schema.planComments.planId)
+    .orderBy(desc(sql`max(${schema.planComments.createdAt})`))
+    .limit(limit)
+    .all();
+  return rows.map((r) => ({ id: r.planId, title: visible.get(r.planId)!.title, threads: Number(r.threads), lastAt: new Date(Number(r.lastAt)) }));
 }
 
 export function pinnedPlans(userId: string, workspaceId: string) {

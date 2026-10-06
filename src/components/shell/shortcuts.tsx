@@ -27,7 +27,7 @@ const GROUPS: Group[] = [
       ["Ir para Links", "g l"],
       ["Ir para Tags", "g t"],
       ["Ir para Configurações", "g s"],
-      ["Expandir / recolher a barra lateral", "["],
+      ["Mostrar / ocultar a barra lateral", "["],
     ],
   },
   {

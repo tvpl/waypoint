@@ -66,7 +66,7 @@ export function getDesktop(): DesktopBridge | null {
 /** The floating capture window's page (desktop/src/main.ts opens it with the global shortcut). */
 export const QUICK_PATH = "/quick";
 
-/** Asks the app rail to expand or collapse (same as the "[" key); sent by the desktop menu. */
+/** Asks the app rail to hide or show itself (same as the "[" key); sent by the desktop menu. */
 export const TOGGLE_RAIL_EVENT = "wp:toggle-rail";
 
 const noop = () => () => {};

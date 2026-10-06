@@ -94,7 +94,7 @@ export function ImportScreen({ tree, canEdit, workspaceName }: { tree: TreeNode[
             <ArrowLeft className="size-3.5" aria-hidden />
             Links
           </Link>
-          <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">Importar e exportar</h1>
+          <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">Importar e exportar</h1>
           <p className="max-w-[640px] text-sm text-muted">
             Traga os favoritos do navegador com todas as pastas — elas viram coleções no Waypoint. Ou baixe sua biblioteca para guardar uma cópia ou levar para outro lugar.
           </p>

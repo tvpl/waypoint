@@ -12,7 +12,7 @@ test("anonymous visitors are sent to login", async ({ page }) => {
 
 test("plan: create, edit, autosave, publish, view", async ({ page }) => {
   await signUp(page);
-  await page.getByRole("button", { name: "Novo plan" }).click();
+  await page.getByRole("button", { name: "Todos os modelos" }).click();
   // starting-point picker: blank is preselected
   await expect(page.getByRole("radio", { name: /Em branco/ })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Criar plan" }).click();

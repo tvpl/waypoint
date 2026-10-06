@@ -155,7 +155,7 @@ export function TriageDialog({
               <span className="inline-flex size-12 animate-in items-center justify-center rounded-xl bg-success-bg text-success-ink">
                 <PartyPopper className="size-6" aria-hidden />
               </span>
-              <p className="font-display text-display-sm leading-none">Caixa zerada</p>
+              <p className="font-display font-semibold text-display-sm leading-none">Caixa zerada</p>
               <p className="text-body text-muted">{handled ? `${handled} ${handled === 1 ? "link organizado" : "links organizados"}. ` : ""}Nada esperando por você.</p>
               <Button variant="primary" onClick={onClose} className="mt-2">
                 Fechar

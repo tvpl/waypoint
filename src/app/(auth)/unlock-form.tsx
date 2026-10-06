@@ -23,7 +23,7 @@ export function UnlockForm({ name, next }: { name: string; next?: string }) {
       <div aria-hidden className="dot-grid pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]" />
       <div className="relative flex w-full max-w-[380px] flex-col items-center gap-7 text-center">
         <div className="relative">
-          <span className="flex size-20 items-center justify-center rounded-full bg-accent-soft font-display text-[40px] leading-none text-accent-ink shadow-raise">
+          <span className="flex size-20 items-center justify-center rounded-full bg-accent-soft font-display font-semibold text-[40px] leading-none text-accent-ink shadow-raise">
             {(name.trim()[0] ?? "?").toUpperCase()}
           </span>
           <span className="absolute -bottom-1 -right-1 flex size-8 items-center justify-center rounded-full border-2 border-bg bg-ink text-bg">
@@ -31,7 +31,7 @@ export function UnlockForm({ name, next }: { name: string; next?: string }) {
           </span>
         </div>
         <div className="flex flex-col gap-1.5">
-          <h1 className="font-display text-display-sm leading-none tracking-[-0.01em]">Olá, {name}</h1>
+          <h1 className="font-display font-semibold text-display-sm leading-none tracking-[-0.025em]">Olá, {name}</h1>
           <p className="text-body text-muted">O Waypoint está bloqueado. Digite sua senha para continuar.</p>
         </div>
         <form action={action} className="flex w-full flex-col gap-3">

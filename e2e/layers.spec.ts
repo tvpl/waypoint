@@ -3,7 +3,7 @@ import { signUp } from "./helpers";
 
 test("plan layers: draw on a new layer, hide it, save it, toggle it in view mode", async ({ page }) => {
   await signUp(page);
-  await page.getByRole("button", { name: "Novo plan" }).click();
+  await page.getByRole("button", { name: "Todos os modelos" }).click();
   await page.getByRole("button", { name: "Criar plan" }).click();
   await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
   const editUrl = page.url();
@@ -47,7 +47,7 @@ test("plan layers: draw on a new layer, hide it, save it, toggle it in view mode
 
 test("layer templates, shapes and text, and comparing views", async ({ page }) => {
   await signUp(page);
-  await page.getByRole("button", { name: "Novo plan" }).click();
+  await page.getByRole("button", { name: "Todos os modelos" }).click();
   await page.getByRole("button", { name: "Criar plan" }).click();
   await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
   const editUrl = page.url();

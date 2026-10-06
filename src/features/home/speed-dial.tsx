@@ -215,5 +215,5 @@ function DialIcon({ src, letter }: { src: string | null; letter: string }) {
       </span>
     );
   }
-  return <span className="font-display text-[30px] leading-none">{letter}</span>;
+  return <span className="font-display font-semibold text-[30px] leading-none">{letter}</span>;
 }

@@ -32,7 +32,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8 px-6 pb-16 pt-12 sm:px-12 sm:pt-14">
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div className="flex flex-col gap-2.5">
-            <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">
+            <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">
               Plans<span className="text-accent">.</span>
             </h1>
             <p className="text-lead text-muted">Mapas, arquiteturas e roadmaps de {ctx.workspace.name} — cada bloco ligado ao que importa.</p>

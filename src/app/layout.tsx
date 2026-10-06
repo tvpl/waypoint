@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AskHost } from "@/components/ui/ask";
 import { DesktopChrome } from "@/components/shell/desktop-chrome";
@@ -10,13 +10,6 @@ import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
-const instrument = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
-  variable: "--font-instrument",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: { default: "Waypoint", template: "%s · Waypoint" },
@@ -41,7 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       lang="pt-BR"
       suppressHydrationWarning
       data-platform={desktop ? process.platform : undefined}
-      className={`${geist.variable} ${geistMono.variable} ${instrument.variable}${desktop ? " wp-desktop" : ""}`}
+      className={`${geist.variable} ${geistMono.variable}${desktop ? " wp-desktop" : ""}`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

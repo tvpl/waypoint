@@ -15,6 +15,7 @@ import { indexEntity, reindexPlanNodes, removePlanFromIndex } from "./search";
 import { setPlanTags, tagsForPlans } from "./tags";
 import { UserError } from "./workspaces";
 import { planThumb } from "@/domain/plan-thumb";
+import { layersOf } from "@/domain/layers";
 
 export type PlanRow = typeof schema.plans.$inferSelect;
 
@@ -112,13 +113,18 @@ export function listPlans(userId: string, workspaceId: string, filter: PlanListF
     .filter((r) => planAccess(userId, r.plan) != null);
 
   const tagMap = tagsForPlans(rows.map((r) => r.plan.id));
-  return rows.map((r) => ({
-    ...r.plan,
-    tags: tagMap.get(r.plan.id) ?? [],
-    publishedVersion: r.publishedVersion ?? null,
-    access: planAccess(userId, r.plan) as Access,
-    thumbnail: r.nodesJson ? planThumb(parseDoc(r as DocRow)) : { nodes: [], edges: [] },
-  }));
+  return rows.map((r) => {
+    const doc = r.nodesJson ? parseDoc(r as DocRow) : null;
+    return {
+      ...r.plan,
+      tags: tagMap.get(r.plan.id) ?? [],
+      publishedVersion: r.publishedVersion ?? null,
+      access: planAccess(userId, r.plan) as Access,
+      thumbnail: doc ? planThumb(doc) : { nodes: [], edges: [] },
+      layerCount: doc ? layersOf(doc).length : 1,
+      viewCount: doc?.views?.length ?? 0,
+    };
+  });
 }
 
 export function getDraft(planId: string): { document: PlanDocument; version: number; updatedAt: Date } {

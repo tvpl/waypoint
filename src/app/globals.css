@@ -107,7 +107,8 @@
   --color-scrim: var(--scrim);
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-display: var(--font-instrument), "Iowan Old Style", Georgia, serif;
+  /* Titles: the same family as the interface, set heavier and tighter. */
+  --font-display: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --shadow-rest: var(--shadow-rest);
   --shadow-thumb: var(--shadow-thumb);
   --shadow-raise: var(--shadow-raise);
@@ -126,9 +127,9 @@
   --text-body: 13px;
   --text-lead: 15px;
   --text-title: 17px;
-  --text-display-sm: 34px;
-  --text-display: 44px;
-  --text-display-lg: 48px;
+  --text-display-sm: 26px;
+  --text-display: 30px;
+  --text-display-lg: 34px;
 
   /* Motion: quick out-curve for UI, a soft spring-like one for things that travel. */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);

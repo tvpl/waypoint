@@ -1604,7 +1604,7 @@ function EditorShell(props: PlanEditorProps) {
               <MonitorSmartphone className="size-6" aria-hidden />
             </span>
             <div className="flex max-w-sm flex-col gap-2">
-              <h1 id="wp-phone-title" className="font-display text-display-sm font-normal leading-[1.05]">
+              <h1 id="wp-phone-title" className="font-display font-semibold text-display-sm leading-[1.05]">
                 Edição funciona melhor em telas maiores
               </h1>
               <p className="text-lead leading-[22px] text-muted">O editor precisa de espaço para as ferramentas e o painel de propriedades. No celular, você pode ver, apresentar e comentar o plan.</p>

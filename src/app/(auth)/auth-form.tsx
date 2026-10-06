@@ -14,7 +14,7 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
         <div className="flex flex-col items-start gap-5">
           <Logo size={40} />
           <div className="flex flex-col gap-2">
-            <h1 className="font-display text-display-lg leading-none tracking-[-0.01em]">
+            <h1 className="font-display font-semibold text-display-lg leading-none tracking-[-0.025em]">
               {mode === "login" ? "Bem-vindo de volta" : "Comece a organizar"}
               <span className="text-accent">.</span>
             </h1>

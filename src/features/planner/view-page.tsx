@@ -72,7 +72,7 @@ export function ViewBody({
       {/* desktop: info column */}
       <aside className="scrollbar-thin hidden shrink-0 flex-col gap-7 overflow-y-auto pb-8 pl-12 pr-8 pt-10 lg:flex lg:w-[380px]">
         <div className="flex flex-col gap-3.5">
-          <h1 className="font-display text-[46px] font-normal leading-[1.02] tracking-[-.01em] text-balance">{plan.title}</h1>
+          <h1 className="font-display font-semibold text-[36px] leading-[1.02] tracking-[-.025em] text-balance">{plan.title}</h1>
           {plan.description && <p className="whitespace-pre-line text-lead leading-[23px] text-ink-2 text-pretty">{plan.description}</p>}
           {plan.tags.length > 0 && <Tags tags={plan.tags} />}
         </div>
@@ -142,7 +142,7 @@ function CompactInfo({ plan, refs, kinds }: { plan: ViewPlanMeta; refs: Resolved
   return (
     <div className="flex shrink-0 flex-col gap-1.5 px-4 pb-3 pt-1 lg:hidden">
       <div className="flex items-start gap-3">
-        <h1 className="min-w-0 flex-1 font-display text-[28px] font-normal leading-[1.05] tracking-[-.01em] text-balance">{plan.title}</h1>
+        <h1 className="min-w-0 flex-1 font-display font-semibold text-[24px] leading-[1.05] tracking-[-.025em] text-balance">{plan.title}</h1>
         {hasDetails && (
           <Button size="sm" variant="secondary" className="mt-0.5" onClick={() => setSheet(true)} aria-haspopup="dialog">
             <Info /> Detalhes

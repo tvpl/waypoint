@@ -54,7 +54,7 @@ export default async function TagPage({ params }: { params: Promise<{ name: stri
           <Link href="/tags" className="inline-flex items-center gap-1 text-body text-muted hover:text-ink">
             <ChevronLeft className="size-4" /> Tags
           </Link>
-          <h1 className="font-display text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">
+          <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">
             <span className="text-muted">#</span>
             {tag.name}
           </h1>

@@ -110,7 +110,7 @@ export function menuModel(s: MenuState): TopMenu[] {
         { id: "app:go-links", label: "Links", accelerator: "CmdOrCtrl+3" },
         { id: "app:go-tags", label: "Tags", accelerator: "CmdOrCtrl+4" },
         sep,
-        { id: "app:toggle-rail", label: "Expandir ou recolher a barra lateral", accelerator: "CmdOrCtrl+B" },
+        { id: "app:toggle-rail", label: "Mostrar ou ocultar a barra lateral", accelerator: "CmdOrCtrl+B" },
         {
           id: "theme",
           label: "Tema",

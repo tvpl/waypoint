@@ -141,6 +141,7 @@ describe("planner SSR", () => {
         views: [],
         active: "base",
         counts: new Map(),
+        isolated: null,
       },
       connectKind: "flow",
       grid: true,
@@ -197,7 +198,7 @@ describe("planner SSR", () => {
     ];
     const noop = () => {};
     const api = new Proxy(
-      { layers: { list: layers, views, active: "p", counts: new Map([["p", 2]]) }, selectedNodes: [], selectedEdges: [] },
+      { layers: { list: layers, views, active: "p", counts: new Map([["p", 2]]), isolated: null }, selectedNodes: [], selectedEdges: [], nodes: [], edges: [] },
       { get: (t, k) => (k in t ? (t as Record<string | symbol, unknown>)[k] : noop) },
     ) as never;
     const panel = renderToString(createElement(TooltipProvider, null, createElement(EditorContext.Provider, { value: api }, createElement(LayersPanel))));

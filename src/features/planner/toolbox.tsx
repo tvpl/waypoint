@@ -1,6 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Layers, ListTree, Plus, Search } from "lucide-react";
 import type { NodeKind } from "@/domain/plan";
 import { SectionLabel } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
@@ -10,6 +10,7 @@ import { KIND_LABEL } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
 import { ResourceRow, setDragPayload, useResourceSearch } from "./resource-picker";
 import { LayersPanel } from "./layers-panel";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/menu";
 
 const SHELVES = [
   { value: "", label: "Tudo" },
@@ -21,7 +22,93 @@ type Shelf = (typeof SHELVES)[number]["value"];
 
 const TILES: (NodeKind | "connector" | "draw")[] = ["block", "container", "note", "link", "section", "image", "text", "connector", "draw"];
 
+type Tab = "insert" | "layers" | "outline";
+const TAB_KEY = "wp-planner-left-tab";
+const TABS: { id: Tab; label: string; icon: typeof Plus }[] = [
+  { id: "insert", label: "Inserir", icon: Plus },
+  { id: "layers", label: "Camadas", icon: Layers },
+  { id: "outline", label: "Estrutura", icon: ListTree },
+];
+
+/** Left panel of the editor: insert elements and resources, layers and views, or the outline. */
 export function Toolbox() {
+  const ed = useEditor();
+  const [tab, setTabState] = useState<Tab>("insert");
+  const many = ed.layers.list.length > 1;
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(TAB_KEY) as Tab | null;
+      if (saved && TABS.some((t) => t.id === saved)) setTabState(saved);
+      else if (many) setTabState("layers");
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    try {
+      localStorage.setItem(TAB_KEY, t);
+    } catch {}
+  };
+  return (
+    <aside aria-label="Ferramentas" className="flex w-[288px] shrink-0 flex-col border-r border-line bg-surface">
+      <div role="tablist" aria-label="Painel" className="mx-3 mt-3 flex shrink-0 gap-0.5 rounded-xl bg-subtle p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg text-body font-medium transition-colors [&_svg]:size-3.5 [&_svg]:shrink-0",
+              tab === t.id ? "bg-surface text-ink shadow-rest" : "text-ink-2 hover:text-ink",
+            )}
+          >
+            <t.icon strokeWidth={2} />
+            {t.label}
+            {t.id === "layers" && many && <span className="rounded-full bg-accent-soft px-1.5 text-caption tabular-nums text-accent-ink">{ed.layers.list.length}</span>}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto p-4">
+        {tab === "insert" && <InsertTab />}
+        {tab === "layers" && <LayersPanel />}
+        {tab === "outline" && <Outline />}
+      </div>
+    </aside>
+  );
+}
+
+/** Where new things go: a reminder (and switch) in the insert tab when the plan has layers. */
+function InsertTarget() {
+  const ed = useEditor();
+  const L = ed.layers;
+  if (L.list.length < 2) return null;
+  const layer = L.list.find((l) => l.id === L.active) ?? L.list[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 text-left text-body hover:border-line-2">
+          <span className="text-muted">Inserindo em</span>
+          <span className="size-2.5 shrink-0 rounded-full" style={{ background: layer.color ?? "var(--muted)" }} aria-hidden />
+          <span className="min-w-0 flex-1 truncate font-medium">{layer.name}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[220px]">
+        <DropdownMenuLabel>Camada ativa</DropdownMenuLabel>
+        {[...L.list].reverse().map((l) => (
+          <DropdownMenuItem key={l.id} onSelect={() => L.setActive(l.id)}>
+            <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color ?? "var(--muted)" }} aria-hidden />
+            <span className="truncate">{l.name}</span>
+            {l.id === L.active && <span className="ml-auto text-caption text-accent-ink">ativa</span>}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function InsertTab() {
   const ed = useEditor();
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
@@ -30,7 +117,8 @@ export function Toolbox() {
   const { items, loading } = useResourceSearch(q.trim(), { limit: shelf ? 12 : 3, exclude: ed.planId, types: shelf || undefined });
 
   return (
-    <aside aria-label="Ferramentas" className="scrollbar-thin flex w-[248px] shrink-0 flex-col gap-[22px] overflow-y-auto border-r border-line bg-surface p-4">
+    <>
+      <InsertTarget />
       <label className="flex h-[34px] shrink-0 items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 text-muted focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
         <Search className="size-[15px] shrink-0" aria-hidden />
         <input
@@ -42,8 +130,6 @@ export function Toolbox() {
           className="w-full bg-transparent text-body text-ink outline-none"
         />
       </label>
-
-      <LayersPanel />
 
       <section className="flex flex-col gap-2.5">
         <SectionLabel>Elementos</SectionLabel>
@@ -124,9 +210,7 @@ export function Toolbox() {
           )}
         </div>
       </section>
-
-      <Outline />
-    </aside>
+    </>
   );
 }
 
@@ -167,8 +251,8 @@ function Outline() {
   }, [ed.nodes]);
 
   return (
-    <section className="flex flex-col gap-1.5">
-      <SectionLabel>Estrutura</SectionLabel>
+    <section className="flex flex-col gap-1.5" aria-label="Estrutura">
+      <SectionLabel>Todos os elementos</SectionLabel>
       {rows.length === 0 ? (
         <p className="text-xs text-muted">Os elementos do canvas aparecem aqui.</p>
       ) : (

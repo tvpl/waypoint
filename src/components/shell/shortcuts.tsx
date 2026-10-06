@@ -62,6 +62,8 @@ const GROUPS: Group[] = [
       ["Copiar · colar", "⌘C ⌘V"],
       ["Agrupar · desagrupar", "⌘G ⇧⌘G"],
       ["Organizar vertical · horizontal", "⇧L ⌥⇧L"],
+      ["Desenhar · borracha", "P E"],
+      ["Mover seleção para a camada de baixo · de cima", "⌥[ ⌥]"],
       ["Desfazer · refazer", "⌘Z ⇧⌘Z"],
       ["Zoom: aproximar · afastar · 100% · ajustar", "+ - 0 1"],
       ["Editar título", "↵"],

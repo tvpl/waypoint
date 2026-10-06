@@ -3,6 +3,12 @@ import {
   activeView,
   addLayer,
   applyLayerTemplate,
+  renameLayerGroup,
+  renameView,
+  reorderLayer,
+  reorderView,
+  setLayerGroup,
+  updateViewLayers,
   compareOptions,
   compareViews,
   layerOpacity,
@@ -181,5 +187,47 @@ describe("layer opacity, templates and comparisons", () => {
     expect(Object.values(r.visibility).every(Boolean)).toBe(true);
     expect(compareViews(d, "v:nope", `l:${v2.id}`)).toBeNull();
     expect(compareOptions(d).map((o) => o.name)).toEqual(["Só Base", "Base + v1", "Base + v2"]);
+  });
+});
+
+describe("layer folders and ordering", () => {
+  const four = () => {
+    let d = doc();
+    const ids: string[] = [];
+    for (const n of ["a", "b", "c"]) {
+      const r = addLayer(d, n);
+      d = r.doc;
+      ids.push(r.id);
+    }
+    return { d, ids };
+  };
+
+  it("reorders layers by index, clamped", () => {
+    const { d, ids } = four();
+    expect(layersOf(reorderLayer(d, ids[2], 0)).map((l) => l.name)).toEqual(["c", "Base", "a", "b"]);
+    expect(layersOf(reorderLayer(d, BASE_LAYER_ID, 99)).map((l) => l.name)).toEqual(["a", "b", "c", "Base"]);
+    expect(reorderLayer(d, "nope", 1)).toBe(d);
+  });
+
+  it("folders gather their layers next to the topmost one; renaming or clearing works", () => {
+    const { d, ids } = four();
+    const g = setLayerGroup(d, [BASE_LAYER_ID, ids[2]], "Versões");
+    expect(layersOf(g).map((l) => `${l.name}:${l.group ?? ""}`)).toEqual(["a:", "b:", "Base:Versões", "c:Versões"]);
+    const r = renameLayerGroup(g, "Versões", "Histórico");
+    expect(layersOf(r).filter((l) => l.group === "Histórico")).toHaveLength(2);
+    expect(layersOf(renameLayerGroup(r, "Histórico", "")).some((l) => l.group)).toBe(false);
+    expect(normalizeDocument(g).layers?.find((l) => l.id === ids[2])?.group).toBe("Versões");
+  });
+
+  it("renames, reorders and refreshes saved views", () => {
+    const { d } = four();
+    let x = saveView(d, "Um").doc;
+    x = saveView(x, "Dois").doc;
+    const [one, two] = x.views!;
+    expect(renameView(x, one.id, "Primeira").views![0].name).toBe("Primeira");
+    expect(renameView(x, one.id, "  ")).toBe(x);
+    expect(reorderView(x, two.id, 0).views!.map((v) => v.name)).toEqual(["Dois", "Um"]);
+    const hidden = updateLayer(x, BASE_LAYER_ID, { visible: false });
+    expect(updateViewLayers(hidden, one.id).views![0].layers).not.toContain(BASE_LAYER_ID);
   });
 });

@@ -12,6 +12,7 @@ test("plan layers: draw on a new layer, hide it, save it, toggle it in view mode
   await expect(page.locator(".react-flow__node-block")).toHaveCount(1);
 
   // A second layer becomes the active one; the stroke goes there.
+  await page.getByRole("tab", { name: /Camadas/ }).click();
   await page.getByRole("button", { name: "Nova camada" }).click();
   await page.keyboard.press("p");
   await expect(page.getByRole("toolbar", { name: "Desenho" })).toBeVisible();
@@ -52,7 +53,7 @@ test("layer templates, shapes and text, and comparing views", async ({ page }) =
   await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
   const editUrl = page.url();
 
-  // Two blocks on the base and a connection between them.
+  // Two blocks on the base.
   await page.getByRole("button", { name: /^Bloco/ }).first().click();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /^Bloco/ }).first().click();
@@ -60,6 +61,7 @@ test("layer templates, shapes and text, and comparing views", async ({ page }) =
   await expect(page.locator(".react-flow__node-block")).toHaveCount(2);
 
   // A template adds layers and views; its first layer becomes the active one.
+  await page.getByRole("tab", { name: /Camadas/ }).click();
   await page.getByRole("button", { name: "Modelos de camadas" }).first().click();
   await page.getByRole("menuitem", { name: /Atual, proposta e riscos/ }).click();
   await expect(page.getByRole("button", { name: "Ocultar Riscos" })).toBeVisible();
@@ -97,4 +99,41 @@ test("layer templates, shapes and text, and comparing views", async ({ page }) =
   await expect(page.locator(".react-flow__node.wp-diff-added")).toHaveCount(2);
   await bar.getByRole("radio", { name: "A", exact: true }).click();
   await expect(page.locator(".react-flow__node-ink")).toHaveCount(0);
+});
+
+test("layers panel: folders, isolating a layer, moving an element by dragging", async ({ page }) => {
+  await signUp(page);
+  await page.getByRole("button", { name: "Todos os modelos" }).click();
+  await page.getByRole("button", { name: "Criar plan" }).click();
+  await expect(page).toHaveURL(/\/plans\/\w+\/edit$/);
+  await page.getByRole("button", { name: /^Bloco/ }).first().click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("tab", { name: /Camadas/ }).click();
+  await page.getByRole("button", { name: "Nova camada" }).click();
+
+  // The block (on the base) is dragged from the base's element list onto "Camada 2".
+  await page.getByRole("button", { name: "Mostrar elementos de Base" }).click();
+  const element = page.getByRole("list", { name: "Elementos de Base" }).getByRole("button").first();
+  await element.dragTo(page.locator("li", { hasText: "Camada 2" }).locator("[draggable=true]").first());
+  await expect(page.locator("li", { hasText: "Camada 2" }).first()).toContainText("1 elemento");
+
+  // Isolating the base fades the block (now on Camada 2) and keeps it from being selected.
+  await page.locator("li", { hasText: /^Base/ }).first().hover();
+  await page.getByRole("button", { name: "Mais opções de Base" }).click();
+  await page.getByRole("menuitem", { name: /Isolar/ }).click();
+  await expect(page.getByText("Editando só")).toBeVisible();
+  await expect(page.locator(".react-flow__node-block.wp-isolate-out")).toHaveCount(1);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Editando só")).toBeHidden();
+
+  // A folder groups layers and hides them together.
+  await page.locator("li", { hasText: "Camada 2" }).first().hover();
+  await page.getByRole("button", { name: "Mais opções de Camada 2" }).click();
+  await page.getByRole("menuitem", { name: "Mover para pasta" }).click();
+  await page.getByRole("menuitem", { name: "Nova pasta…" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("Versões");
+  await page.getByRole("dialog").getByRole("button", { name: "Criar" }).click();
+  await page.getByRole("button", { name: "Ocultar pasta Versões" }).click();
+  await expect(page.locator(".react-flow__node-block")).toBeHidden();
 });

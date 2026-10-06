@@ -35,6 +35,24 @@ export type LayersApi = {
   applyTemplate: (id: string) => void;
   /** Opens the comments panel on a layer's threads. */
   comment: (id: string) => void;
+  /** Moves a layer to a position in the stack (0 = bottom). */
+  reorder: (id: string, toIndex: number) => void;
+  /** Moves a layer to a position and into a folder (or none), in one step: a drag in the panel. */
+  place: (id: string, toIndex: number, group: string | undefined) => void;
+  /** Puts layers in a folder, or out of it (no name). */
+  setGroup: (ids: string[], group: string | undefined) => void;
+  renameGroup: (from: string, to: string) => void;
+  /** Moves elements (with what is inside them) and connections to a layer. */
+  assignTo: (id: string, ids: { nodes?: string[]; edges?: string[] }) => void;
+  /** Layer being edited alone, if any. */
+  isolated: string | null;
+  setIsolated: (id: string | null) => void;
+  renameView: (id: string, name: string) => void;
+  reorderView: (id: string, toIndex: number) => void;
+  /** Makes a view show the layers visible now. */
+  updateView: (id: string) => void;
+  /** Outlines an element on the canvas (hovering it in the panel). */
+  hover: (id: string | null) => void;
   /** Elements per layer (top-level nodes and connections). */
   counts: Map<string, number>;
 };

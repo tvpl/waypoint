@@ -71,7 +71,7 @@ function withLayers<T extends Doc>(doc: T, layers: PlanLayer[]): T {
   // Only the implicit base left, unchanged: no need to store anything.
   const b = layers[0];
   const onlyDefaultBase =
-    layers.length === 1 && b.id === BASE_LAYER_ID && b.name === BASE_LAYER.name && b.visible !== false && !b.locked && !b.animate && !b.dimmed && !b.color && !b.reveal && (b.opacity ?? 1) >= 1;
+    layers.length === 1 && b.id === BASE_LAYER_ID && b.name === BASE_LAYER.name && b.visible !== false && !b.locked && !b.animate && !b.dimmed && !b.color && !b.reveal && !b.group && (b.opacity ?? 1) >= 1;
   const next = { ...doc, layers: onlyDefaultBase ? undefined : layers };
   if (!next.layers) delete next.layers;
   return next;
@@ -98,6 +98,7 @@ export function updateLayer<T extends Doc>(doc: T, id: string, patch: Partial<Om
       if ("opacity" in patch) delete next.dimmed;
       if (next.opacity !== undefined && next.opacity >= 1) delete next.opacity;
       for (const k of ["locked", "animate", "dimmed", "reveal"] as const) if (next[k] === false) delete next[k];
+      if ("group" in patch && !next.group?.trim()) delete next.group;
       return next;
     }),
   );
@@ -111,6 +112,56 @@ export function moveLayer<T extends Doc>(doc: T, id: string, dir: "up" | "down")
   if (i < 0 || j < 0 || j >= layers.length) return doc;
   [layers[i], layers[j]] = [layers[j], layers[i]];
   return withLayers(doc, layers);
+}
+
+/** Moves a layer to a position in the stack (0 = bottom), e.g. after a drag in the panel. */
+export function reorderLayer<T extends Doc>(doc: T, id: string, toIndex: number): T {
+  const layers = [...layersOf(doc)];
+  const from = layers.findIndex((l) => l.id === id);
+  if (from < 0) return doc;
+  const [layer] = layers.splice(from, 1);
+  const to = Math.max(0, Math.min(layers.length, toIndex));
+  if (to === from) return doc;
+  layers.splice(to, 0, layer);
+  return withLayers(doc, layers);
+}
+
+/**
+ * Puts layers in a folder (or takes them out with no name). The folder's layers are gathered next
+ * to its topmost one, keeping their relative order.
+ */
+export function setLayerGroup<T extends Doc>(doc: T, ids: Iterable<string>, group: string | undefined): T {
+  const want = new Set(ids);
+  const name = group?.trim().slice(0, 80) || undefined;
+  let layers = layersOf(doc).map((l) => {
+    if (!want.has(l.id)) return l;
+    const next = { ...l, group: name };
+    if (!name) delete next.group;
+    return next;
+  });
+  if (name) {
+    const members = layers.filter((l) => l.group === name);
+    const top = Math.max(...members.map((m) => layers.indexOf(m)));
+    const rest = layers.filter((l) => l.group !== name);
+    // Insert the block where its topmost member was (counted among the other layers).
+    const before = layers.slice(0, top + 1).filter((l) => l.group !== name).length;
+    layers = [...rest.slice(0, before), ...members, ...rest.slice(before)];
+  }
+  return withLayers(doc, layers);
+}
+
+/** Renames a folder (or dissolves it with an empty name). */
+export function renameLayerGroup<T extends Doc>(doc: T, from: string, to: string): T {
+  const name = to.trim().slice(0, 80);
+  return withLayers(
+    doc,
+    layersOf(doc).map((l) => {
+      if (l.group !== from) return l;
+      const next = { ...l, group: name || undefined };
+      if (!name) delete next.group;
+      return next;
+    }),
+  );
 }
 
 /**
@@ -198,6 +249,29 @@ export function saveView<T extends Doc>(doc: T, name: string): { doc: T; id: str
     .map((l) => l.id);
   const view: PlanView = { id, name: name.trim().slice(0, 80) || "Visão", layers: visible };
   return { doc: { ...doc, views: [...(doc.views ?? []), view] }, id };
+}
+
+export function renameView<T extends Doc>(doc: T, id: string, name: string): T {
+  const n = name.trim().slice(0, 80);
+  if (!n) return doc;
+  return { ...doc, views: (doc.views ?? []).map((v) => (v.id === id ? { ...v, name: n } : v)) };
+}
+
+export function reorderView<T extends Doc>(doc: T, id: string, toIndex: number): T {
+  const views = [...(doc.views ?? [])];
+  const from = views.findIndex((v) => v.id === id);
+  if (from < 0) return doc;
+  const [v] = views.splice(from, 1);
+  views.splice(Math.max(0, Math.min(views.length, toIndex)), 0, v);
+  return { ...doc, views };
+}
+
+/** Updates a view to the layers visible now. */
+export function updateViewLayers<T extends Doc>(doc: T, id: string): T {
+  const visible = layersOf(doc)
+    .filter((l) => l.visible !== false)
+    .map((l) => l.id);
+  return { ...doc, views: (doc.views ?? []).map((v) => (v.id === id ? { ...v, layers: visible } : v)) };
 }
 
 export function removeView<T extends Doc>(doc: T, id: string): T {

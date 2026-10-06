@@ -365,6 +365,13 @@
 
 /* ---------------------------------------------------------------- layers */
 /* Layer opacity is an inline style on nodes and edges (canvas-adapter). */
+/* Isolating a layer: everything else steps back and can't be picked. */
+.wp-flow .react-flow__node.wp-isolate-out,
+.wp-flow .react-flow__edge.wp-isolate-out {
+  opacity: 0.18 !important;
+  filter: grayscale(0.6);
+  pointer-events: none !important;
+}
 /* Animated layer: dashes travel along its connections to show the direction of a flow. */
 .wp-flow .react-flow__edge.animated .wp-edge-path {
   stroke-dasharray: 7 6;

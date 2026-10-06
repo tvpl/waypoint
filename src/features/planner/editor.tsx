@@ -38,6 +38,12 @@ import {
   moveLayer,
   removeLayer,
   removeView,
+  renameLayerGroup,
+  renameView,
+  reorderLayer,
+  reorderView,
+  setLayerGroup,
+  updateViewLayers,
   saveView,
   showAllLayers,
   soloLayer,
@@ -91,6 +97,7 @@ import { helperLines, type Guides } from "./helper-lines";
 import { autoLayout, type LayoutDirection } from "./auto-layout";
 import { clearBackup, readBackup, useAutosave } from "./autosave";
 import { Toolbox } from "./toolbox";
+import { IsolateBanner } from "./layers-panel";
 import { Inspector } from "./inspector";
 import { BottomPill, SelectionBar } from "./canvas-controls";
 import { CanvasContextMenu, type MenuTarget } from "./context-menu";
@@ -228,6 +235,11 @@ function EditorShell(props: PlanEditorProps) {
   const [activeLayer, setActiveLayer] = useState<string>(BASE_LAYER_ID);
   const activeLayerRef = useRef(activeLayer);
   activeLayerRef.current = activeLayer;
+  // Editing one layer alone: the others fade and can't be touched (not saved with the plan).
+  const [isolated, setIsolatedState] = useState<string | null>(null);
+  const isolateRef = useRef<string | null>(null);
+  // Element hovered in the layers panel, outlined on the canvas.
+  const [hoverId, setHoverId] = useState<string | null>(null);
   const [connectKind, setConnectKind] = useState<EdgeKind>("flow");
   const [connectSource, setConnectSource] = useState<string | null>(null);
   const connectOnce = useRef(false);
@@ -325,9 +337,25 @@ function EditorShell(props: PlanEditorProps) {
     const ls: LayerState = { layers: doc.layers, views: doc.views };
     layerStateRef.current = ls;
     setLayerState(ls);
-    setNodes(toFlowNodes(doc, { selected: n }));
-    setEdges(toFlowEdges(doc, { selected: e }));
+    setNodes(toFlowNodes(doc, { selected: n, isolate: isolateRef.current }));
+    setEdges(toFlowEdges(doc, { selected: e, isolate: isolateRef.current }));
   }, []);
+
+  const setIsolated = useCallback(
+    (id: string | null) => {
+      isolateRef.current = id;
+      setIsolatedState(id);
+      if (id) setActiveLayer(id);
+      // Re-render with the new fading; what is selected on other layers is let go.
+      const keep = (layer?: string) => !id || (layer ?? BASE_LAYER_ID) === id;
+      const sel = selectedIds();
+      applyDoc(docOf(), {
+        nodes: [...sel.nodes].filter((n) => keep(nodesRef.current.find((x) => x.id === n)?.data._layer)),
+        edges: [...sel.edges].filter((e) => keep(edgesRef.current.find((x) => x.id === e)?.data?.layer)),
+      });
+    },
+    [applyDoc, docOf],
+  );
 
   /** Areas on hidden or locked layers don't take dropped elements. */
   const canHold = useCallback((n: PlanNode) => {
@@ -853,9 +881,24 @@ function EditorShell(props: PlanEditorProps) {
         if (first) setActiveLayer(first);
       },
       comment: (id) => openLayerComments(id),
+      reorder: (id, toIndex) => mutate((d) => reorderLayer(d, id, toIndex)),
+      place: (id, toIndex, group) =>
+        mutate((d) => {
+          const x = reorderLayer(d, id, toIndex);
+          return layersOf(x).find((l) => l.id === id)?.group === group ? x : setLayerGroup(x, [id], group);
+        }),
+      setGroup: (ids, group) => mutate((d) => setLayerGroup(d, ids, group)),
+      renameGroup: (from, to) => mutate((d) => renameLayerGroup(d, from, to)),
+      assignTo: (id, ids) => mutate((d) => assignLayer(d, id, ids)),
+      isolated,
+      setIsolated,
+      renameView: (id, name) => mutate((d) => renameView(d, id, name)),
+      reorderView: (id, toIndex) => mutate((d) => reorderView(d, id, toIndex)),
+      updateView: (id) => mutate((d) => updateViewLayers(d, id)),
+      hover: setHoverId,
       counts,
     };
-  }, [layerState, nodes, edges, activeLayer, mutate, select, openLayerComments]);
+  }, [layerState, nodes, edges, activeLayer, mutate, select, openLayerComments, isolated, setIsolated]);
 
   const focusNode = useCallback(
     (id: string) => {
@@ -975,14 +1018,14 @@ function EditorShell(props: PlanEditorProps) {
       toggleCollapsed: (id) => apiRef.current.toggleCollapsed(id),
       childCount,
       singleSelectedId,
-      highlightId: null,
+      highlightId: hoverId,
       dropTargetId: dropTarget,
       connectSourceId: connectSource,
       isInteractive: () => false,
       commentCount,
       openNodeComments,
     }),
-    [resourceFor, editingId, updateNodeData, commitInkText, updateEdge, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
+    [resourceFor, editingId, updateNodeData, commitInkText, updateEdge, childCount, singleSelectedId, hoverId, dropTarget, connectSource, commentCount, openNodeComments],
   );
 
   const commentNodes = useMemo(
@@ -1029,11 +1072,24 @@ function EditorShell(props: PlanEditorProps) {
       if (mod && k === "l") return a.selectedNodes.length === 1 ? run(() => a.setInspectorTab("action")) : undefined;
       // ⇧L vertical, ⌥⇧L horizontal (e.code: ⌥ changes e.key on macOS)
       if (!mod && e.shiftKey && e.code === "KeyL") return run(() => a.autoArrange(e.altKey ? "LR" : "TB"));
+      // ⌥[ / ⌥] move the selection to the layer below / above (e.code: ⌥ changes e.key on macOS).
+      if (e.altKey && !mod && (e.code === "BracketLeft" || e.code === "BracketRight")) {
+        const sel = a.selectedNodes[0] ?? null;
+        const edge = a.selectedEdges[0] ?? null;
+        const from = sel ? (sel.data._layer ?? BASE_LAYER_ID) : edge ? (edge.data?.layer ?? BASE_LAYER_ID) : null;
+        if (!from) return;
+        const list = a.layers.list;
+        const target = list[list.findIndex((l) => l.id === from) + (e.code === "BracketRight" ? 1 : -1)];
+        if (target) run(() => a.layers.assignSelection(target.id));
+        return;
+      }
       if (mod || e.altKey) return;
       if (k === "delete" || k === "backspace") return run(a.remove);
       if (k === "escape") {
         setEditingId(null);
         if (a.tool === "connect" || a.tool === "draw" || a.tool === "erase") return run(() => a.setTool("select"));
+        // nothing to let go of: leave an isolated layer
+        if (!a.selectedNodes.length && !a.selectedEdges.length && a.layers.isolated) return run(() => a.layers.setIsolated(null));
         return run(() => a.select([]));
       }
       if (k === "enter" && a.selectedNodes.length === 1) return run(() => a.startEditing(a.selectedNodes[0].id));
@@ -1194,7 +1250,7 @@ function EditorShell(props: PlanEditorProps) {
         if (target !== cur) doc = reparent(doc, id, target);
       }
       if (doc === base) return prev;
-      return toFlowNodes(doc, { selected: new Set(prev.filter((n) => n.selected).map((n) => n.id)) });
+      return toFlowNodes(doc, { selected: new Set(prev.filter((n) => n.selected).map((n) => n.id)), isolate: isolateRef.current });
     });
   }, [canHold]);
 
@@ -1577,6 +1633,7 @@ function EditorShell(props: PlanEditorProps) {
                   )}
                   {(tool === "draw" || tool === "erase") && <InkCanvas wrapRef={wrapRef} />}
                   <SelectionBar />
+                  <IsolateBanner />
                   <BottomPill />
                   <div className="wp-no-print absolute left-3 top-3 z-10 flex gap-2 md:hidden">
                     <Button size="sm" variant="secondary" className="shadow-pop" onClick={() => setPhonePanel("tools")}>

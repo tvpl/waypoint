@@ -150,6 +150,8 @@ export const planLayerSchema = z.object({
   opacity: z.number().min(0.1).max(1).optional(),
   /** Presentation: starts hidden and appears as a step of its own ("revelar"). */
   reveal: z.boolean().optional(),
+  /** Folder in the layers panel ("Versões" › v1, v2…). Layers of a folder stay next to each other. */
+  group: z.string().max(80).optional(),
   description: z.string().max(500).optional(),
 });
 export type PlanLayer = z.infer<typeof planLayerSchema>;

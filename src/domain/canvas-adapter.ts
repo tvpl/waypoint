@@ -121,10 +121,12 @@ export type ToFlowOptions = {
   readOnly?: boolean;
   /** Per-viewer layer visibility on top of the document's (view mode toggles, saved views). */
   layerVisibility?: Readonly<Record<string, boolean>>;
+  /** Editing one layer alone ("isolar"): the others fade and can't be selected. */
+  isolate?: string | null;
 };
 
 /** What a node or edge needs to know about its layer when rendered. */
-type LayerRender = { z: number; hidden: boolean; locked: boolean; opacity: number; animate: boolean };
+type LayerRender = { z: number; hidden: boolean; locked: boolean; opacity: number; animate: boolean; out: boolean };
 
 function layerRender(doc: Pick<PlanDocument, "layers">, opts: ToFlowOptions): Map<string, LayerRender> {
   const vis = layerVisibility(doc, opts.layerVisibility);
@@ -132,7 +134,7 @@ function layerRender(doc: Pick<PlanDocument, "layers">, opts: ToFlowOptions): Ma
   return new Map(
     layersOf(doc).map((l) => [
       l.id,
-      { z: (idx.get(l.id) ?? 0) * LAYER_Z, hidden: vis.get(l.id) === false, locked: !opts.readOnly && !!l.locked, opacity: layerOpacity(l), animate: !!l.animate },
+      { z: (idx.get(l.id) ?? 0) * LAYER_Z, hidden: vis.get(l.id) === false, locked: !opts.readOnly && !!l.locked, opacity: layerOpacity(l), animate: !!l.animate, out: !!opts.isolate && opts.isolate !== l.id },
     ]),
   );
 }
@@ -160,6 +162,13 @@ export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: Reado
     out.deletable = false;
   }
   if (layer && layer.opacity < 1) out.style = { opacity: layer.opacity };
+  if (layer?.out) {
+    out.className = "wp-isolate-out";
+    out.draggable = false;
+    out.selectable = false;
+    out.deletable = false;
+    out.connectable = false;
+  }
   if (opts.readOnly) {
     out.draggable = false;
     out.selectable = false;
@@ -197,6 +206,13 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerR
   if (layer?.animate) out.animated = true;
   // Read by the edge component (React Flow doesn't apply edge styles to the label).
   if (layer && layer.opacity < 1) out.data!._opacity = layer.opacity;
+  if (layer?.out) {
+    out.className = "wp-isolate-out";
+    out.selectable = false;
+    out.deletable = false;
+    out.reconnectable = false;
+    out.data!._dim = true;
+  }
   if (layer?.locked) {
     out.selectable = false;
     out.deletable = false;

@@ -1,0 +1,30 @@
+{
+  "name": "waypoint-desktop",
+  "productName": "Waypoint",
+  "version": "0.1.0",
+  "description": "Waypoint — Visual Planner & Link Library",
+  "author": "Waypoint",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "server": "node scripts/prepare-server.mjs",
+    "icons": "node scripts/render-icons.mjs",
+    "dev": "npm run build && electron . --dev",
+    "start": "npm run build && electron .",
+    "pack": "npm run server && npm run build && electron-builder --dir",
+    "dist": "npm run server && npm run build && electron-builder --publish never",
+    "dist:win": "npm run server -- --platform=win32 && npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run server -- --platform=darwin && npm run build && electron-builder --mac --publish never",
+    "dist:linux": "npm run server -- --platform=linux && npm run build && electron-builder --linux --publish never",
+    "smoke": "node scripts/smoke.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "5.9"
+  }
+}

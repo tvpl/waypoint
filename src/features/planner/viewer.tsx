@@ -2,7 +2,7 @@
 import "@xyflow/react/dist/style.css";
 import "./planner.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ConnectionMode, ReactFlow, ReactFlowProvider, useReactFlow, type Node } from "@xyflow/react";
 import { ArrowUpRight, ExternalLink, Loader2, PanelRight, X } from "lucide-react";
@@ -14,15 +14,21 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn, motionMs } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
 import { nodeTypes } from "./nodes";
-import { edgeTypes } from "./edges";
+import { edgeTypes, useAvoidance } from "./edges";
 import { statusMeta, PARENT_KINDS } from "./defaults";
 import { ZoomControls } from "./zoom-controls";
 import { fallbackResource, type ResolvedResource } from "./resource-types";
 import { ResourceIcon } from "./resource-picker";
-import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
+import { copyScene, downloadScene, excalidrawScene, exportFramesPdf, exportImage, exportJson, exportPdf, isExcalidrawExport, openPrintWindow } from "./export";
+import { isOverlayId } from "@/domain/overlay";
+import { overlayFlow, useOverlays } from "./overlays";
+import { ALL_ANNOTATIONS, annotationOf, annotationVisible, legend, type AnnotationView } from "./annotations";
+import { AnnotationsMenu } from "./annotations-panel";
+import { compareViews, layerIdOf, layerVisibility, viewVisibility } from "@/domain/layers";
+import { CompareBar, defaultCompare, parseCompare, sideVisibility, ViewLayers, type CompareState } from "./view-layers";
 import type { ExportKind } from "./topbar";
 
-export type ViewerExport = (kind: ExportKind) => Promise<void>;
+export type ViewerExport = (kind: ExportKind, viewId?: string) => Promise<void>;
 
 export type CanvasExtras = {
   /** Comments in unresolved threads per node (badge). */
@@ -34,13 +40,20 @@ export type CanvasExtras = {
 
 type Props = CanvasExtras & {
   document: PlanDocument;
+  /** The plan shown (lets layers that overlay other plans load them). */
+  planId?: string;
   resources: Record<string, ResolvedResource>;
   focusNodeId?: string | null;
   className?: string;
   meta?: { title: string; description?: string | null; tags?: string[] };
   exportRef?: MutableRefObject<ViewerExport | null>;
-  /** Presentation stage: no zoom controls; dims everything outside `activeIds`. */
-  stage?: { activeIds: ReadonlySet<string> | null };
+  /**
+   * Presentation stage: no zoom controls; dims everything outside `activeIds` (connections on
+   * `activeLayer` stay lit too, for a layer being revealed).
+   */
+  stage?: { activeIds: ReadonlySet<string> | null; activeLayer?: string };
+  /** Layer visibility decided by the caller (presentation steps); otherwise the reader picks. */
+  layerOverrides?: Record<string, boolean>;
   /** Rendered inside the React Flow provider (e.g. presentation controls). */
   children?: React.ReactNode;
 };
@@ -73,7 +86,7 @@ function ancestorsOf(doc: PlanDocument, id: string) {
 
 type Hover = { id: string; left: number; top: number; sheet?: boolean };
 
-function ViewerInner({ document: doc, resources, focusNodeId, className, meta, exportRef, stage, children, commentCount, openNodeComments, focusRequest }: Props) {
+function ViewerInner({ document: doc, planId, resources, focusNodeId, className, meta, exportRef, stage, layerOverrides: fixedLayers, children, commentCount, openNodeComments, focusRequest }: Props) {
   const rf = useReactFlow();
   const router = useRouter();
   const wrap = useRef<HTMLDivElement>(null);
@@ -84,6 +97,21 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   });
   const [highlight, setHighlight] = useState<string | null>(focusExists ? focusNodeId! : null);
   const [hover, setHover] = useState<Hover | null>(null);
+  // Layers this reader turned on/off (or a saved view from ?view=…); the document keeps its defaults.
+  const viewParam = useSearchParams()?.get("view");
+  const [layerOverrides, setLayerOverrides] = useState<Record<string, boolean>>(() => (viewParam && viewVisibility(doc, viewParam)) || {});
+  const layerOverridesRef = useRef(layerOverrides);
+  layerOverridesRef.current = layerOverrides;
+  // Comparing two views (?compare=a,b opens one directly).
+  const compareParam = useSearchParams()?.get("compare");
+  const [compare, setCompare] = useState<CompareState | null>(() => (stage ? null : parseCompare(doc, compareParam)));
+  const diff = useMemo(() => (compare ? compareViews(doc, compare.a, compare.b) : null), [doc, compare]);
+  const shownLayers = useMemo(() => {
+    if (fixedLayers) return fixedLayers;
+    if (compare && diff) return compare.show === "diff" ? diff.visibility : sideVisibility(doc, compare.show === "a" ? compare.a : compare.b);
+    return layerOverrides;
+  }, [fixedLayers, compare, diff, doc, layerOverrides]);
+  const diffOn = !!diff && compare?.show === "diff";
   const [details, setDetails] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ res: ResolvedResource; title: string } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,19 +124,37 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
     [doc, overrides],
   );
   const active = stage?.activeIds ?? null;
+  const activeLayer = stage?.activeLayer;
   const nodes = useMemo(() => {
-    const list = toFlowNodes(viewDoc, { readOnly: true });
+    const list = toFlowNodes(viewDoc, { readOnly: true, layerVisibility: shownLayers });
+    if (diffOn) return list.map((n) => ({ ...n, className: cn(n.className, `wp-diff-${diff!.nodes.get(n.id) ?? "same"}`) }));
     if (!stage) return list;
-    return list.map((n) => ({ ...n, className: cn("wp-stage-node", active && !active.has(n.id) && "wp-dim") }));
-  }, [viewDoc, stage, active]);
+    return list.map((n) => ({ ...n, className: cn(n.className, "wp-stage-node", active && !active.has(n.id) && "wp-dim") }));
+  }, [viewDoc, stage, active, shownLayers, diffOn, diff]);
   const edges = useMemo(() => {
-    const list = toFlowEdges(viewDoc, { readOnly: true });
+    const list = toFlowEdges(viewDoc, { readOnly: true, layerVisibility: shownLayers });
+    if (diffOn) {
+      return list.map((e) => {
+        const st = diff!.edges.get(e.id) ?? "same";
+        return { ...e, className: cn(e.className, `wp-diff-${st}`), data: { ...e.data!, _diff: st } };
+      });
+    }
     if (!stage) return list;
     return list.map((e) => {
-      const dim = !!active && !(active.has(e.source) && active.has(e.target));
-      return { ...e, className: cn("wp-stage-edge", dim && "wp-dim"), data: { ...e.data!, _dim: dim } };
+      const lit = !active || (active.has(e.source) && active.has(e.target)) || (!!activeLayer && layerIdOf(e.data ?? {}) === activeLayer);
+      return { ...e, className: cn(e.className, "wp-stage-edge", !lit && "wp-dim"), data: { ...e.data!, _dim: !lit } };
     });
-  }, [viewDoc, stage, active]);
+  }, [viewDoc, stage, active, activeLayer, shownLayers, diffOn, diff]);
+  // Annotations: the reader can hide them, by kind too.
+  const [annotationView, setAnnotationView] = useState<AnnotationView>(ALL_ANNOTATIONS);
+  const annotationItems = useMemo(() => legend(doc.nodes.map((n) => ({ id: n.id, kind: n.kind, data: n.data, x: n.x, y: n.y }))), [doc.nodes]);
+  // Other plans overlaid on layers, for readers who can see them.
+  const overlays = useOverlays(planId ?? "", planId ? doc.layers : undefined, null);
+  const overlay = useMemo(() => overlayFlow(doc, overlays, { layerVisibility: shownLayers }), [doc, overlays, shownLayers]);
+  const shown = useMemo(() => nodes.map((n) => (n.type === "annotation" && !annotationVisible(annotationOf(n), annotationView) ? { ...n, hidden: true } : n)), [nodes, annotationView]);
+  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...shown] : shown), [overlay.nodes, shown]);
+  const allEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
+  const renderEdges = useAvoidance(renderNodes, allEdges);
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc]);
 
   const resourceFor = useCallback(
@@ -184,21 +230,57 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
   // exports for the page header
   useEffect(() => {
     if (!exportRef) return;
-    exportRef.current = async (kind) => {
-      const title = meta?.title ?? "plan";
-      try {
-        if (kind === "json") return exportJson({ title, description: meta?.description, tags: meta?.tags }, doc);
-        const visible = rf.getNodes().filter((n) => !n.hidden);
-        if (!visible.length) return void toast.error("O plan está vazio.");
-        const bounds = rf.getNodesBounds(visible);
-        if (kind === "pdf") {
-          const win = openPrintWindow(title);
-          if (!win) return void toast.error("Permita pop-ups para exportar em PDF.");
-          await exportPdf(wrap.current!, bounds, title, win);
+    exportRef.current = async (kind, viewId) => {
+      const view = viewId ? doc.views?.find((v) => v.id === viewId) : undefined;
+      const title = view ? `${meta?.title ?? "plan"} — ${view.name}` : (meta?.title ?? "plan");
+      if (kind === "json") return exportJson({ title, description: meta?.description, tags: meta?.tags }, doc);
+      if (kind === "frames-pdf") {
+        const frames = rf.getNodes().filter((n) => n.type === "frame" && !n.hidden && !isOverlayId(n.id));
+        if (!frames.length) return void toast.error("O plan não tem quadros.");
+        const win = openPrintWindow(title);
+        if (!win) return void toast.error("Permita pop-ups para exportar em PDF.");
+        const pages = frames.map((f) => ({ bounds: rf.getNodesBounds([f]), title: (f.data.title as string) || "Quadro" }));
+        pages.sort((a, b) => (Math.abs(a.bounds.y - b.bounds.y) > Math.min(a.bounds.height, b.bounds.height) / 2 ? a.bounds.y - b.bounds.y : a.bounds.x - b.bounds.x));
+        return exportFramesPdf(wrap.current!, pages, title, win).catch(() => void toast.error("Não foi possível exportar. Tente novamente."));
+      }
+      // a saved view is shown just for the picture, then the reader's own layers come back
+      const before = layerOverridesRef.current;
+      const vis = view ? viewVisibility(doc, view.id) : null;
+      if (isExcalidrawExport(kind)) {
+        const shown = vis ?? Object.fromEntries(layerVisibility(doc, before ?? undefined));
+        const scene = await excalidrawScene(doc, { title, visible: (id) => shown[id] !== false });
+        if (kind === "excalidraw") return downloadScene(scene, title);
+        if (kind === "excalidraw-copy") {
+          await copyScene(scene).then(
+            () => toast.success("Copiado. Cole no Excalidraw com ⌘V."),
+            () => toast.error("Não foi possível copiar."),
+          );
+          return;
         }
-        else await exportImage(wrap.current!, bounds, kind, title);
+      }
+      const win = kind === "pdf" ? openPrintWindow(title) : null;
+      if (kind === "pdf" && !win) return void toast.error("Permita pop-ups para exportar em PDF.");
+      try {
+        if (vis) {
+          setLayerOverrides(vis);
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        const visible = rf.getNodes().filter((n) => !n.hidden);
+        if (!visible.length) {
+          win?.close();
+          return void toast.error(view ? "Esta visão está vazia." : "O plan está vazio.");
+        }
+        const bounds = rf.getNodesBounds(visible);
+        if (kind === "pdf") await exportPdf(wrap.current!, bounds, title, win);
+        else if (kind === "excalidraw-png" || kind === "excalidraw-svg") {
+          const shown = vis ?? Object.fromEntries(layerVisibility(doc, before ?? undefined));
+          await exportImage(wrap.current!, bounds, kind === "excalidraw-png" ? "png" : "svg", title, await excalidrawScene(doc, { title, visible: (id) => shown[id] !== false }));
+        } else if (kind === "png" || kind === "svg") await exportImage(wrap.current!, bounds, kind, title);
       } catch {
         toast.error("Não foi possível exportar. Tente novamente.");
+      } finally {
+        if (vis) setLayerOverrides(before);
       }
     };
     return () => {
@@ -284,8 +366,8 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
         }}
       >
         <ReactFlow<PlanFlowNode>
-          nodes={nodes}
-          edges={edges}
+          nodes={renderNodes}
+          edges={renderEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           className={cn("wp-flow wp-view", stage && "wp-stage")}
@@ -312,6 +394,8 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
             if (touch) setHover(null);
           }}
         />
+        {!stage && !compare && <ViewLayers doc={doc} overrides={layerOverrides} onChange={setLayerOverrides} onCompare={() => setCompare(defaultCompare(doc))} />}
+        {!stage && compare && diff && <CompareBar doc={doc} value={compare} counts={diff.counts} onChange={setCompare} onClose={() => setCompare(null)} />}
         {doc.nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <p className="rounded-xl border border-dashed border-line-2 bg-surface/80 px-5 py-4 text-sm text-muted">Este plan ainda está vazio.</p>
@@ -355,6 +439,19 @@ function ViewerInner({ document: doc, resources, focusNodeId, className, meta, e
 
         {!stage && (
           <div className="wp-no-print absolute bottom-6 right-6 z-10 flex items-center gap-0.5 rounded-control border border-line bg-surface p-1">
+            {annotationItems.length > 0 && (
+              <>
+                <AnnotationsMenu
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-body text-ink-2 hover:bg-hover hover:text-ink [&_svg]:size-4"
+                  items={annotationItems}
+                  view={annotationView}
+                  setView={(patch) => setAnnotationView((v) => ({ ...v, ...patch }))}
+                  onFocus={(id) => void rf.fitView({ nodes: [{ id }], padding: 0.8, maxZoom: 1.2, duration: motionMs(400) })}
+                  side="top"
+                />
+                <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+              </>
+            )}
             <ZoomControls compact />
           </div>
         )}

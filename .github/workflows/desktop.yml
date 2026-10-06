@@ -1,0 +1,72 @@
+name: Desktop
+
+# Builds the desktop app (desktop/) for Windows, macOS and Linux, smoke-tests each package and
+# keeps them as workflow artifacts. Pushing a tag like v0.1.0 also publishes a GitHub release.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows, os: windows-latest, script: dist:win, files: "desktop/release/*.exe" }
+          - { name: macOS, os: macos-latest, script: dist:mac, files: "desktop/release/*.dmg\ndesktop/release/*.zip" }
+          - { name: Linux, os: ubuntu-latest, script: dist:linux, files: "desktop/release/*.AppImage\ndesktop/release/*.tar.gz" }
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - run: npm run typecheck --prefix desktop
+      - run: npm run ${{ matrix.script }} --prefix desktop
+      - name: Smoke test
+        if: runner.os != 'Linux'
+        run: npm run smoke --prefix desktop
+      - name: Smoke test
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run smoke --prefix desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Waypoint-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

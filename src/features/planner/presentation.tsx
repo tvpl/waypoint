@@ -14,8 +14,11 @@ import { ChevronLeft, ChevronRight, Maximize, Minimize, X } from "lucide-react";
 import type { PlanDocument } from "@/domain/plan";
 import { cn, motionMs } from "@/lib/utils";
 import { childrenMap } from "./doc-ops";
+import { useSearchParams } from "next/navigation";
 import { PlanCanvasView } from "./viewer";
-import { activeIdsFor, presentationSteps, type PresentationStep } from "./presentation-steps";
+import { viewVisibility } from "@/domain/layers";
+import { activeIdsFor, layerIds, presentationSteps, type PresentationStep } from "./presentation-steps";
+import { absRect } from "./doc-ops";
 import type { ResolvedResource } from "./resource-types";
 
 const IDLE_MS = 2600;
@@ -25,17 +28,22 @@ const fsSupported = () => typeof document !== "undefined" && !!document.document
 
 export function PresentationMode({
   title,
+  planId,
   document: doc,
   resources,
   onExit,
 }: {
   title: string;
+  /** The plan presented (layers that overlay other plans load them). */
+  planId?: string;
   document: PlanDocument;
   resources: Record<string, ResolvedResource>;
   onExit: () => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
-  const steps = useMemo(() => presentationSteps(doc, title), [doc, title]);
+  // ?view=… presents a saved view (the canvas reads the same parameter).
+  const viewParam = useSearchParams()?.get("view");
+  const steps = useMemo(() => presentationSteps(doc, title, (viewParam && viewVisibility(doc, viewParam)) || undefined), [doc, title, viewParam]);
   const kids = useMemo(() => childrenMap(doc), [doc]);
   const [index, setIndex] = useState(0);
   const [idle, setIdle] = useState(false);
@@ -44,7 +52,8 @@ export function PresentationMode({
   const [canFs, setCanFs] = useState(false);
   const ourFsChange = useRef(false);
   const step = steps[Math.min(index, steps.length - 1)];
-  const active = useMemo(() => activeIdsFor(doc, step.nodeId, kids), [doc, step.nodeId, kids]);
+  const active = useMemo(() => (step.layerId ? layerIds(doc, step.layerId) : activeIdsFor(doc, step.nodeId, kids)), [doc, step.nodeId, step.layerId, kids]);
+  const stage = useMemo(() => ({ activeIds: active, activeLayer: step.layerId }), [active, step.layerId]);
   const last = steps.length - 1;
 
   const go = useCallback((i: number) => setIndex(Math.max(0, Math.min(last, i))), [last]);
@@ -184,8 +193,8 @@ export function PresentationMode({
       className={cn("wp-presentation fixed inset-0 z-40 flex flex-col bg-surface-2 text-ink outline-none", idle && "cursor-none")}
     >
       <div className="relative min-h-0 flex-1">
-        <PlanCanvasView document={doc} resources={resources} stage={{ activeIds: active }} meta={{ title }}>
-          <StageCamera step={step} />
+        <PlanCanvasView document={doc} planId={planId} resources={resources} stage={stage} layerOverrides={step.layers} meta={{ title }}>
+          <StageCamera step={step} doc={doc} />
         </PlanCanvasView>
       </div>
 
@@ -203,7 +212,10 @@ export function PresentationMode({
             <ChevronLeft />
           </BarButton>
           <div className="flex min-w-0 max-w-[min(52vw,420px)] flex-col items-center px-2 leading-tight">
-            <span className="w-full truncate text-center text-body font-semibold">{step.title}</span>
+            <span className="w-full truncate text-center text-body font-semibold">
+              {step.layerId && <span className="font-normal text-muted">Camada · </span>}
+              {step.title}
+            </span>
             <span className="font-mono text-caption text-muted">
               {index + 1} / {steps.length}
             </span>
@@ -246,7 +258,7 @@ function BarButton({ label, onClick, disabled, pressed, children }: { label: str
 }
 
 /** Moves the viewport to the current step (inside the React Flow provider). */
-function StageCamera({ step }: { step: PresentationStep }) {
+function StageCamera({ step, doc }: { step: PresentationStep; doc: PlanDocument }) {
   const rf = useReactFlow();
   // every visible node measured (useNodesInitialized stays false for read-only nodes without handle bounds)
   const ready = useStore((s) => {
@@ -263,7 +275,17 @@ function StageCamera({ step }: { step: PresentationStep }) {
     let bounds: Rect | null = null;
     let maxZoom = 1.5;
     let padding = 0.14;
-    if (step.nodeId) {
+    if (step.layerId) {
+      // a revealed layer: frame everything on it (from the document: it may not be measured yet)
+      const rects = doc.nodes.filter((n) => !n.parentId && (n.layer ?? "base") === step.layerId).map((n) => absRect(doc, n.id));
+      if (rects.length) {
+        const x = Math.min(...rects.map((r) => r.x));
+        const y = Math.min(...rects.map((r) => r.y));
+        bounds = { x, y, width: Math.max(...rects.map((r) => r.x + r.width)) - x, height: Math.max(...rects.map((r) => r.y + r.height)) - y };
+        maxZoom = 1.25;
+        padding = 0.2;
+      }
+    } else if (step.nodeId) {
       const n = rf.getInternalNode(step.nodeId);
       if (n && !n.hidden) {
         bounds = { x: n.internals.positionAbsolute.x, y: n.internals.positionAbsolute.y, width: n.measured.width ?? n.width ?? 0, height: n.measured.height ?? n.height ?? 0 };
@@ -282,7 +304,7 @@ function StageCamera({ step }: { step: PresentationStep }) {
     const vp = getViewportForBounds(bounds, width, height - 72, 0.1, maxZoom, padding);
     void rf.setViewport({ ...vp, y: vp.y }, { duration: first.current ? 0 : motionMs(ANIM_MS) });
     first.current = false;
-  }, [step.nodeId, ready, width, height, rf]);
+  }, [step.nodeId, step.layerId, doc, ready, width, height, rf]);
 
   return null;
 }

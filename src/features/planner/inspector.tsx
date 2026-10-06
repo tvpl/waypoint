@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlignCenterHorizontal,
@@ -20,10 +20,27 @@ import {
   Group,
   ImagePlus,
   Link2,
+  ListOrdered,
   Loader2,
   Search,
   SendToBack,
   Trash2,
+  Info,
+  PanelRightClose,
+  PanelRightOpen,
+  Pin,
+  PinOff,
+  Library,
+  RefreshCw,
+  Unlink,
+  Plus,
+  Replace,
+  Lock,
+  EyeOff,
+  RotateCcw,
+  RotateCw,
+  FlipHorizontal2,
+  FlipVertical2,
   Ungroup,
   Upload,
   X,
@@ -41,13 +58,42 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/popover";
 import { useEditor, type InspectorTab } from "./editor-context";
-import { KIND_LABEL, PARENT_KINDS, STATUS_META, statusMeta } from "./defaults";
+import { openShortcuts } from "@/components/shell/shortcuts";
+import { KIND_LABEL, PARENT_KINDS, SHAPE_LABEL, STATUS_META, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
+import { GlyphSvg } from "./glyph";
+import { CATEGORY_META } from "./annotations";
+import { AnnotationFields } from "./annotations-panel";
+import { ComponentFields, componentLabel } from "./components/component-fields";
 import { ICON_NAMES, KIND_ICON, PLAN_ICONS, PlanIcon } from "./icons";
 import { EdgeSample } from "./edges";
+import { ShapeGlyph } from "./canvas-controls";
 import { TagInput } from "./tag-input";
 import { ResourceIcon, ResourceRow, useResourceSearch } from "./resource-picker";
 import { parseUserUrl, fallbackResource } from "./resource-types";
+import { BASE_LAYER_ID } from "@/domain/layers";
+import { HIGHLIGHTER_COLOR, HIGHLIGHTER_SCALE, INK_COLORS, INK_SIZES, textBox } from "./ink-geometry";
+import { styleOfSelection } from "./shape-style";
+import { colorsInUse } from "./doc-ops";
+import type { LinkedCopy } from "./library-links";
+import { DEFAULT_STYLE, measureText } from "./shape-geometry";
+import {
+  AlignPicker,
+  ArrowheadPicker,
+  CornersPicker,
+  FillColors,
+  FillStylePicker,
+  FontPicker,
+  OpacitySlider,
+  RoughnessPicker,
+  RoutingPicker,
+  SizePicker,
+  StrokeColors,
+  PlanColors,
+  StrokeStylePicker,
+  ValueSlider,
+  WidthPicker,
+} from "./style-controls";
 
 const VISIBILITY_LABEL: Record<string, string> = {
   private: "Privado",
@@ -57,20 +103,306 @@ const VISIBILITY_LABEL: Record<string, string> = {
   public: "Público",
 };
 
-export function Inspector() {
+/** What the properties show for the current selection (the plan's own when nothing is selected). */
+function InspectorBody({ empty }: { empty?: React.ReactNode }) {
+  const ed = useEditor();
+  const nodes = ed.selectedNodes;
+  const locked = nodes.filter((n) => n.data.locked);
+  const hidden = nodes.filter((n) => n.data.hidden);
+  const copies = [...new Set(nodes.map((n) => ed.libraryLinks.copyOf(n.id)).filter((c) => !!c))];
+  const copy = copies.length === 1 ? copies[0] : null;
+  if (!locked.length && !hidden.length && !copy) return <InspectorFor empty={empty} />;
+  const ids = (list: PlanFlowNode[]) => list.map((n) => n.id);
+  return (
+    <>
+      {copy && <LibraryCopyBanner copy={copy} />}
+      {(locked.length > 0 || hidden.length > 0) && (
+        <div className="mx-3 mt-3 flex shrink-0 flex-col gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-body text-ink-2">
+          {locked.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Lock className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">{locked.length === 1 && nodes.length === 1 ? "Travado no canvas" : `${locked.length} travados`}</span>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setLocked(false, ids(locked))}>
+                Destravar
+              </Button>
+            </div>
+          )}
+          {hidden.length > 0 && (
+            <div className="flex items-center gap-2">
+              <EyeOff className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">{hidden.length === 1 && nodes.length === 1 ? "Oculto" : `${hidden.length} ocultos`}</span>
+              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setHidden(false, ids(hidden))}>
+                Mostrar
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+      <InspectorFor empty={empty} />
+    </>
+  );
+}
+
+const COPY_STATE: Record<LinkedCopy["state"], string> = {
+  current: "Igual ao item da biblioteca",
+  behind: "O item mudou na biblioteca",
+  edited: "Alterado neste plan",
+  both: "Alterado aqui e na biblioteca",
+  missing: "O item saiu da biblioteca",
+};
+
+/** A linked copy of a library item: where it stands and what can be done with it. */
+function LibraryCopyBanner({ copy }: { copy: LinkedCopy }) {
+  const ed = useEditor();
+  const L = ed.libraryLinks;
+  const [busy, setBusy] = useState(false);
+  const push = async () => {
+    setBusy(true);
+    try {
+      await L.push(copy.instance);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const tone = copy.state === "current" ? "text-muted" : copy.state === "missing" ? "text-danger" : "text-accent-ink";
+  return (
+    <div className="mx-3 mt-3 flex shrink-0 flex-col gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-body" aria-label="Item da biblioteca">
+      <div className="flex items-center gap-2">
+        <Library className="size-3.5 shrink-0 text-ink-2" aria-hidden />
+        <span className="min-w-0 flex-1 truncate font-medium text-ink">{copy.name || "Item da biblioteca"}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" aria-label="Opções da cópia" className="inline-flex size-6 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-3.5">
+              <Ellipsis />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[230px]">
+            {copy.state !== "missing" && (
+              <DropdownMenuItem onSelect={() => L.update(copy.instance)} disabled={copy.state === "current"}>
+                <RefreshCw /> Igualar ao item da biblioteca
+              </DropdownMenuItem>
+            )}
+            {copy.state !== "missing" && (
+              <DropdownMenuItem onSelect={() => void push()} disabled={copy.state === "current"}>
+                <Upload /> Enviar estas alterações ao item
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => L.unlink(copy.instance)}>
+              <Unlink /> Desvincular da biblioteca
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <span className={cn("text-caption", tone)}>{COPY_STATE[copy.state]}</span>
+      {copy.state === "behind" && (
+        <Button size="sm" variant="soft" onClick={() => L.update(copy.instance)}>
+          <RefreshCw /> Atualizar esta cópia
+        </Button>
+      )}
+      {copy.state === "edited" && (
+        <Button size="sm" variant="soft" disabled={busy} onClick={() => void push()}>
+          <Upload /> Enviar ao item da biblioteca
+        </Button>
+      )}
+      {copy.state === "both" && (
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={() => L.update(copy.instance)} title="Descarta as alterações feitas aqui">
+            Usar a da biblioteca
+          </Button>
+          <Button size="sm" variant="secondary" className="flex-1" disabled={busy} onClick={() => void push()} title="Substitui o item da biblioteca">
+            Manter a daqui
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InspectorFor({ empty }: { empty?: React.ReactNode }) {
   const ed = useEditor();
   const nodes = ed.selectedNodes;
   const edges = ed.selectedEdges;
-  let body: React.ReactNode;
-  if (nodes.length === 1) body = <NodeInspector key={nodes[0].id} node={nodes[0]} />;
-  else if (nodes.length > 1) body = <MultiInspector />;
-  else if (edges.length === 1) body = <EdgeInspector key={edges[0].id} edge={edges[0]} />;
-  else if (edges.length > 1) body = <MultiEdgeInspector />;
-  else body = <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
+  if (nodes.length >= 1 && nodes.every((n) => n.type === "shape")) return <DrawInspector key={nodes.map((n) => n.id).join()} />;
+  if (nodes.length === 1 && nodes[0].type === "ink") return <InkInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1 && nodes[0].type === "annotation") return <AnnotationInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1 && nodes[0].type === "component") return <ComponentInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length === 1) return <NodeInspector key={nodes[0].id} node={nodes[0]} />;
+  if (nodes.length > 1) return <MultiInspector />;
+  if (edges.length === 1) return <EdgeInspector key={edges[0].id} edge={edges[0]} />;
+  if (edges.length > 1) return <MultiEdgeInspector />;
+  return empty ?? <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />;
+}
+
+function ComponentInspector({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const label = componentLabel(node);
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle text-ink-2">
+            <KIND_ICON.component className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker={label?.pack ?? "Componente"}
+        title={label?.name ?? "Componente"}
+        menu={<NodeMenu node={node} />}
+      />
+      <Section id="comp-fields" title="Configuração">
+        <F label="Nome" htmlFor={`t-${node.id}`}>
+          <Input id={`t-${node.id}`} className={smallInput} value={node.data.title} maxLength={300} onChange={(e) => ed.updateNodeData(node.id, { title: e.target.value }, `title:${node.id}`)} />
+        </F>
+        <ComponentFields node={node} />
+      </Section>
+      <Section id="comp-more" title="Descrição, status e tags" defaultOpen={false}>
+        <F label="Descrição" htmlFor={`d-${node.id}`}>
+          <Textarea id={`d-${node.id}`} rows={3} maxLength={5000} className="min-h-[76px] rounded-lg text-body" value={node.data.description ?? ""} onChange={(e) => ed.updateNodeData(node.id, { description: e.target.value }, `desc:${node.id}`)} />
+        </F>
+        <StatusField value={node.data.status} onChange={(status) => ed.updateNodeData(node.id, { status })} />
+        <F label="Tags">
+          <TagInput value={node.data.tags ?? []} onChange={(tags) => ed.updateNodeData(node.id, { tags })} />
+        </F>
+      </Section>
+      <Section id="comp-arrange" title="Organizar" defaultOpen={false}>
+        <LayerField />
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+            <BringToFront /> Frente
+          </Button>
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+            <SendToBack /> Trás
+          </Button>
+        </div>
+        <Button size="sm" variant="danger" onClick={ed.remove}>
+          <Trash2 /> Excluir
+        </Button>
+      </Section>
+    </Scroll>
+  );
+}
+
+function AnnotationInspector({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const a = node.data.annotation;
+  const meta = CATEGORY_META[a?.category ?? "note"];
+  const [title, setTitle] = useState(node.data.title);
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg text-white" style={{ background: meta.color }}>
+            <KIND_ICON.annotation className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker={`Anotação · ${meta.label}`}
+        title={node.data.title || "Sem texto"}
+      />
+      <F label="Texto" htmlFor={`at-${node.id}`}>
+        <Textarea id={`at-${node.id}`} rows={2} maxLength={300} className="min-h-[56px] rounded-lg text-body" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== node.data.title && ed.updateNodeData(node.id, { title })} />
+      </F>
+      <AnnotationFields node={node} />
+      <Button size="sm" variant="danger" onClick={ed.remove}>
+        <Trash2 /> Excluir anotação
+      </Button>
+    </Scroll>
+  );
+}
+
+/** Phones: the whole panel, opened from the "Propriedades" button. */
+export function Inspector() {
   return (
     <aside aria-label="Propriedades" className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-line bg-surface">
-      {body}
+      <InspectorBody />
     </aside>
+  );
+}
+
+const chromeBtn = "inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-ink [&_svg]:size-3.5";
+
+/** The panel's own controls: pin beside the canvas or float over it, and fold it away. */
+function PanelChrome() {
+  const p = useEditor().panels;
+  const pinned = p.inspector === "pinned";
+  return (
+    <div className="flex h-9 shrink-0 items-center justify-between border-b border-line pl-[18px] pr-1.5">
+      <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Propriedades</span>
+      <span className="flex items-center gap-0.5">
+        <Tooltip content={pinned ? "Soltar: aparece só ao selecionar" : "Fixar ao lado do canvas"}>
+          <button type="button" aria-label={pinned ? "Soltar as propriedades" : "Fixar as propriedades"} aria-pressed={pinned} className={cn(chromeBtn, pinned && "text-accent-ink")} onClick={() => p.setInspector(pinned ? "auto" : "pinned")}>
+            {pinned ? <PinOff /> : <Pin />}
+          </button>
+        </Tooltip>
+        <Tooltip content="Recolher (I)">
+          <button type="button" aria-label="Recolher propriedades" className={chromeBtn} onClick={() => p.setInspectorOpen(false)}>
+            <PanelRightClose />
+          </button>
+        </Tooltip>
+      </span>
+    </div>
+  );
+}
+
+/** Pinned properties, beside the canvas (the plan's own when nothing is selected). */
+export function InspectorDock() {
+  const p = useEditor().panels;
+  if (p.focus || p.inspector !== "pinned" || !p.inspectorOpen) return null;
+  return (
+    <aside aria-label="Propriedades" className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-line bg-surface max-md:hidden">
+      <PanelChrome />
+      <InspectorBody />
+    </aside>
+  );
+}
+
+/**
+ * Floating properties, over the canvas, only while something is selected; folded, a small button
+ * brings them back.
+ */
+export function InspectorFloat() {
+  const ed = useEditor();
+  const p = ed.panels;
+  const has = ed.selectedNodes.length > 0 || ed.selectedEdges.length > 0;
+  if (p.focus || !has || ed.tool !== "select") return null;
+  if (!p.inspectorOpen) {
+    return (
+      <div className="wp-no-print wp-no-export absolute right-3 top-3 z-20 max-md:hidden">
+        <Tooltip content="Propriedades (I)" side="left">
+          <button type="button" aria-label="Mostrar propriedades" onClick={() => p.setInspectorOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-2.5 text-body font-medium text-ink-2 shadow-float hover:text-ink [&_svg]:size-4">
+            <PanelRightOpen /> Propriedades
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
+  if (p.inspector === "pinned") return null;
+  return (
+    <aside
+      aria-label="Propriedades"
+      className="wp-no-print wp-no-export wp-float-panel absolute right-3 top-3 z-20 flex max-h-[calc(100%-88px)] w-[296px] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-float animate-in max-md:hidden"
+    >
+      <PanelChrome />
+      <InspectorBody />
+    </aside>
+  );
+}
+
+/** The plan's title, description, tags and visibility, from the title in the top bar. */
+export function PlanDetailsButton() {
+  const ed = useEditor();
+  return (
+    <Popover>
+      <Tooltip content="Detalhes do plan">
+        <PopoverTrigger asChild>
+          <button type="button" aria-label="Detalhes do plan" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-4">
+            <Info />
+          </button>
+        </PopoverTrigger>
+      </Tooltip>
+      <PopoverContent align="start" className="flex max-h-[min(640px,80vh)] w-[340px] flex-col overflow-hidden p-0">
+        <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -104,6 +436,394 @@ function F({ label, htmlFor, children, hint }: { label: string; htmlFor?: string
 }
 
 const smallInput = "h-[34px] rounded-lg text-body";
+
+/** Which layer the selection is on; changing it moves the selection (areas with their content). */
+function LayerField() {
+  const ed = useEditor();
+  const L = ed.layers;
+  if (L.list.length < 2) return null;
+  const ids = new Set([...ed.selectedNodes.map((n) => n.data._layer ?? BASE_LAYER_ID), ...ed.selectedEdges.map((e) => e.data?.layer ?? BASE_LAYER_ID)]);
+  const value = ids.size === 1 ? [...ids][0] : "";
+  const current = L.list.find((l) => l.id === value);
+  return (
+    <F label="Camada" htmlFor="insp-layer">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 size-2.5 -translate-y-1/2 rounded-full" style={{ background: current?.color ?? "var(--muted)" }} aria-hidden />
+        <select id="insp-layer" className={cn(inputClass, "wp-select h-[34px] rounded-lg pl-7 pr-8 text-body")} value={value} onChange={(e) => e.target.value && L.assignSelection(e.target.value)}>
+          {!value && <option value="">Várias camadas</option>}
+          {[...L.list].reverse().map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+              {l.visible === false ? " (oculta)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+    </F>
+  );
+}
+
+/** A titled group that folds; remembers whether you left it open. */
+function Section({ id, title, children, defaultOpen = true }: { id: string; title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const key = `wp-insp-${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? defaultOpen : v === "1";
+    } catch {
+      return defaultOpen;
+    }
+  });
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem(key, o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
+  return (
+    <section className="-mx-[18px] border-t border-line px-[18px] pt-3">
+      <button type="button" aria-expanded={open} onClick={toggle} className="group flex w-full items-center justify-between py-0.5 text-left">
+        <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted group-hover:text-ink-2">{title}</span>
+        <ChevronDown className={cn("size-3.5 text-muted transition-transform", !open && "-rotate-90")} aria-hidden />
+      </button>
+      {open && <div className="flex flex-col gap-4 pb-1 pt-3">{children}</div>}
+    </section>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <div className="-ml-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Drawn shapes (one or many, with any drawn connections also selected): stroke, background and
+ * pattern, width, dash, clean or hand-drawn, corners, font, size, alignment, opacity.
+ */
+function DrawInspector() {
+  const ed = useEditor();
+  const nodes = ed.selectedNodes;
+  const one = nodes.length === 1 ? nodes[0] : null;
+  const s = styleOfSelection(ed.style, nodes.map((n) => n.data), ed.selectedEdges.map((e) => e.data?.style));
+  const types = new Set(nodes.map((n) => n.data.shape?.type));
+  const onlyText = types.size === 1 && types.has("text");
+  const boxes = types.has("rect") || types.has("diamond");
+  const radius = (types.has("rect") && s.round) || types.has("speech");
+  const set = ed.setStyle;
+  const onlyIcons = types.size === 1 && types.has("icon");
+  const glyph = one?.data.shape?.glyph;
+  const oneType = one?.data.shape?.type;
+  const outline = oneType && oneType !== "text" && oneType !== "icon" ? oneType : null;
+  const label = one
+    ? one.data.shape?.type === "icon"
+      ? one.data.title || "Ícone"
+      : SHAPE_LABEL[one.data.shape?.type ?? "rect"]
+    : onlyIcons
+      ? `${nodes.length} ícones`
+      : `${nodes.length} formas`;
+  const Icon = KIND_ICON.shape;
+  const setText = (title: string) =>
+    ed.mutate(
+      (d) => ({
+        ...d,
+        nodes: d.nodes.map((n) => {
+          if (n.id !== one!.id) return n;
+          if (n.data.shape?.type !== "text") return { ...n, data: { ...n.data, title } };
+          const box = measureText(title, n.data.shape.font ?? DEFAULT_STYLE.font, n.data.shape.fontSize ?? DEFAULT_STYLE.fontSize);
+          return { ...n, width: box.width, height: box.height, data: { ...n.data, title } };
+        }),
+      }),
+      { key: `shape-text:${one!.id}` },
+    );
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle" style={{ color: s.stroke ?? "var(--ink)" }}>
+            {glyph ? (
+              <GlyphSvg glyph={glyph} size={16} color={s.stroke ?? "var(--ink)"} />
+            ) : outline ? (
+              <ShapeGlyph type={outline} size={17} />
+            ) : (
+              <Icon className="size-4" strokeWidth={2} />
+            )}
+          </span>
+        }
+        kicker={one ? (glyph ? "Ícone" : "Forma") : "Seleção"}
+        title={label}
+      />
+      {one && (
+        <F label={glyph ? "Rótulo" : "Texto"} htmlFor={`st-${one.id}`}>
+          <Textarea id={`st-${one.id}`} rows={2} maxLength={300} className="min-h-[56px] rounded-lg text-body" value={one.data.title} onChange={(e) => setText(e.target.value)} />
+        </F>
+      )}
+      <Section id="draw-colors" title="Cores">
+        <Row label={onlyIcons ? "Cor" : "Traço"}>
+          <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
+        </Row>
+        {!onlyText && (
+          <Row label="Fundo">
+            <FillColors value={s.fill} onChange={(fill) => set({ fill })} />
+          </Row>
+        )}
+        {s.fill && !onlyText && !onlyIcons && (
+          <Row label="Preenchimento">
+            <FillStylePicker value={s.fillStyle} onChange={(fillStyle) => set({ fillStyle })} />
+          </Row>
+        )}
+        <Row label="Opacidade">
+          <OpacitySlider value={s.opacity} onChange={(opacity) => set({ opacity })} />
+        </Row>
+      </Section>
+      {onlyIcons && !glyph?.filled && (
+        <Section id="draw-stroke" title="Traço">
+          <Row label="Espessura">
+            <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+          </Row>
+        </Section>
+      )}
+      {!onlyText && !onlyIcons && (
+        <Section id="draw-stroke" title="Traço">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+            <Row label="Espessura">
+              <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+            </Row>
+            <Row label="Estilo">
+              <StrokeStylePicker value={s.strokeStyle} onChange={(strokeStyle) => set({ strokeStyle })} />
+            </Row>
+            <Row label="Traçado">
+              <RoughnessPicker value={s.roughness} onChange={(roughness) => set({ roughness })} />
+            </Row>
+            {boxes && (
+              <Row label="Cantos">
+                <CornersPicker value={s.round} onChange={(round) => set({ round })} />
+              </Row>
+            )}
+          </div>
+        </Section>
+      )}
+      {!onlyText && <TransformSection radius={radius} />}
+      {!onlyIcons && (
+        <Section id="draw-text" title="Texto">
+          <Row label="Fonte">
+            <FontPicker value={s.font} onChange={(font) => set({ font })} />
+          </Row>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+            <Row label="Tamanho">
+              <SizePicker value={s.fontSize} onChange={(fontSize) => set({ fontSize })} />
+            </Row>
+            <Row label="Alinhamento">
+              <AlignPicker value={s.align} onChange={(align) => set({ align })} />
+            </Row>
+          </div>
+        </Section>
+      )}
+      <Section id="draw-arrange" title="Organizar" defaultOpen={false}>
+        <LayerField />
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+            <BringToFront /> Frente
+          </Button>
+          <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+            <SendToBack /> Trás
+          </Button>
+        </div>
+        <Button size="sm" variant="danger" onClick={ed.remove}>
+          <Trash2 /> Excluir
+        </Button>
+      </Section>
+    </Scroll>
+  );
+}
+
+/** Rotation, mirroring, shadow and corner radius of the selected shapes (the first one's values). */
+function TransformSection({ radius }: { radius: boolean }) {
+  const ed = useEditor();
+  const first = ed.selectedNodes.find((n) => n.data.shape)?.data.shape;
+  if (!first) return null;
+  const rot = Math.round(first.rotation ?? 0);
+  const turn = (by: number) => {
+    let r = (rot + by) % 360;
+    if (r > 180) r -= 360;
+    if (r <= -180) r += 360;
+    ed.setShapeProps({ rotation: r });
+  };
+  return (
+    <Section id="draw-transform" title="Transformar" defaultOpen={false}>
+      <Row label="Rotação">
+        <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1">
+            <ValueSlider label="Rotação" value={rot} min={-180} max={180} step={1} unit="°" onChange={(rotation) => ed.setShapeProps({ rotation })} />
+          </div>
+          <Tooltip content="Girar 90° à esquerda">
+            <Button size="icon-sm" variant="ghost" aria-label="Girar 90° à esquerda" onClick={() => turn(-90)}>
+              <RotateCcw />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Girar 90° à direita">
+            <Button size="icon-sm" variant="ghost" aria-label="Girar 90° à direita" onClick={() => turn(90)}>
+              <RotateCw />
+            </Button>
+          </Tooltip>
+        </div>
+      </Row>
+      <Row label="Espelhar">
+        <div className="flex gap-2">
+          <Button size="sm" variant={first.flipX ? "soft" : "secondary"} aria-pressed={!!first.flipX} className="flex-1" onClick={() => ed.setShapeProps({ flipX: !first.flipX })}>
+            <FlipHorizontal2 /> Horizontal
+          </Button>
+          <Button size="sm" variant={first.flipY ? "soft" : "secondary"} aria-pressed={!!first.flipY} className="flex-1" onClick={() => ed.setShapeProps({ flipY: !first.flipY })}>
+            <FlipVertical2 /> Vertical
+          </Button>
+        </div>
+      </Row>
+      {radius && (
+        <Row label="Raio dos cantos">
+          <ValueSlider label="Raio dos cantos" value={first.radius ?? 12} min={2} max={60} unit="px" onChange={(radius) => ed.setShapeProps({ radius })} />
+        </Row>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-body text-ink-2">Manter proporção ao redimensionar</span>
+        <Switch checked={!!first.lockRatio} onChange={(lockRatio) => ed.setShapeProps({ lockRatio })} label="Manter proporção ao redimensionar" />
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-body text-ink-2">Sombra suave</span>
+        <Switch checked={!!first.shadow} onChange={(shadow) => ed.setShapeProps({ shadow })} label="Sombra suave" />
+      </div>
+    </Section>
+  );
+}
+
+/** How a connection is drawn: color, width, dash, clean or hand-drawn, heads and route. */
+function EdgeDrawSection({ edgeId }: { edgeId: string }) {
+  const ed = useEditor();
+  const edge = ed.edges.find((e) => e.id === edgeId);
+  const st = edge?.data?.style;
+  const s = styleOfSelection(ed.style, [], [st ?? { routing: "elbow", end: "arrow" }]);
+  const set = ed.setStyle;
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-line p-3">
+      <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Desenho</span>
+      <Row label="Traço">
+        <StrokeColors value={s.stroke} onChange={(stroke) => set({ stroke })} />
+      </Row>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+        <Row label="Espessura">
+          <WidthPicker value={s.strokeWidth} onChange={(strokeWidth) => set({ strokeWidth })} />
+        </Row>
+        <Row label="Estilo do traço">
+          <StrokeStylePicker value={s.strokeStyle} onChange={(strokeStyle) => set({ strokeStyle })} />
+        </Row>
+        <Row label="Traçado">
+          <RoughnessPicker value={s.roughness} onChange={(roughness) => set({ roughness })} />
+        </Row>
+        <Row label="Trajeto">
+          <RoutingPicker value={s.routing} onChange={(routing) => set({ routing })} />
+        </Row>
+      </div>
+      {s.routing !== "elbow" && (
+        <>
+          <Row label="Ponta inicial">
+            <ArrowheadPicker label="Ponta inicial" value={s.start} onChange={(start) => set({ start })} flip />
+          </Row>
+          <Row label="Ponta final">
+            <ArrowheadPicker label="Ponta final" value={s.end} onChange={(end) => set({ end })} />
+          </Row>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** A freehand stroke, highlight or arrow: color, thickness, layer, stacking. */
+function InkInspector({ node }: { node: PlanFlowNode }) {
+  const ed = useEditor();
+  const ink = node.data.ink!;
+  const text = ink.shape === "text";
+  const kind = text ? "Texto à mão" : ink.shape === "rect" ? "Retângulo" : ink.shape === "ellipse" ? "Elipse" : ink.arrow ? "Seta" : ink.highlighter ? "Destaque" : "Desenho";
+  // Text annotations: the box follows the text and its size.
+  const setText = (title: string, size = ink.size) =>
+    ed.mutate(
+      (d) => ({
+        ...d,
+        nodes: d.nodes.map((n) => {
+          if (n.id !== node.id) return n;
+          const box = textBox(title, size);
+          return { ...n, width: box.width, height: box.height, data: { ...n.data, title, ink: { ...ink, size, w: box.width, h: box.height, points: [0, 0, box.width, box.height] } } };
+        }),
+      }),
+      { key: `ink-text:${node.id}` },
+    );
+  const base = ink.highlighter ? ink.size / HIGHLIGHTER_SCALE : ink.size;
+  const shown = node.data.color ?? (ink.highlighter ? HIGHLIGHTER_COLOR : undefined);
+  const Icon = KIND_ICON.ink;
+  return (
+    <Scroll>
+      <Header
+        icon={
+          <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle" style={{ color: shown ?? "var(--ink)" }}>
+            <Icon className="size-4" strokeWidth={2} />
+          </span>
+        }
+        kicker="Desenho"
+        title={kind}
+      />
+      <div className="flex flex-col gap-2">
+        <Label>Cor</Label>
+        <div className="relative flex flex-wrap items-center gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
+          {INK_COLORS.map((c) => {
+            const on = (c.value ?? null) === (shown ?? null);
+            return (
+              <Tooltip key={c.name} content={c.name}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-label={c.name}
+                  onClick={() => ed.updateNodeData(node.id, { color: c.value })}
+                  className="size-6 rounded-full border-2 border-surface"
+                  style={{ background: c.value ?? "var(--ink)", boxShadow: on ? "0 0 0 2px var(--accent)" : "0 0 0 1px var(--line-2)" }}
+                />
+              </Tooltip>
+            );
+          })}
+        </div>
+      </div>
+      {text && (
+        <F label="Texto" htmlFor={`it-${node.id}`}>
+          <Input id={`it-${node.id}`} className={smallInput} maxLength={300} value={node.data.title} onChange={(e) => setText(e.target.value)} />
+        </F>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <Label>{text ? "Tamanho" : "Espessura"}</Label>
+        <Segmented
+          label={text ? "Tamanho" : "Espessura"}
+          className="self-start"
+          value={String(INK_SIZES.reduce((a, b) => (Math.abs(b - base) < Math.abs(a - base) ? b : a)))}
+          onChange={(v) => (text ? setText(node.data.title, Number(v)) : ed.updateNodeData(node.id, { ink: { ...ink, size: Number(v) * (ink.highlighter ? HIGHLIGHTER_SCALE : 1) } }))}
+          options={INK_SIZES.map((n) => ({ value: String(n), label: text ? (n === INK_SIZES[0] ? "P" : n === INK_SIZES[1] ? "M" : "G") : n === INK_SIZES[0] ? "Fina" : n === INK_SIZES[1] ? "Média" : "Grossa" }))}
+        />
+      </div>
+      <LayerField />
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.bringToFront}>
+          <BringToFront /> Frente
+        </Button>
+        <Button size="sm" variant="secondary" className="flex-1" onClick={ed.sendToBack}>
+          <SendToBack /> Trás
+        </Button>
+      </div>
+      <Button size="sm" variant="danger" onClick={ed.remove}>
+        <Trash2 /> Apagar desenho
+      </Button>
+    </Scroll>
+  );
+}
 
 // ------------------------------------------------------------------ node
 
@@ -206,6 +926,7 @@ function AppearanceTab({ node, set }: { node: PlanFlowNode; set: SetFn }) {
   const d = node.data;
   return (
     <>
+      <LayerField />
       {kind === "image" && <IconlessNote />}
       {kind !== "image" && kind !== "link" && (
         <div className="flex flex-col gap-2">
@@ -568,7 +1289,7 @@ function StatusField({ value, onChange }: { value?: NodeData["status"]; onChange
 function ColorSwatches({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
   const cur = value?.toUpperCase();
   return (
-    <div className="flex flex-wrap gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
+    <div className="relative flex flex-wrap items-center gap-2 pl-0.5" role="radiogroup" aria-label="Cor">
       {NODE_PALETTE.map((c) => {
         const on = c.value === "#FFFFFF" ? !cur || cur === "#FFFFFF" : cur === c.value;
         return (
@@ -585,6 +1306,7 @@ function ColorSwatches({ value, onChange }: { value?: string; onChange: (v: stri
           </Tooltip>
         );
       })}
+      <PlanColors value={cur} onChange={onChange} size={24} />
     </div>
   );
 }
@@ -703,6 +1425,29 @@ function EdgeInspector({ edge }: { edge: PlanFlowEdge }) {
         <F label="Descrição" htmlFor={`ed-${edge.id}`}>
           <Textarea id={`ed-${edge.id}`} rows={3} maxLength={2000} className="min-h-[72px] rounded-lg text-body" value={d.description ?? ""} onChange={(e) => ed.updateEdge(edge.id, { description: e.target.value }, `edesc:${edge.id}`)} />
         </F>
+        <LayerField />
+        <EdgeDrawSection edgeId={edge.id} />
+        <F label="Passo do fluxo" htmlFor={`es-${edge.id}`}>
+          <div className="flex items-center gap-2">
+            <Input
+              id={`es-${edge.id}`}
+              type="number"
+              min={1}
+              max={999}
+              className={cn(smallInput, "w-20")}
+              value={d.step ?? ""}
+              placeholder="—"
+              onChange={(e) => {
+                const n = Math.round(Number(e.target.value));
+                ed.updateEdge(edge.id, { step: e.target.value && n >= 1 && n <= 999 ? n : undefined }, `estep:${edge.id}`);
+              }}
+            />
+            <Button size="sm" variant="secondary" className="flex-1" onClick={() => ed.numberSteps()}>
+              <ListOrdered /> Numerar o fluxo
+            </Button>
+          </div>
+          <span className="text-caption text-muted">Numera as conexões desta camada na ordem do fluxo.</span>
+        </F>
         <div className="flex flex-col gap-1.5">
           <Label>Tipo</Label>
           <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Tipo de conexão">
@@ -784,6 +1529,7 @@ function MultiInspector() {
         kicker="Seleção"
         title={`${n} elementos`}
       />
+      <LayerField />
       <div className="flex flex-col gap-1.5">
         <Label>Alinhar</Label>
         <div className="grid grid-cols-6 gap-1">
@@ -827,6 +1573,89 @@ function MultiInspector() {
 
 // ------------------------------------------------------------------ plan
 
+/**
+ * The plan's palette (offered first in every color picker) and the colors the drawing uses: any
+ * of them can be swapped for another everywhere at once.
+ */
+function PlanPalette() {
+  const ed = useEditor();
+  const used = useMemo(() => colorsInUse(fromFlow(ed.nodes, ed.edges, { x: 0, y: 0, zoom: 1 })), [ed.nodes, ed.edges]);
+  const input = useRef<HTMLInputElement>(null);
+  const target = useRef<{ mode: "add" } | { mode: "swap"; from: string }>({ mode: "add" });
+  const open = (t: typeof target.current, start: string) => {
+    target.current = t;
+    if (!input.current) return;
+    input.current.value = start;
+    input.current.click();
+  };
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const done = () => {
+      const hex = el.value.toUpperCase();
+      const t = target.current;
+      if (t.mode === "swap") ed.replaceColor(t.from, hex);
+      ed.setPalette([hex, ...ed.palette]);
+    };
+    el.addEventListener("change", done);
+    return () => el.removeEventListener("change", done);
+  }, [ed]);
+  const swatch = (c: string, inPalette: boolean) => (
+    <DropdownMenu key={`${inPalette}:${c}`}>
+      <Tooltip content={c}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label={`Cor ${c}`} className="size-6 rounded-full border-2 border-surface" style={{ background: c, boxShadow: "0 0 0 1px var(--line-2)" }} />
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent align="start" className="min-w-[220px]">
+        <DropdownMenuItem onSelect={() => open({ mode: "swap", from: c }, c)}>
+          <Replace /> Trocar no desenho inteiro…
+        </DropdownMenuItem>
+        {inPalette ? (
+          <DropdownMenuItem danger onSelect={() => ed.setPalette(ed.palette.filter((x) => x !== c))}>
+            <X /> Tirar da paleta
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => ed.setPalette([c, ...ed.palette])}>
+            <Plus /> Pôr na paleta
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  return (
+    <div className="relative flex flex-col gap-3 rounded-lg border border-line px-3 py-2.5">
+      <input ref={input} type="color" tabIndex={-1} aria-hidden className="pointer-events-none absolute size-0 opacity-0" />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">Paleta do plan</span>
+        <Tooltip content="Nova cor na paleta">
+          <Button size="icon-sm" variant="ghost" aria-label="Nova cor na paleta" onClick={() => open({ mode: "add" }, "#2F4FD8")}>
+            <Plus />
+          </Button>
+        </Tooltip>
+      </div>
+      {ed.palette.length ? (
+        <div className="flex flex-wrap gap-2">{ed.palette.map((c) => swatch(c, true))}</div>
+      ) : (
+        <p className="text-caption text-muted">As cores que você escolher com + ou com o conta-gotas aparecem aqui e em todos os seletores de cor deste plan.</p>
+      )}
+      {used.length > 0 && (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-caption text-muted">No desenho</span>
+            {used.some((c) => !ed.palette.includes(c)) && (
+              <button type="button" className="text-caption font-medium text-accent-ink hover:underline" onClick={() => ed.setPalette([...ed.palette, ...used])}>
+                Usar como paleta
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">{used.slice(0, 18).map((c) => swatch(c, ed.palette.includes(c)))}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PlanInspector() {
   const ed = useEditor();
   const m = ed.meta;
@@ -838,7 +1667,7 @@ function PlanInspector() {
     <Scroll>
       <div className="flex flex-col gap-0.5">
         <SectionLabel>Plan</SectionLabel>
-        <p className="text-xs text-muted">Nada selecionado — estas são as propriedades do plan.</p>
+        <p className="text-xs text-muted">Título, descrição e quem pode ver.</p>
       </div>
       <F label="Título" htmlFor="plan-title">
         <Input id="plan-title" className={smallInput} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() !== m.title && ed.saveMeta({ title })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
@@ -858,30 +1687,13 @@ function PlanInspector() {
           Alterar
         </Button>
       </div>
+      <PlanPalette />
       <p className="text-xs text-muted">
         {nodeCount} {nodeCount === 1 ? "elemento" : "elementos"} · {edgeCount} {edgeCount === 1 ? "conexão" : "conexões"}
       </p>
-      <div className="h-px bg-line" />
-      <div className="flex flex-col gap-2">
-        <SectionLabel>Atalhos</SectionLabel>
-        <ul className="flex flex-col gap-1.5 text-xs text-ink-2">
-          {[
-            ["Selecionar / mover canvas / conectar", "V · H · C"],
-            ["Duplicar", "⌘D"],
-            ["Copiar / colar", "⌘C · ⌘V"],
-            ["Agrupar / desagrupar", "⌘G · ⇧⌘G"],
-            ["Organizar (vertical / horizontal)", "⇧L · ⌥⇧L"],
-            ["Desfazer / refazer", "⌘Z · ⇧⌘Z"],
-            ["Editar título", "Enter · duplo clique"],
-            ["Buscar no Waypoint", "⌘K"],
-          ].map(([l, k]) => (
-            <li key={l} className="flex items-center justify-between gap-2">
-              <span>{l}</span>
-              <Kbd>{k}</Kbd>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <button type="button" onClick={openShortcuts} className="self-start text-caption font-medium text-accent-ink hover:underline">
+        Atalhos do teclado <Kbd>?</Kbd>
+      </button>
     </Scroll>
   );
 }

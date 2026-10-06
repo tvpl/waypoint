@@ -34,7 +34,7 @@ export function PublicCollectionView({
   for (const l of links) if (l.collectionId) byCollection.set(l.collectionId, [...(byCollection.get(l.collectionId) ?? []), l]);
 
   return (
-    <div className="min-h-dvh bg-bg text-ink">
+    <div className="min-h-app bg-bg text-ink">
       <div className="mx-auto flex max-w-[1240px] flex-col gap-8 px-5 py-10 sm:px-8">
         <header className="flex flex-col gap-3">
           {path.length > 1 && (
@@ -58,7 +58,7 @@ export function PublicCollectionView({
           <div className="flex items-start gap-4">
             <CollectionTile icon={collection.icon} color={collection.color} size={44} />
             <div className="flex min-w-0 flex-col gap-1.5">
-              <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">{collection.name}</h1>
+              <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">{collection.name}</h1>
               {collection.description && <p className="max-w-[720px] text-sm leading-6 text-muted">{collection.description}</p>}
               <p className="text-xs text-muted">
                 {links.length} {links.length === 1 ? "link" : "links"}

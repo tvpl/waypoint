@@ -79,6 +79,16 @@ describe("comments service — threads", () => {
     expect(() => c.createComment(ids.plan, as("bob"), { body: "x", parentId: "nope" })).toThrow(/não encontrado/);
   });
 
+  it("threads can be about a layer; replies inherit it and node threads never carry one", () => {
+    const root = c.createComment(ids.plan, as("bob"), { body: "Essa versão resolve?", layerId: "l-proposta" });
+    expect(root).toMatchObject({ nodeId: null, layerId: "l-proposta" });
+    const reply = c.createComment(ids.plan, as("vera"), { body: "Sim", parentId: root.id });
+    expect(reply.layerId).toBe("l-proposta");
+    const onNode = c.createComment(ids.plan, as("bob"), { body: "x", nodeId: "gw", layerId: "l-proposta" });
+    expect(onNode.layerId).toBeNull();
+    expect(c.listComments(ids.plan, as("bob")).find((x) => x.id === root.id)?.layerId).toBe("l-proposta");
+  });
+
   it("edit is author-only", () => {
     const mine = c.createComment(ids.plan, as("vera"), { body: "rascunho" });
     expect(() => c.editComment(mine.id, as("alice"), "hack")).toThrow(/Só quem escreveu/);

@@ -5,6 +5,7 @@ const c = (id: string, extra: Partial<CommentView> = {}): CommentView => ({
   id,
   planId: "p",
   nodeId: null,
+  layerId: null,
   parentId: null,
   body: id,
   resolvedAt: null,

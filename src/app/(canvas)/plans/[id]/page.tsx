@@ -104,7 +104,7 @@ export default async function PlanViewRoute({ params, searchParams }: Props) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-bg px-6 text-center">
+    <main className="flex min-h-app flex-col items-center justify-center gap-6 bg-bg px-6 text-center">
       <Logo size={40} />
       {children}
     </main>
@@ -115,7 +115,7 @@ function Unavailable({ signedIn, next }: { signedIn: boolean; next: string }) {
   return (
     <Shell>
       <div className="flex max-w-md flex-col gap-2">
-        <h1 className="font-display text-display-lg leading-none tracking-[-0.01em]">Plan indisponível</h1>
+        <h1 className="font-display font-semibold text-display-lg leading-none tracking-[-0.025em]">Plan indisponível</h1>
         <p className="text-lead text-muted">
           {signedIn ? "Este plan não existe ou você não tem acesso a ele. Peça ao dono para compartilhar com você." : "Este plan é privado ou o link expirou. Entre para ver se você tem acesso."}
         </p>
@@ -134,7 +134,7 @@ function NotPublished({ signedIn }: { signedIn: boolean }) {
   return (
     <Shell>
       <div className="flex max-w-md flex-col gap-2">
-        <h1 className="font-display text-display-lg leading-none tracking-[-0.01em]">Ainda não publicado</h1>
+        <h1 className="font-display font-semibold text-display-lg leading-none tracking-[-0.025em]">Ainda não publicado</h1>
         <p className="text-lead text-muted">Este plan ainda está em rascunho. Ele aparece aqui assim que o dono publicar a primeira versão.</p>
       </div>
       <Link href={signedIn ? "/plans" : "/"} className="inline-flex h-9 items-center rounded-control border border-line-2 bg-surface px-4 text-sm font-medium">

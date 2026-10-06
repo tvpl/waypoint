@@ -5,6 +5,9 @@ import { eq } from "drizzle-orm";
 import { createSession, verifyPassword } from "@/server/auth";
 import { getDb, schema } from "@/server/db";
 import { createUser, UserError } from "@/server/services/workspaces";
+import { ensureDesktopUser, isDesktop } from "@/server/desktop";
+import { desktopSecurity } from "@/server/desktop-security";
+import { rateLimit } from "@/server/lib/rate-limit";
 
 export type AuthState = { error?: string } | undefined;
 
@@ -39,4 +42,20 @@ export async function signupAction(_: AuthState, form: FormData): Promise<AuthSt
     throw e;
   }
   redirect("/");
+}
+
+/**
+ * Desktop app lock screen: the local person unlocks with their password. Five tries a minute;
+ * a wrong password never says more than that.
+ */
+export async function unlockAction(_: AuthState, form: FormData): Promise<AuthState> {
+  if (!isDesktop() || !desktopSecurity().lock) redirect("/");
+  const limit = rateLimit("desktop-unlock", 5, 60_000);
+  if (!limit.ok) return { error: `Muitas tentativas. Tente de novo em ${limit.retryAfter} s.` };
+  const userId = await ensureDesktopUser();
+  const user = getDb().select().from(schema.users).where(eq(schema.users.id, userId)).get();
+  if (!user || !(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { error: "Senha incorreta." };
+  await createSession(user.id);
+  const next = safeNext(form.get("next"));
+  redirect(next.startsWith("/login") ? "/" : next);
 }

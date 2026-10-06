@@ -125,3 +125,26 @@ describe("flowFingerprint", () => {
     expect(sameFingerprint(null, fp)).toBe(false);
   });
 });
+
+describe("locked and hidden elements", () => {
+  const d: PlanDocument = {
+    ...doc,
+    nodes: doc.nodes.map((n) => (n.id === "pay" ? { ...n, data: { ...n.data, hidden: true } } : n.id === "gw" ? { ...n, data: { ...n.data, locked: true } } : n)),
+  };
+  const flow = toFlowNodes(d);
+  const byId = Object.fromEntries(flow.map((n) => [n.id, n]));
+
+  it("hides an element with what is inside it, and keeps a locked one still and unselectable", () => {
+    expect(byId.pay.hidden).toBe(true);
+    expect(byId.pix.hidden).toBe(true);
+    expect(byId.note.hidden).toBeUndefined();
+    expect(byId.gw).toMatchObject({ draggable: false, selectable: false, deletable: false, className: "wp-locked" });
+    expect(toFlowNodes(d, { readOnly: true }).find((n) => n.id === "gw")?.className).toBeUndefined();
+  });
+
+  it("keeps both flags in the document", () => {
+    const back = fromFlow(flow, toFlowEdges(d), d.viewport);
+    expect(back.nodes.find((n) => n.id === "pay")?.data.hidden).toBe(true);
+    expect(back.nodes.find((n) => n.id === "gw")?.data.locked).toBe(true);
+  });
+});

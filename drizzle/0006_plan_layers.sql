@@ -1,0 +1,1 @@
+ALTER TABLE `plan_documents` ADD `layers_json` text;

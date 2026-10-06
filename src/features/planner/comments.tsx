@@ -87,7 +87,7 @@ export function useComments({ planId, token, enabled, open }: { planId: string; 
   }, []);
 
   const create = useCallback(
-    async (input: { body: string; nodeId?: string | null; parentId?: string | null }) => apply(await createCommentAction(planId, token ?? null, input)),
+    async (input: { body: string; nodeId?: string | null; layerId?: string | null; parentId?: string | null }) => apply(await createCommentAction(planId, token ?? null, input)),
     [apply, planId, token],
   );
   const edit = useCallback(async (id: string, body: string) => apply(await editCommentAction(planId, token ?? null, id, body)), [apply, planId, token]);
@@ -102,13 +102,14 @@ export function useComments({ planId, token, enabled, open }: { planId: string; 
   return { snapshot, error, loading, counts, refresh, create, edit, remove, resolve };
 }
 
-/** Open/close state of the panel plus the node it was opened on. */
+/** Open/close state of the panel plus the node (or layer) it was opened on. */
 export function useCommentsPanel() {
-  const [state, setState] = useState<{ open: boolean; nodeId: string | null; seq: number }>({ open: false, nodeId: null, seq: 0 });
-  const openPanel = useCallback((nodeId: string | null = null) => setState((s) => ({ open: true, nodeId, seq: s.seq + 1 })), []);
+  const [state, setState] = useState<{ open: boolean; nodeId: string | null; layerId: string | null; seq: number }>({ open: false, nodeId: null, layerId: null, seq: 0 });
+  const openPanel = useCallback((nodeId: string | null = null) => setState((s) => ({ open: true, nodeId, layerId: null, seq: s.seq + 1 })), []);
+  const openLayer = useCallback((layerId: string) => setState((s) => ({ open: true, nodeId: null, layerId, seq: s.seq + 1 })), []);
   const close = useCallback(() => setState((s) => ({ ...s, open: false })), []);
-  const toggle = useCallback(() => setState((s) => ({ open: !s.open, nodeId: null, seq: s.seq + 1 })), []);
-  return { ...state, openPanel, close, toggle };
+  const toggle = useCallback(() => setState((s) => ({ open: !s.open, nodeId: null, layerId: null, seq: s.seq + 1 })), []);
+  return { ...state, openPanel, openLayer, close, toggle };
 }
 
 // ------------------------------------------------------------------ toggle
@@ -345,27 +346,37 @@ function MentionTextarea({
 
 // ------------------------------------------------------------------ panel
 
-export type CommentNodeInfo = { id: string; title: string; kind: string };
+export type CommentNodeInfo = { id: string; title: string; kind: string; layer?: string };
+export type CommentLayerInfo = { id: string; name: string; color?: string };
+
+const LAYER_KEY = "layer:";
 
 export function CommentsPanel({
   store,
   target,
   onClose,
   nodes,
+  layers = [],
   onSelectNode,
   className,
 }: {
   store: CommentsStore;
-  /** Node the panel was opened on (seq changes on each request). */
-  target: { nodeId: string | null; seq: number };
+  /** Node or layer the panel was opened on (seq changes on each request). */
+  target: { nodeId: string | null; layerId?: string | null; seq: number };
   onClose: () => void;
   nodes: CommentNodeInfo[];
+  /** Layers of the plan (bottom to top): threads can be about one, and the list filters by them. */
+  layers?: CommentLayerInfo[];
   onSelectNode?: (id: string) => void;
   className?: string;
 }) {
   const snap = store.snapshot;
   const [showResolved, setShowResolved] = useState(false);
   const [composeNode, setComposeNode] = useState<string | null>(target.nodeId);
+  const [composeLayer, setComposeLayer] = useState<string | null>(target.layerId ?? null);
+  const [layerFilter, setLayerFilter] = useState<string | null>(target.layerId ?? null);
+  const multiLayer = layers.length > 1;
+  const layerById = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [, tick] = useState(0);
@@ -401,48 +412,58 @@ export function CommentsPanel({
     };
   }, []);
 
-  // opened on a node: compose there, reveal its threads
+  // opened on a node or layer: compose there, reveal its threads
   useEffect(() => {
     setComposeNode(target.nodeId);
+    setComposeLayer(target.layerId ?? null);
+    if (target.layerId) setLayerFilter(target.layerId);
     const t = setTimeout(() => {
-      if (target.nodeId) {
-        const group = listRef.current?.querySelector<HTMLElement>(`[data-node-group="${CSS.escape(target.nodeId)}"]`);
+      const key = target.nodeId ?? (target.layerId ? LAYER_KEY + target.layerId : null);
+      if (key) {
+        const group = listRef.current?.querySelector<HTMLElement>(`[data-node-group="${CSS.escape(key)}"]`);
         group?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
         composerRef.current?.focus();
       } else panelRef.current?.querySelector<HTMLElement>("[data-panel-title]")?.focus();
     }, 60);
     return () => clearTimeout(t);
-  }, [target.nodeId, target.seq]);
+  }, [target.nodeId, target.layerId, target.seq]);
 
   const threads = useMemo(() => toThreads(snap?.comments ?? []), [snap]);
   const resolvedCount = threads.filter((t) => t.root.resolvedAt).length;
-  const visible = threads.filter((t) => showResolved || !t.root.resolvedAt);
+  // A thread belongs to a layer when it is about the layer or about an element on it.
+  const threadLayer = useCallback((t: CommentThread) => t.root.layerId ?? (t.root.nodeId ? (nodeById.get(t.root.nodeId)?.layer ?? "base") : null), [nodeById]);
+  const visible = threads.filter((t) => (showResolved || !t.root.resolvedAt) && (!layerFilter || threadLayer(t) === layerFilter));
   const names = useMemo(() => [...new Set([...(snap?.people ?? []).map((p) => p.name), ...threads.flatMap((t) => [t.root, ...t.replies].map((c) => c.author.name))])], [snap, threads]);
 
   const groups = useMemo(() => {
     const order = new Map(nodes.map((n, i) => [n.id, i]));
     const map = new Map<string, CommentThread[]>();
     for (const t of visible) {
-      const k = t.root.nodeId ?? "";
+      const k = t.root.nodeId ?? (t.root.layerId ? LAYER_KEY + t.root.layerId : "");
       map.set(k, [...(map.get(k) ?? []), t]);
     }
+    const layerOrder = new Map(layers.map((l, i) => [LAYER_KEY + l.id, i]));
+    // plan first, then layers (bottom to top), then elements in canvas order
+    const rank = (k: string) => (!k ? -2 : k.startsWith(LAYER_KEY) ? -1 : 0);
     return [...map.entries()].sort(([a], [b]) => {
-      if (!a) return -1;
-      if (!b) return 1;
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      if (rank(a) === -1) return (layerOrder.get(a) ?? 1e9) - (layerOrder.get(b) ?? 1e9);
       return (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9);
     });
-  }, [visible, nodes]);
+  }, [visible, nodes, layers]);
+  const layerName = (id: string) => layerById.get(id)?.name ?? "Camada removida";
 
   const send = async () => {
     const body = draft.trim();
     if (!body || sending) return;
     setSending(true);
-    const ok = await store.create({ body, nodeId: composeNode });
+    const layerId = composeNode ? null : composeLayer;
+    const ok = await store.create({ body, nodeId: composeNode, layerId });
     setSending(false);
     if (ok) {
       setDraft("");
       requestAnimationFrame(() => {
-        const key = composeNode ?? "";
+        const key = composeNode ?? (layerId ? LAYER_KEY + layerId : "");
         const group = listRef.current?.querySelector<HTMLElement>(`[data-node-group="${CSS.escape(key)}"]`);
         group?.lastElementChild?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
       });
@@ -482,6 +503,30 @@ export function CommentsPanel({
         </label>
         <Switch id={`${titleId}-res`} checked={showResolved} onChange={setShowResolved} />
       </div>
+      {multiLayer && (
+        <div className="flex items-center gap-2 border-b border-line px-4 py-2 text-[12px] text-ink-2">
+          <label htmlFor={`${titleId}-layer`} className="shrink-0">
+            Camada
+          </label>
+          <select
+            id={`${titleId}-layer`}
+            value={layerFilter ?? ""}
+            onChange={(e) => {
+              const v = e.target.value || null;
+              setLayerFilter(v);
+              if (!composeNode) setComposeLayer(v);
+            }}
+            className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1.5 text-[12px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            <option value="">Todas as camadas</option>
+            {[...layers].reverse().map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div ref={listRef} className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
         {!snap && store.error && <p className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-body text-muted">{store.error}</p>}
@@ -496,62 +541,74 @@ export function CommentsPanel({
               <MessagesSquare className="size-5" />
             </span>
             <div className="flex flex-col gap-1">
-              <p className="text-sm font-semibold">{resolvedCount && !showResolved ? "Tudo resolvido" : "Nenhum comentário ainda"}</p>
+              <p className="text-sm font-semibold">{layerFilter ? `Nada em “${layerName(layerFilter)}”` : resolvedCount && !showResolved ? "Tudo resolvido" : "Nenhum comentário ainda"}</p>
               <p className="text-body leading-5 text-muted">
-                {resolvedCount && !showResolved ? "Ative “Mostrar resolvidos” para ver as conversas encerradas." : "Comente o plan ou um elemento específico. Use @ para mencionar alguém."}
+                {layerFilter ? "Comente esta camada ou um elemento dela." : resolvedCount && !showResolved ? "Ative “Mostrar resolvidos” para ver as conversas encerradas." : "Comente o plan ou um elemento específico. Use @ para mencionar alguém."}
               </p>
             </div>
           </div>
         )}
         {snap &&
-          groups.map(([key, list]) => (
-            <section key={key || "plan"} data-node-group={key} aria-label={key ? `Comentários em ${labelOf(key)}` : "Comentários no plan"} className="flex flex-col gap-2.5">
-              <div className="flex items-center gap-2">
-                {key ? (
-                  <button
-                    type="button"
-                    disabled={!nodeById.has(key) || !onSelectNode}
-                    onClick={() => onSelectNode?.(key)}
-                    className={cn(
-                      "min-w-0 truncate rounded-md text-left text-caption font-semibold uppercase tracking-[.06em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
-                      nodeById.has(key) && onSelectNode && "hover:text-accent-ink",
-                      key === target.nodeId && "text-accent-ink",
-                    )}
-                    title={nodeById.has(key) ? "Mostrar no canvas" : undefined}
-                  >
-                    {labelOf(key)}
-                  </button>
-                ) : (
-                  <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">No plan</span>
-                )}
-                <span className="h-px flex-1 bg-line" aria-hidden />
-                {key && (
-                  <Tooltip content="Comentar neste elemento">
+          groups.map(([key, list]) => {
+            const layerKey = key.startsWith(LAYER_KEY) ? key.slice(LAYER_KEY.length) : null;
+            const groupLabel = layerKey ? layerName(layerKey) : key ? labelOf(key) : "No plan";
+            return (
+              <section key={key || "plan"} data-node-group={key} aria-label={key ? `Comentários em ${groupLabel}` : "Comentários no plan"} className="flex flex-col gap-2.5">
+                <div className="flex items-center gap-2">
+                  {layerKey ? (
+                    <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-caption font-semibold uppercase tracking-[.06em] text-muted", layerKey === target.layerId && "text-accent-ink")}>
+                      <span className="size-2 shrink-0 rounded-full" style={{ background: layerById.get(layerKey)?.color ?? "var(--muted)" }} aria-hidden />
+                      <span className="truncate">Camada · {groupLabel}</span>
+                    </span>
+                  ) : key ? (
                     <button
                       type="button"
-                      aria-label={`Comentar em ${labelOf(key)}`}
-                      className="inline-flex size-6 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-3.5"
-                      onClick={() => {
-                        setComposeNode(key);
-                        composerRef.current?.focus();
-                      }}
+                      disabled={!nodeById.has(key) || !onSelectNode}
+                      onClick={() => onSelectNode?.(key)}
+                      className={cn(
+                        "min-w-0 truncate rounded-md text-left text-caption font-semibold uppercase tracking-[.06em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+                        nodeById.has(key) && onSelectNode && "hover:text-accent-ink",
+                        key === target.nodeId && "text-accent-ink",
+                      )}
+                      title={nodeById.has(key) ? "Mostrar no canvas" : undefined}
                     >
-                      <MessageSquare />
+                      {groupLabel}
                     </button>
-                  </Tooltip>
-                )}
-              </div>
-              {list.map((t) => (
-                <Thread
-                  key={t.root.id}
-                  thread={t}
-                  store={store}
-                  names={names}
-                  onSelectNode={key && nodeById.has(key) ? () => onSelectNode?.(key) : undefined}
-                />
-              ))}
-            </section>
-          ))}
+                  ) : (
+                    <span className="text-caption font-semibold uppercase tracking-[.06em] text-muted">No plan</span>
+                  )}
+                  <span className="h-px flex-1 bg-line" aria-hidden />
+                  {key && (
+                    <Tooltip content={layerKey ? "Comentar nesta camada" : "Comentar neste elemento"}>
+                      <button
+                        type="button"
+                        aria-label={`Comentar em ${groupLabel}`}
+                        className="inline-flex size-6 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-3.5"
+                        onClick={() => {
+                          if (layerKey) {
+                            setComposeNode(null);
+                            setComposeLayer(layerKey);
+                          } else setComposeNode(key);
+                          composerRef.current?.focus();
+                        }}
+                      >
+                        <MessageSquare />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+                {list.map((t) => (
+                  <Thread
+                    key={t.root.id}
+                    thread={t}
+                    store={store}
+                    names={names}
+                    onSelectNode={key && nodeById.has(key) ? () => onSelectNode?.(key) : undefined}
+                  />
+                ))}
+              </section>
+            );
+          })}
       </div>
 
       {snap && (
@@ -559,9 +616,18 @@ export function CommentsPanel({
           <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted">
             <span className="shrink-0">Em</span>
             <span className="inline-flex min-w-0 items-center gap-1 rounded-full bg-subtle py-0.5 pl-2 pr-1 text-ink-2">
-              <span className="truncate font-medium">{composeNode ? labelOf(composeNode) : "No plan"}</span>
-              {composeNode && (
-                <button type="button" aria-label="Comentar no plan em vez do elemento" className="inline-flex size-4 items-center justify-center rounded-full hover:bg-hover [&_svg]:size-3" onClick={() => setComposeNode(null)}>
+              {!composeNode && composeLayer && <span className="size-2 shrink-0 rounded-full" style={{ background: layerById.get(composeLayer)?.color ?? "var(--muted)" }} aria-hidden />}
+              <span className="truncate font-medium">{composeNode ? labelOf(composeNode) : composeLayer ? `Camada ${layerName(composeLayer)}` : "No plan"}</span>
+              {(composeNode || composeLayer) && (
+                <button
+                  type="button"
+                  aria-label={composeNode ? "Comentar no plan em vez do elemento" : "Comentar no plan em vez da camada"}
+                  className="inline-flex size-4 items-center justify-center rounded-full hover:bg-hover [&_svg]:size-3"
+                  onClick={() => {
+                    setComposeNode(null);
+                    setComposeLayer(null);
+                  }}
+                >
                   <X />
                 </button>
               )}
@@ -569,7 +635,7 @@ export function CommentsPanel({
           </div>
           <MentionTextarea
             textareaRef={composerRef}
-            label={composeNode ? `Comentar em ${labelOf(composeNode)}` : "Comentar no plan"}
+            label={composeNode ? `Comentar em ${labelOf(composeNode)}` : composeLayer ? `Comentar na camada ${layerName(composeLayer)}` : "Comentar no plan"}
             value={draft}
             onChange={setDraft}
             onSubmit={() => void send()}

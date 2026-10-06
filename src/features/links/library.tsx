@@ -1053,7 +1053,7 @@ function Empty({
           <Link2 className="size-5" aria-hidden />
         </span>
         <div className="flex max-w-md flex-col gap-1.5">
-          <p className="font-display text-[28px] leading-tight">Sua biblioteca começa aqui</p>
+          <p className="font-display font-semibold text-[24px] leading-tight">Sua biblioteca começa aqui</p>
           <p className="text-sm leading-6 text-muted">
             {canEdit
               ? "Cole uma URL em qualquer lugar desta página para salvá-la — o Waypoint busca título, descrição e imagem. Ou traga todos os favoritos do navegador de uma vez, com pastas e tudo."

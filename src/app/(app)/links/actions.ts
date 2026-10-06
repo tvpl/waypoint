@@ -15,6 +15,7 @@ import {
   getFavorite,
   moveCollection,
   moveFavorite,
+  normalizeUrl,
   reorderPinnedLinks,
   setMarks,
   toggleMark,
@@ -26,7 +27,8 @@ import { createSavedSearch, deleteSavedSearch, updateSavedSearch } from "@/serve
 import { tagsForFavorites } from "@/server/services/tags";
 import { markHealthy } from "@/server/services/link-health";
 import { ensureShareLink, revokeShareLink } from "@/server/services/plans";
-import { favoritesInWorkspace, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
+import { favoritesInWorkspace, findByUrl, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
+import { fetchLinkMetadata } from "@/server/services/metadata";
 import type { ActionResult, LinkItem } from "@/features/links/types";
 import { findDuplicateGroups, mergeLinks, type DuplicateGroup } from "@/server/services/link-dedupe";
 import { markTriaged, suggestCollections, type CollectionSuggestion } from "@/server/services/link-triage";
@@ -105,6 +107,34 @@ export async function createLinkAction(input: LinkInput): Promise<ActionResult<{
     const newId = createFavorite(ctx.workspace.id, ctx.user.id, data);
     done();
     return { ok: true, data: { id: newId } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+const httpOnly = (v: string | undefined) => (v && /^https?:\/\//i.test(v) && v.length <= 2048 ? v : null);
+
+/**
+ * Quick capture (the desktop capture window): saves a URL to the inbox, with title, description
+ * and images taken from the page (SSRF-safe fetch). A URL that is already saved returns that link.
+ */
+export async function quickCaptureAction(rawUrl: string): Promise<ActionResult<{ id: string; title: string; duplicate: boolean }>> {
+  try {
+    const ctx = await editor();
+    const url = normalizeUrl(z.string().trim().min(1, "Informe a URL.").max(4096, "URL muito longa.").parse(rawUrl));
+    const existing = findByUrl(ctx.workspace.id, ctx.user.id, url);
+    if (existing) return { ok: true, data: { id: existing.id, title: existing.title, duplicate: true } };
+    const meta = await fetchLinkMetadata(url);
+    const newId = createFavorite(ctx.workspace.id, ctx.user.id, {
+      url,
+      title: meta.title?.slice(0, 500),
+      description: meta.description?.slice(0, 5000) || null,
+      favicon: httpOnly(meta.favicon),
+      coverImage: httpOnly(meta.image),
+      inbox: true,
+    });
+    done();
+    return { ok: true, data: { id: newId, title: getFavorite(newId)?.title ?? url, duplicate: false } };
   } catch (e) {
     return fail(e);
   }

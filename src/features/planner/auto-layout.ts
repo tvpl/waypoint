@@ -207,7 +207,9 @@ export function autoLayout<T extends Doc>(doc: T, opts: AutoLayoutOptions): T {
   };
 
   /** Lays out a sibling set in place, keeping the bbox origin (or putting it at `at`). */
-  const arrange = (ids: string[], parent: string | undefined, at?: Pos) => {
+  const arrange = (all: string[], parent: string | undefined, at?: Pos) => {
+    // Drawings are annotations: they stay where they were drawn.
+    const ids = all.filter((id) => nodes.get(id)?.kind !== "ink");
     if (!ids.length) return { width: 0, height: 0 };
     const items: Item[] = ids.map((id) => {
       const n = nodes.get(id)!;

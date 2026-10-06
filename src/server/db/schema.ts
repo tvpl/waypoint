@@ -109,6 +109,8 @@ export const planDocuments = sqliteTable("plan_documents", {
   nodesJson: text("nodes_json").notNull().default("[]"),
   edgesJson: text("edges_json").notNull().default("[]"),
   viewportJson: text("viewport_json").notNull().default('{"x":0,"y":0,"zoom":1}'),
+  /** Layers and saved views ({ layers?, views? }); null when the plan has none (src/domain/layers.ts). */
+  layersJson: text("layers_json"),
   updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: updatedAt(),
 });
@@ -402,7 +404,7 @@ export const apiTokens = sqliteTable(
   (t) => [index("api_tokens_user_idx").on(t.userId)],
 );
 
-/** Comments on a plan, optionally anchored to a node. */
+/** Comments on a plan, optionally anchored to a node or a layer. */
 export const planComments = sqliteTable(
   "plan_comments",
   {
@@ -411,6 +413,8 @@ export const planComments = sqliteTable(
       .notNull()
       .references(() => plans.id, { onDelete: "cascade" }),
     nodeId: text("node_id"),
+    /** Layer the thread is about (plan-level threads only; a node's thread follows the node). */
+    layerId: text("layer_id"),
     parentId: text("parent_id"),
     userId: text("user_id")
       .notNull()
@@ -421,4 +425,21 @@ export const planComments = sqliteTable(
     updatedAt: updatedAt(),
   },
   (t) => [index("plan_comments_plan_idx").on(t.planId, t.createdAt)],
+);
+
+/** "Minha biblioteca": reusable drawings of a workspace (also imported from .excalidrawlib files). */
+export const libraryItems = sqliteTable(
+  "library_items",
+  {
+    id: id(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull().default(""),
+    /** The elements, at the origin (see src/domain/library.ts). */
+    content: text("content").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("library_items_workspace_idx").on(t.workspaceId, t.createdAt)],
 );

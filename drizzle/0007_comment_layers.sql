@@ -1,0 +1,1 @@
+ALTER TABLE `plan_comments` ADD `layer_id` text;

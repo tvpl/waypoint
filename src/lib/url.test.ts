@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalUrl, stripTracking } from "./url";
+import { canonicalUrl, pastedUrl, stripTracking } from "./url";
 
 describe("canonicalUrl", () => {
   it("treats cosmetic variants as the same page", () => {
@@ -19,5 +19,21 @@ describe("stripTracking", () => {
   it("drops only tracking parameters", () => {
     expect(stripTracking("https://a.dev/p?utm_source=n&id=3&gclid=1")).toBe("https://a.dev/p?id=3");
     expect(stripTracking("https://a.dev/p?id=3")).toBe("https://a.dev/p?id=3");
+  });
+});
+
+describe("pastedUrl", () => {
+  it("takes http(s) URLs and bare domains", () => {
+    expect(pastedUrl("  https://react.dev/learn  ")).toBe("https://react.dev/learn");
+    expect(pastedUrl("http://localhost:3000/x")).toBe("http://localhost:3000/x");
+    expect(pastedUrl("react.dev/learn?a=1")).toBe("https://react.dev/learn?a=1");
+    expect(pastedUrl("www.example.com.br")).toBe("https://www.example.com.br/");
+  });
+  it("rejects text, numbers and other schemes", () => {
+    expect(pastedUrl("roadmap do produto")).toBeNull();
+    expect(pastedUrl("3.14")).toBeNull();
+    expect(pastedUrl("javascript:alert(1)")).toBeNull();
+    expect(pastedUrl("ftp://example.com")).toBeNull();
+    expect(pastedUrl("")).toBeNull();
   });
 });

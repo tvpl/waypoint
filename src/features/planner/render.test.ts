@@ -114,7 +114,7 @@ describe("planner SSR", () => {
     expect(html).toContain("Elementos");
     expect(html).toContain("Camadas");
     expect(html).toContain("Publicar");
-    expect(html).toContain("Alterações não publicadas");
+    expect(html).toContain("Não publicado");
   });
 
   it("renders the inspector for nodes, edges and multi-selection", async () => {
@@ -123,6 +123,7 @@ describe("planner SSR", () => {
     const { EditorContext } = await import("./editor-context");
     const { TooltipProvider } = await import("@/components/ui/popover");
     const { toFlowEdges, toFlowNodes } = await import("@/domain/canvas-adapter");
+    const { DEFAULT_STYLE } = await import("./shape-geometry");
     const nodes = toFlowNodes(doc);
     const edges = toFlowEdges(doc);
     const noop = () => {};
@@ -132,9 +133,23 @@ describe("planner SSR", () => {
       edges,
       meta: { title: "Plan", description: null, tags: ["a"], visibility: "link" },
       tool: "select",
+      ink: { mode: "pen", color: undefined, size: 4 },
+      style: DEFAULT_STYLE,
+      layers: {
+        list: [
+          { id: "base", name: "Base", visible: true },
+          { id: "p", name: "Proposta", visible: true, color: "#E5484D" },
+        ],
+        views: [],
+        active: "base",
+        counts: new Map(),
+        isolated: null,
+      },
       connectKind: "flow",
       grid: true,
       snap: false,
+      palette: [],
+      libraryLinks: { copies: [], copyOf: () => null },
       resourceFor: (n: { id: string }) => (n.id === "lnk" ? resources.lnk : null),
       hasClipboard: () => false,
     };
@@ -154,6 +169,58 @@ describe("planner SSR", () => {
     expect(render({ selectedNodes: nodes.slice(0, 3), selectedEdges: [] })).toContain("Agrupar");
     expect(render({ selectedNodes: [], selectedEdges: [] })).toContain("Qualquer pessoa com o link");
     expect(render({ selectedNodes: [], selectedEdges: [], tool: "connect" })).toContain("Clique na origem");
+    // layers: the selection's layer, drawing tools and a drawn stroke
+    expect(render({ selectedNodes: nodes.slice(0, 1), selectedEdges: [], inspectorTab: "appearance" })).toContain("Proposta");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "draw" })).toContain("Marca-texto");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "erase" })).toContain("Passe sobre os traços");
+    const [ink] = toFlowNodes({ nodes: [{ id: "ink1", kind: "ink", x: 0, y: 0, width: 40, height: 20, data: { title: "", ink: { points: [2, 2, 38, 18], w: 40, h: 20, size: 2, arrow: true } } }] });
+    expect(render({ selectedNodes: [ink], selectedEdges: [] })).toContain("Apagar desenho");
+    // shapes and text in the drawing bar; a text annotation and a numbered connection
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "rect" })).toContain("Arraste para desenhar");
+    expect(render({ selectedNodes: [], selectedEdges: [], tool: "arrow" })).toContain("Ponta final");
+    const [shape] = toFlowNodes({ nodes: [{ id: "s1", kind: "shape", x: 0, y: 0, width: 120, height: 80, data: { title: "Fila", shape: { type: "diamond", fill: "#A5D8FF", roughness: 1 } } }] });
+    const shapeHtml = render({ selectedNodes: [shape], selectedEdges: [] });
+    expect(shapeHtml).toContain("Losango");
+    expect(shapeHtml).toContain("Preenchimento");
+    expect(shapeHtml).toContain("Traçado");
+    const [note] = toFlowNodes({ nodes: [{ id: "t1", kind: "ink", x: 0, y: 0, width: 80, height: 30, data: { title: "Olhe aqui", ink: { points: [0, 0, 80, 30], w: 80, h: 30, size: 4, shape: "text" } } }] });
+    const textHtml = render({ selectedNodes: [note], selectedEdges: [] });
+    expect(textHtml).toContain("Texto à mão");
+    expect(textHtml).toContain("Olhe aqui");
+    const [stepEdge] = toFlowEdges({ edges: [{ ...doc.edges[0], step: 3 }] });
+    const edgeHtml = render({ selectedNodes: [], selectedEdges: [stepEdge] });
+    expect(edgeHtml).toContain("Passo do fluxo");
+    expect(edgeHtml).toContain('value="3"');
+  });
+
+  it("renders the layers panel and the comparison bar", async () => {
+    const { LayersPanel } = await import("./layers-panel");
+    const { CompareBar, ViewLayers } = await import("./view-layers");
+    const { EditorContext } = await import("./editor-context");
+    const { TooltipProvider } = await import("@/components/ui/popover");
+    const layers = [
+      { id: "base", name: "Atual", visible: true },
+      { id: "p", name: "Proposta", visible: true, color: "#E5484D", opacity: 0.6, reveal: true },
+    ];
+    const views = [
+      { id: "v1", name: "Hoje", layers: ["base"] },
+      { id: "v2", name: "Com a proposta", layers: ["base", "p"] },
+    ];
+    const noop = () => {};
+    const api = new Proxy(
+      { layers: { list: layers, views, active: "p", counts: new Map([["p", 2]]), isolated: null }, selectedNodes: [], selectedEdges: [], nodes: [], edges: [] },
+      { get: (t, k) => (k in t ? (t as Record<string | symbol, unknown>)[k] : noop) },
+    ) as never;
+    const panel = renderToString(createElement(TooltipProvider, null, createElement(EditorContext.Provider, { value: api }, createElement(LayersPanel))));
+    expect(panel).toContain("Proposta");
+    expect(panel).toContain("60%");
+    expect(panel).toContain("Modelos de camadas");
+    const d = { layers, views };
+    expect(renderToString(createElement(TooltipProvider, null, createElement(ViewLayers, { doc: d, overrides: {}, onChange: noop, onCompare: noop })))).toContain("Camadas");
+    const bar = renderToString(createElement(CompareBar, { doc: d, value: { a: "v:v1", b: "v:v2", show: "diff" }, counts: { added: 2, removed: 0, changed: 1 }, onChange: noop, onClose: noop }));
+    expect(bar).toContain("Diferença");
+    expect(bar).toContain("Com a proposta");
+    expect(bar).toContain("+<!-- -->2");
   });
 
   it("renders the plans list", async () => {

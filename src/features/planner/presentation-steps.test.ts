@@ -24,6 +24,12 @@ describe("presentation steps", () => {
     expect(steps[1].title).toBe("secA");
   });
 
+  it("a plan drawn in frames presents its frames as pages, in reading order", () => {
+    const d = sample();
+    d.nodes.push(n("f2", 900, 1200, { kind: "frame", width: 400, height: 300 }), n("f1", 0, 1200, { kind: "frame", width: 400, height: 300 }));
+    expect(presentationSteps(d, "Plano").map((s) => s.nodeId)).toEqual([null, "f1", "f2"]);
+  });
+
   it("uses only ordered nodes once a custom order exists", () => {
     let d = sample();
     d = setOrder(d, "inner", 2);
@@ -51,5 +57,43 @@ describe("presentation steps", () => {
   it("lights a node and its descendants", () => {
     expect(activeIdsFor(sample(), null)).toBeNull();
     expect([...activeIdsFor(sample(), "secA")!].sort()).toEqual(["inner", "secA"]);
+  });
+});
+
+describe("presentation steps and layers", () => {
+  it("skips drawings and nodes on hidden layers (document or viewer)", () => {
+    const mk = (id: string, extra: Partial<PlanNode> = {}): PlanNode => ({ id, kind: "block", x: 0, y: 0, width: 100, height: 50, data: { title: id }, ...extra });
+    const doc = {
+      nodes: [mk("a"), mk("b", { x: 200, layer: "p" }), mk("ink", { kind: "ink", x: 400 })],
+      edges: [],
+      layers: [
+        { id: "base", name: "Base", visible: true },
+        { id: "p", name: "Proposta", visible: false },
+      ],
+    };
+    expect(presentationSteps(doc, "T").map((s) => s.nodeId)).toEqual([null, "a"]);
+    expect(presentationSteps(doc, "T", { p: true }).map((s) => s.nodeId)).toEqual([null, "a", "b"]);
+  });
+});
+
+describe("presentation reveals layers", () => {
+  it("hides revealed layers until their step, right before their first element", () => {
+    const d: PlanDocument = {
+      ...doc([n("a", 0, 0), n("b", 300, 0, { layer: "v2" }), n("c", 0, 300, { layer: "notes" }), n("ink", 0, 600, { kind: "ink", layer: "notes" })]),
+      layers: [
+        { id: "base", name: "v1", visible: true },
+        { id: "v2", name: "v2", visible: true, reveal: true },
+        { id: "notes", name: "Notas", visible: true },
+      ],
+    };
+    const steps = presentationSteps(d, "Plano");
+    expect(steps.map((s) => s.layerId ?? s.nodeId)).toEqual([null, "a", "c", "v2", "b"]);
+    expect(steps[0].layers).toEqual({ base: true, v2: false, notes: true });
+    expect(steps[3]).toMatchObject({ title: "v2", nodeId: null, layers: { v2: true } });
+    // a revealed layer with no steps of its own still appears at the end
+    const drawingsOnly = { ...d, layers: d.layers!.map((l) => (l.id === "notes" ? { ...l, reveal: true } : l)), nodes: d.nodes.filter((x) => x.id !== "c") };
+    expect(presentationSteps(drawingsOnly, "P").map((s) => s.layerId ?? s.nodeId)).toEqual([null, "a", "v2", "b", "notes"]);
+    // without revealed layers nothing changes
+    expect(presentationSteps(doc([n("a", 0, 0)]), "P")[0].layers).toBeUndefined();
   });
 });

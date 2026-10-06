@@ -107,7 +107,8 @@
   --color-scrim: var(--scrim);
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-display: var(--font-instrument), "Iowan Old Style", Georgia, serif;
+  /* Titles: the same family as the interface, set heavier and tighter. */
+  --font-display: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --shadow-rest: var(--shadow-rest);
   --shadow-thumb: var(--shadow-thumb);
   --shadow-raise: var(--shadow-raise);
@@ -126,9 +127,9 @@
   --text-body: 13px;
   --text-lead: 15px;
   --text-title: 17px;
-  --text-display-sm: 34px;
-  --text-display: 44px;
-  --text-display-lg: 48px;
+  --text-display-sm: 26px;
+  --text-display: 30px;
+  --text-display-lg: 34px;
 
   /* Motion: quick out-curve for UI, a soft spring-like one for things that travel. */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -282,7 +283,7 @@
 
 /* Floating content (menus, popovers, tooltips): animate in from the anchor's side, out by fading. */
 @utility wp-float {
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, var(--radix-context-menu-content-transform-origin, var(--radix-tooltip-content-transform-origin, center))));
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, var(--radix-context-menu-content-transform-origin, var(--radix-tooltip-content-transform-origin, var(--radix-menubar-content-transform-origin, center)))));
   &[data-side="bottom"] {
     --wp-slide-y: -4px;
   }
@@ -451,6 +452,54 @@
   }
 }
 
+/* ------------------------------------------------------------------
+   Desktop app (desktop/): the window has no OS title bar, so the page draws one
+   (components/shell/title-bar.tsx) and everything else sits below it.
+   Full-height screens use h-app / min-h-app instead of h-dvh / min-h-dvh.
+------------------------------------------------------------------ */
+@utility h-app {
+  height: calc(100dvh - var(--titlebar-h, 0px));
+}
+@utility min-h-app {
+  min-height: calc(100dvh - var(--titlebar-h, 0px));
+}
+@utility drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+@utility no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.wp-desktop {
+  --titlebar-h: 40px;
+  /* Width the OS window buttons take on the right (Windows/Linux window controls overlay). */
+  --titlebar-controls-w: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 140px)) + 8px);
+}
+.wp-desktop.wp-fullscreen {
+  --titlebar-h: 0px;
+}
+.wp-desktop.wp-fullscreen .wp-titlebar {
+  display: none;
+}
+/* !important: open menus and dialogs lock scrolling by zeroing the body's padding
+   (react-remove-scroll-bar), which would slide the whole page under the title bar. */
+.wp-desktop body {
+  padding-top: var(--titlebar-h) !important;
+}
+/* Full-screen overlays (sheets, presentation) start below the title bar so it stays usable. */
+.wp-desktop .fixed.inset-0 {
+  top: var(--titlebar-h);
+}
+/* The floating capture window (/quick) has no title bar. */
+.wp-desktop:has(.wp-quick) {
+  --titlebar-h: 0px;
+}
+.wp-blurred .wp-titlebar > * {
+  opacity: 0.6;
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
   ::view-transition-new(*),
@@ -471,4 +520,67 @@
     animation-duration: 1.6s !important;
     animation-iteration-count: infinite !important;
   }
+}
+/* The same, chosen in Configurações › Aparência. */
+.wp-reduce-motion::view-transition-old(*),
+.wp-reduce-motion::view-transition-new(*),
+.wp-reduce-motion::view-transition-group(*) {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+.wp-reduce-motion *,
+.wp-reduce-motion *::before,
+.wp-reduce-motion *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+.wp-reduce-motion .animate-spin {
+  animation-duration: 1.6s !important;
+  animation-iteration-count: infinite !important;
+}
+
+/* Excalifont (SIL OFL 1.1, public/fonts/excalifont/LICENSE.txt): the hand-drawn font, the same on every computer. */
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/latin.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+20-7e,U+a0-a3,U+a5-a6,U+a8-ab,U+ad-b1,U+b4,U+b6-b8,U+ba-ff,U+131,U+152-153,U+2bc,U+2c6,U+2da,U+2dc,U+304,U+308,U+2013-2014,U+2018-201a,U+201c-201e,U+2020,U+2022,U+2024-2026,U+2030,U+2039-203a,U+20ac,U+2122,U+2212;
+}
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/latin-ext.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+100-130,U+132-137,U+139-149,U+14c-151,U+154-17e,U+192,U+1fc-1ff,U+218-21b,U+237,U+1e80-1e85,U+1ef2-1ef3,U+2113;
+}
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/cyrillic.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+400-45f,U+490-491,U+2116;
+}
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/greek.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+37e,U+384-38a,U+38c,U+38e-393,U+395-3a1,U+3a3-3a8,U+3aa-3cf,U+3d7;
+}
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/marks.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+2c7,U+2d8-2d9,U+2db,U+2dd,U+302,U+306-307,U+30a-30c,U+326-328,U+212e,U+2211,U+fb01-fb02;
+}
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/cyrillic-ext.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+462-463,U+472-475,U+4d8-4d9,U+4e2-4e3,U+4e6-4e9,U+4ee-4ef;
+}
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/excalifont/combining.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+300-301,U+303;
 }

@@ -4,15 +4,29 @@
  * node data (`data.presentation.order`).
  */
 import type { PlanDocument, PlanNode } from "@/domain/plan";
+import { layerIdOf, layersOf, layerVisibility } from "@/domain/layers";
 import { absRect, childrenMap, descendants } from "./doc-ops";
 import { KIND_LABEL, PARENT_KINDS } from "./defaults";
 
-type Doc = Pick<PlanDocument, "nodes" | "edges">;
+type Doc = Pick<PlanDocument, "nodes" | "edges"> & Partial<Pick<PlanDocument, "layers">>;
+
+/** Nodes on layers that are switched off (document defaults plus a viewer's overrides) aren't steps. */
+function onVisibleLayer(doc: Doc, overrides?: Readonly<Record<string, boolean>>) {
+  const vis = layerVisibility(doc, overrides);
+  return (n: PlanNode) => vis.get(layerIdOf(n)) !== false;
+}
 
 export type PresentationStep = {
-  /** null = overview (whole plan). */
+  /** null = overview (whole plan), or the layer being revealed when `layerId` is set. */
   nodeId: string | null;
   title: string;
+  /** A layer that appears on this step ("revelar na apresentação"). */
+  layerId?: string;
+  /**
+   * Layer visibility on this step, when the plan reveals layers: the ones marked to reveal stay
+   * hidden until their step.
+   */
+  layers?: Record<string, boolean>;
 };
 
 /** True when any node carries an explicit presentation order. */
@@ -33,20 +47,28 @@ function byReading(doc: Doc) {
   };
 }
 
-/** Automatic order: top-level sections/containers, then the other top-level nodes, in reading order. */
-export function defaultStepNodes(doc: Doc): PlanNode[] {
+/**
+ * Automatic order: top-level sections/containers, then the other top-level nodes, in reading
+ * order. A plan drawn in frames presents them as its pages, and nothing else.
+ */
+export function defaultStepNodes(doc: Doc, overrides?: Readonly<Record<string, boolean>>): PlanNode[] {
   const order = byReading(doc);
-  const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden);
+  const visible = onVisibleLayer(doc, overrides);
+  // Drawings are annotations, not steps.
+  const top = doc.nodes.filter((n) => !n.parentId && !n.data.presentation?.hidden && n.kind !== "ink" && n.kind !== "annotation" && visible(n));
+  const frames = top.filter((n) => n.kind === "frame");
+  if (frames.length) return frames.sort(order);
   const areas = top.filter((n) => PARENT_KINDS.has(n.kind)).sort(order);
   const rest = top.filter((n) => !PARENT_KINDS.has(n.kind)).sort(order);
   return [...areas, ...rest];
 }
 
 /** Custom order: nodes with `presentation.order` (any depth), ascending; ties by reading order. */
-export function customStepNodes(doc: Doc): PlanNode[] {
+export function customStepNodes(doc: Doc, overrides?: Readonly<Record<string, boolean>>): PlanNode[] {
   const order = byReading(doc);
+  const visible = onVisibleLayer(doc, overrides);
   return doc.nodes
-    .filter((n) => typeof n.data.presentation?.order === "number" && !n.data.presentation.hidden)
+    .filter((n) => typeof n.data.presentation?.order === "number" && !n.data.presentation.hidden && visible(n))
     .sort((a, b) => a.data.presentation!.order! - b.data.presentation!.order! || order(a, b));
 }
 
@@ -54,9 +76,36 @@ export function stepTitle(n: PlanNode) {
   return n.data.title.trim() || KIND_LABEL[n.kind];
 }
 
-export function presentationSteps(doc: Doc, planTitle: string): PresentationStep[] {
-  const nodes = hasCustomOrder(doc) ? customStepNodes(doc) : defaultStepNodes(doc);
-  return [{ nodeId: null, title: planTitle || "Visão geral" }, ...nodes.map((n) => ({ nodeId: n.id, title: stepTitle(n) }))];
+export function presentationSteps(doc: Doc, planTitle: string, overrides?: Readonly<Record<string, boolean>>): PresentationStep[] {
+  const custom = hasCustomOrder(doc);
+  const nodes = custom ? customStepNodes(doc, overrides) : defaultStepNodes(doc, overrides);
+  const overview = planTitle || "Visão geral";
+  const vis = layerVisibility(doc, overrides);
+  const reveal = layersOf(doc).filter((l) => l.reveal && vis.get(l.id) !== false);
+  if (!reveal.length) return [{ nodeId: null, title: overview }, ...nodes.map((n) => ({ nodeId: n.id, title: stepTitle(n) }))];
+
+  // Revealed layers start hidden; each appears on its own step, right before its first element.
+  const rank = new Map(reveal.map((l, i) => [l.id, i + 1]));
+  const ordered = custom ? nodes : [...nodes].sort((a, b) => (rank.get(layerIdOf(a)) ?? 0) - (rank.get(layerIdOf(b)) ?? 0));
+  const shown: Record<string, boolean> = Object.fromEntries([...vis].map(([id, on]) => [id, on && !rank.has(id)]));
+  const steps: PresentationStep[] = [{ nodeId: null, title: overview, layers: { ...shown } }];
+  const revealStep = (id: string) => {
+    shown[id] = true;
+    steps.push({ nodeId: null, layerId: id, title: reveal.find((l) => l.id === id)!.name, layers: { ...shown } });
+  };
+  for (const n of ordered) {
+    const l = layerIdOf(n);
+    if (rank.has(l) && !shown[l]) revealStep(l);
+    steps.push({ nodeId: n.id, title: stepTitle(n), layers: { ...shown } });
+  }
+  // Layers with nothing to step through (only drawings, say) still get their moment, at the end.
+  for (const l of reveal) if (!shown[l.id]) revealStep(l.id);
+  return steps;
+}
+
+/** Ids lit on a reveal step: everything on that layer. */
+export function layerIds(doc: Doc, layerId: string): Set<string> {
+  return new Set(doc.nodes.filter((n) => layerIdOf(n) === layerId).map((n) => n.id));
 }
 
 /** Ids that stay lit on a step: the node and everything inside it. */

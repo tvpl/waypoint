@@ -5,6 +5,7 @@
  */
 import { sortParentsFirst, type PlanDocument, type PlanEdge, type PlanNode, type NodeData } from "@/domain/plan";
 import { COLLAPSED_HEIGHT } from "@/domain/canvas-adapter";
+import { syncNodeLayers } from "@/domain/layers";
 import { newId } from "@/lib/utils";
 import { createNode, PARENT_KINDS } from "./defaults";
 
@@ -90,7 +91,8 @@ export function selectionRoots(doc: Doc, ids: Iterable<string>): string[] {
 }
 
 function finish<T extends Doc>(doc: T, nodes: PlanNode[], edges: PlanEdge[] = doc.edges): T {
-  return { ...doc, nodes: sortParentsFirst(nodes), edges };
+  // Nodes follow the layer of the area they are in.
+  return { ...doc, nodes: syncNodeLayers(sortParentsFirst(nodes)), edges };
 }
 
 // ------------------------------------------------------------------ add / remove
@@ -203,6 +205,14 @@ export function pasteClip<T extends Doc>(doc: T, clip: Clip, opts: { offset?: { 
     }
     return setParent({ ...structuredClone(n), id }, keepParent, x, y);
   });
+  // A pasted library copy is a new copy of the same item (its own instance id).
+  const instances = new Map<string, string>();
+  for (const n of nodes) {
+    const r = n.data.libraryRef;
+    if (!r) continue;
+    if (!instances.has(r.instance)) instances.set(r.instance, newId());
+    n.data = { ...n.data, libraryRef: { ...r, instance: instances.get(r.instance)! } };
+  }
   const edges = clip.edges.filter((e) => map.has(e.source) && map.has(e.target)).map((e) => ({ ...e, id: newId(), source: map.get(e.source)!, target: map.get(e.target)! }));
   return { doc: finish(doc, [...doc.nodes, ...nodes], [...doc.edges, ...edges]), ids: roots.map((r) => map.get(r.id)!) };
 }
@@ -234,11 +244,14 @@ export function reparent<T extends Doc>(doc: T, id: string, parentId: string | u
   );
 }
 
-/** Deepest (smallest) container/section whose area contains the node's center. */
-export function findDropTarget(doc: Doc, id: string): string | undefined {
+/**
+ * Deepest (smallest) container/section whose area contains the node's center. Drawings stay
+ * free; `canHold` rules out areas on hidden or locked layers.
+ */
+export function findDropTarget(doc: Doc, id: string, canHold?: (n: PlanNode) => boolean): string | undefined {
   const byId = byIdOf(doc);
   const node = byId.get(id);
-  if (!node) return undefined;
+  if (!node || node.kind === "ink") return undefined;
   const r = absRect(doc, id, byId);
   const cx = r.x + r.width / 2;
   const cy = r.y + r.height / 2;
@@ -246,7 +259,7 @@ export function findDropTarget(doc: Doc, id: string): string | undefined {
   banned.add(id);
   let best: { id: string; area: number } | undefined;
   for (const n of doc.nodes) {
-    if (banned.has(n.id) || !PARENT_KINDS.has(n.kind) || n.data.collapsed) continue;
+    if (banned.has(n.id) || !PARENT_KINDS.has(n.kind) || n.data.collapsed || (canHold && !canHold(n))) continue;
     const pr = absRect(doc, n.id, byId);
     if (cx < pr.x || cx > pr.x + pr.width || cy < pr.y || cy > pr.y + pr.height) continue;
     const area = pr.width * pr.height;
@@ -277,6 +290,9 @@ export function groupNodes<T extends Doc>(doc: T, ids: Iterable<string>, title =
   group.width = Math.round(maxX - minX);
   group.height = Math.round(maxY - minY);
   if (common) group.parentId = common;
+  // The new area lives on the layer of the first grouped element.
+  const firstLayer = byId.get(roots[0])!.layer;
+  if (firstLayer) group.layer = firstLayer;
   const rootSet = new Set(roots);
   const nodes = doc.nodes.map((n) => {
     if (!rootSet.has(n.id)) return n;
@@ -423,4 +439,50 @@ export function boundsOf(doc: Doc, ids: Iterable<string>): Rect | null {
   const x = Math.min(...rects.map((r) => r.x));
   const y = Math.min(...rects.map((r) => r.y));
   return { x, y, width: Math.max(...rects.map((r) => r.x + r.width)) - x, height: Math.max(...rects.map((r) => r.y + r.height)) - y };
+}
+
+// ------------------------------------------------------------------ colors
+
+/** Every color the drawing uses (shapes, element colors, strokes, drawn connections), most used first. */
+export function colorsInUse(doc: Doc): string[] {
+  const count = new Map<string, number>();
+  const add = (c: unknown) => {
+    if (typeof c !== "string" || !/^#[0-9a-f]{6}$/i.test(c)) return;
+    const k = c.toUpperCase();
+    count.set(k, (count.get(k) ?? 0) + 1);
+  };
+  for (const n of doc.nodes) {
+    add(n.data.color);
+    add(n.data.shape?.stroke);
+    add(n.data.shape?.fill);
+  }
+  for (const e of doc.edges) add(e.style?.stroke);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+}
+
+/** Swaps one color for another everywhere in the drawing (a plan-wide recolor). */
+export function replaceColor<T extends Doc>(doc: T, from: string, to: string): T {
+  const f = from.toUpperCase();
+  const swap = <V extends string | undefined>(c: V): V | string => (typeof c === "string" && c.toUpperCase() === f ? to : c);
+  let changed = false;
+  const nodes = doc.nodes.map((n) => {
+    const data = { ...n.data };
+    let touched = false;
+    if (data.color && swap(data.color) !== data.color) ((data.color = to), (touched = true));
+    if (data.shape && (swap(data.shape.stroke) !== data.shape.stroke || swap(data.shape.fill) !== data.shape.fill)) {
+      data.shape = { ...data.shape, stroke: swap(data.shape.stroke) as string | undefined, fill: swap(data.shape.fill) as string | undefined };
+      if (data.shape.stroke === undefined) delete data.shape.stroke;
+      if (data.shape.fill === undefined) delete data.shape.fill;
+      touched = true;
+    }
+    if (!touched) return n;
+    changed = true;
+    return { ...n, data };
+  });
+  const edges = doc.edges.map((e) => {
+    if (!e.style?.stroke || swap(e.style.stroke) === e.style.stroke) return e;
+    changed = true;
+    return { ...e, style: { ...e.style, stroke: to } };
+  });
+  return changed ? { ...doc, nodes, edges } : doc;
 }

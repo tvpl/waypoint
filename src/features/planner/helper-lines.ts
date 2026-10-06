@@ -9,7 +9,12 @@ export type Guides = {
   /** Guide lines to draw, in the same coordinate space as the boxes. */
   vertical?: { x: number; y1: number; y2: number };
   horizontal?: { y: number; x1: number; x2: number };
+  /** Equal gaps found (drawn as measured spans with their size). */
+  spacing?: Span[];
 };
+
+/** A measured gap between two boxes: horizontal (y fixed) or vertical (x fixed). */
+export type Span = { axis: "x" | "y"; from: number; to: number; at: number; gap: number };
 
 const xs = (b: Box) => [b.x, b.x + b.width / 2, b.x + b.width];
 const ys = (b: Box) => [b.y, b.y + b.height / 2, b.y + b.height];
@@ -53,5 +58,75 @@ export function helperLines(dragged: Box, others: Box[], threshold: number): Gui
       }),
     );
   }
+  // Equal spacing wins over an alignment that is farther away.
+  for (const axis of ["x", "y"] as const) {
+    const sp = equalSpacing(dragged, others, axis, threshold);
+    if (!sp) continue;
+    const dist = Math.abs(sp.pos - (axis === "x" ? dragged.x : dragged.y));
+    if (axis === "x" && dist <= bestX) {
+      out.x = sp.pos;
+      delete out.vertical;
+      out.spacing = [...(out.spacing ?? []), ...sp.spans];
+    }
+    if (axis === "y" && dist <= bestY) {
+      out.y = sp.pos;
+      delete out.horizontal;
+      out.spacing = [...(out.spacing ?? []), ...sp.spans];
+    }
+  }
   return out;
+}
+
+/**
+ * Along one axis, among the boxes in the same row (or column) as the dragged one: a position that
+ * centers it between its neighbors, or repeats a gap already used in that row. Null when none is
+ * within `threshold`.
+ */
+export function equalSpacing(dragged: Box, others: Box[], axis: "x" | "y", threshold: number): { pos: number; spans: Span[] } | null {
+  const lo = (b: Box) => (axis === "x" ? b.x : b.y);
+  const size = (b: Box) => (axis === "x" ? b.width : b.height);
+  const hi = (b: Box) => lo(b) + size(b);
+  // Cross axis: boxes that overlap the dragged one there are in its row.
+  const clo = (b: Box) => (axis === "x" ? b.y : b.x);
+  const chi = (b: Box) => clo(b) + (axis === "x" ? b.height : b.width);
+  const row = others.filter((o) => o.id !== dragged.id && chi(o) > clo(dragged) && clo(o) < chi(dragged)).sort((a, b) => lo(a) - lo(b));
+  if (!row.length) return null;
+  const cur = lo(dragged);
+  const center = cur + size(dragged) / 2;
+  const before = row.filter((o) => hi(o) <= center && lo(o) < cur).pop();
+  const after = row.find((o) => lo(o) >= center && hi(o) > hi(dragged));
+  // The cross position of a span: the middle of where the two boxes overlap.
+  const mid = (a: Box, b: Box) => (Math.max(clo(a), clo(b)) + Math.min(chi(a), chi(b))) / 2;
+  const span = (a: Box, b: Box, from: number, to: number): Span => ({ axis, from, to, at: mid(a, b), gap: Math.round(to - from) });
+  const cands: { pos: number; spans: (pos: number) => Span[] }[] = [];
+  if (before && after) {
+    const free = lo(after) - hi(before) - size(dragged);
+    if (free > 0) {
+      const pos = hi(before) + free / 2;
+      cands.push({
+        pos,
+        spans: (p) => [span(before, dragged, hi(before), p), span(dragged, after, p + size(dragged), lo(after))],
+      });
+    }
+  }
+  // Gaps already in the row, repeated next to a neighbor.
+  for (let i = 1; i < row.length; i++) {
+    const a = row[i - 1];
+    const b = row[i];
+    const gap = lo(b) - hi(a);
+    if (gap <= 0) continue;
+    const existing = span(a, b, hi(a), lo(b));
+    if (before) cands.push({ pos: hi(before) + gap, spans: (p) => [existing, span(before, dragged, hi(before), p)] });
+    if (after) cands.push({ pos: lo(after) - gap - size(dragged), spans: (p) => [existing, span(dragged, after, p + size(dragged), lo(after))] });
+  }
+  let best: { pos: number; spans: Span[] } | null = null;
+  let bestD = threshold + 0.0001;
+  for (const c of cands) {
+    const d = Math.abs(c.pos - cur);
+    if (d < bestD) {
+      bestD = d;
+      best = { pos: c.pos, spans: c.spans(c.pos) };
+    }
+  }
+  return best;
 }

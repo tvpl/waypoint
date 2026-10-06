@@ -6,20 +6,18 @@ function greet(d: Date) {
   return h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
 }
 
+/** One line: greeting and today's date (the date is client-side, in the person's time zone). */
 export function Greeting({ name }: { name: string }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => setNow(new Date()), []);
   const first = name.split(/\s+/)[0];
-  const date = now
-    ? new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(now)
-    : "";
+  const date = now ? new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(now) : "";
   return (
-    <div className="flex flex-col gap-2.5">
-      <h1 className="font-display text-display-sm leading-none tracking-[-0.01em] sm:text-display">
+    <div className="flex min-w-0 flex-col gap-1">
+      <h1 className="font-display text-[22px] font-semibold leading-tight tracking-[-0.02em]">
         {now ? greet(now) : "Olá"}, {first}
-        <span className="text-accent">.</span>
       </h1>
-      <p className="min-h-[22px] text-lead text-muted first-letter:uppercase">{date && `${date} — o que vamos organizar hoje?`}</p>
+      <p className="min-h-[20px] text-body text-muted first-letter:uppercase">{date}</p>
     </div>
   );
 }

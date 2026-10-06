@@ -1,15 +1,25 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, CloudOff, Presentation, Download, Eye, FileJson, History, ImageDown, Loader2, MoreHorizontal, Pencil, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ClipboardCopy, CloudOff, Presentation, Download, Eye, FileJson, FileUp, History, ImageDown, Layers, Loader2, MoreHorizontal, Pencil, PenLine, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/popover";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/menu";
 import { cn, timeAgo } from "@/lib/utils";
 import type { SaveStatus } from "./autosave";
 
-export type ExportKind = "json" | "png" | "svg" | "pdf";
+export type ExportKind = "json" | "png" | "svg" | "pdf" | "frames-pdf" | "excalidraw" | "excalidraw-png" | "excalidraw-svg" | "excalidraw-copy";
 
 export function SaveIndicator({ status, error, savedAt }: { status: SaveStatus; error?: string | null; savedAt?: number | null }) {
   // Re-render now and then so "há 2 min" stays true.
@@ -31,7 +41,7 @@ export function SaveIndicator({ status, error, savedAt }: { status: SaveStatus; 
   };
   const m = map[status];
   return (
-    <span role="status" aria-live="polite" className={cn("ml-1 inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-xs", m.cls)}>
+    <span role="status" aria-live="polite" className={cn("ml-1 inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs", m.cls)}>
       {m.icon}
       <span className="truncate max-sm:sr-only">{m.text}</span>
     </span>
@@ -42,9 +52,13 @@ export function PublishBadge({ published, unpublished }: { published: number | n
   if (published == null) return <Badge tone="amber">Rascunho</Badge>;
   if (unpublished)
     return (
-      <Badge tone="amber" className="whitespace-nowrap">
-        Alterações não publicadas
-      </Badge>
+      <Tooltip content="Há alterações que quem tem acesso ainda não vê: eles veem a última versão publicada">
+        <span>
+          <Badge tone="amber" className="whitespace-nowrap">
+            Não publicado
+          </Badge>
+        </span>
+      </Tooltip>
     );
   return <Badge tone="success">Publicado v{published}</Badge>;
 }
@@ -80,7 +94,80 @@ export function Avatars({ people }: { people: { name: string; email: string }[] 
   );
 }
 
-export function ExportMenu({ onExport, trigger }: { onExport: (k: ExportKind) => void; trigger?: React.ReactNode }) {
+/** One submenu per saved view: the image or PDF of just that combination of layers. */
+export function ViewExportItems({ views, onExport }: { views: { id: string; name: string }[]; onExport: (k: ExportKind, viewId: string) => void }) {
+  if (!views.length) return null;
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>Exportar visão</DropdownMenuLabel>
+      {views.map((v) => (
+        <DropdownMenuSub key={v.id}>
+          <DropdownMenuSubTrigger>
+            <Layers /> <span className="max-w-[180px] truncate">{v.name}</span>
+            <ChevronRight className="ml-auto text-muted" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="min-w-[170px]">
+            <DropdownMenuItem onSelect={() => onExport("png", v.id)}>
+              <ImageDown /> Imagem PNG
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport("svg", v.id)}>
+              <Download /> Vetor SVG
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport("pdf", v.id)}>
+              <Printer /> PDF (imprimir)
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport("excalidraw", v.id)}>
+              <PenLine /> Excalidraw
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ))}
+    </>
+  );
+}
+
+/** Excalidraw: the file, images that open as editable drawings, the clipboard, and importing. */
+export function ExcalidrawItems({ onExport, onImport }: { onExport: (k: ExportKind) => void; onImport?: () => void }) {
+  return (
+    <>
+      <DropdownMenuLabel>Excalidraw</DropdownMenuLabel>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw")}>
+        <PenLine /> Arquivo .excalidraw
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw-png")}>
+        <ImageDown /> PNG editável no Excalidraw
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw-svg")}>
+        <Download /> SVG editável no Excalidraw
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => onExport("excalidraw-copy")}>
+        <ClipboardCopy /> Copiar para colar no Excalidraw
+      </DropdownMenuItem>
+      {onImport && (
+        <DropdownMenuItem onSelect={onImport}>
+          <FileUp /> Importar do Excalidraw…
+        </DropdownMenuItem>
+      )}
+    </>
+  );
+}
+
+export function ExportMenu({
+  onExport,
+  onImport,
+  trigger,
+  views = [],
+  frames = 0,
+}: {
+  onExport: (k: ExportKind, viewId?: string) => void;
+  /** "Importar do Excalidraw…" (editor only). */
+  onImport?: () => void;
+  trigger?: React.ReactNode;
+  views?: { id: string; name: string }[];
+  /** The plan has frames: offers one PDF page per frame. */
+  frames?: number;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -101,10 +188,18 @@ export function ExportMenu({ onExport, trigger }: { onExport: (k: ExportKind) =>
         <DropdownMenuItem onSelect={() => onExport("pdf")}>
           <Printer /> PDF (imprimir)
         </DropdownMenuItem>
+        {frames > 0 && (
+          <DropdownMenuItem onSelect={() => onExport("frames-pdf")}>
+            <Printer /> Quadros como páginas (PDF · {frames})
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => onExport("json")}>
           <FileJson /> JSON
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <ExcalidrawItems onExport={onExport} onImport={onImport} />
+        <ViewExportItems views={views} onExport={onExport} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -132,7 +227,14 @@ export function EditorTopbar(props: {
   onPublish: () => void;
   publishing: boolean;
   people: { name: string; email: string }[];
-  onExport: (k: ExportKind) => void;
+  onExport: (k: ExportKind, viewId?: string) => void;
+  onImport?: () => void;
+  /** Next to the title: the plan's details (description, tags, visibility). */
+  details?: React.ReactNode;
+  /** Frames in the plan (export menu: one PDF page per frame). */
+  frames?: number;
+  /** Saved views (export menu). */
+  views?: { id: string; name: string }[];
   /** Comments panel toggle. */
   comments?: React.ReactNode;
 }) {
@@ -188,6 +290,7 @@ export function EditorTopbar(props: {
           className="min-w-[80px] max-w-[320px] truncate rounded-md bg-transparent px-1 py-0.5 font-semibold outline-none hover:bg-hover focus:bg-surface focus:ring-2 focus:ring-accent/30"
           style={{ width: `${Math.max(8, title.length + 2)}ch` }}
         />
+        {props.details}
         <span className="hidden sm:contents">
           <PublishBadge published={props.published} unpublished={props.unpublished} />
         </span>
@@ -222,7 +325,7 @@ export function EditorTopbar(props: {
         </span>
         {props.comments}
         <span className="hidden md:contents">
-          <ExportMenu onExport={props.onExport} />
+          <ExportMenu onExport={props.onExport} onImport={props.onImport} views={props.views} frames={props.frames} />
           <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
           <span className="hidden lg:contents">
             <Avatars people={props.people} />

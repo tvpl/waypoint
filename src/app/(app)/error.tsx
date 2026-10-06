@@ -9,7 +9,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
       <div className="flex flex-col gap-2">
-        <h1 className="font-display text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">Algo deu errado</h1>
+        <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">Algo deu errado</h1>
         <p className="text-lead text-muted">Tente novamente. Se persistir, recarregue a página.</p>
         {error.digest && <p className="font-mono text-caption text-muted">Código: {error.digest}</p>}
       </div>

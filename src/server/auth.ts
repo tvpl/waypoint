@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import crypto from "node:crypto";
 import { promisify } from "node:util";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, gte } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { newToken } from "@/lib/utils";
+import { sessionFloor } from "./desktop-security";
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -37,7 +38,8 @@ export async function createSession(userId: string) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // The desktop app serves plain http on 127.0.0.1 (see src/server/desktop.ts).
+    secure: process.env.NODE_ENV === "production" && !process.env.WAYPOINT_DESKTOP_SECRET,
     path: "/",
     expires: expiresAt,
   });
@@ -57,11 +59,19 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
+  const floor = sessionFloor();
   const row = getDb()
     .select({ id: schema.users.id, email: schema.users.email, name: schema.users.name })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
-    .where(and(eq(schema.sessions.id, hashToken(token)), gt(schema.sessions.expiresAt, new Date())))
+    .where(
+      and(
+        eq(schema.sessions.id, hashToken(token)),
+        gt(schema.sessions.expiresAt, new Date()),
+        // Desktop app with the lock on: only sessions opened since this launch.
+        ...(floor ? [gte(schema.sessions.createdAt, floor)] : []),
+      ),
+    )
     .get();
   return row ?? null;
 });

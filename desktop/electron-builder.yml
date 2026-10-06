@@ -1,0 +1,66 @@
+appId: app.waypoint.desktop
+productName: Waypoint
+copyright: Copyright © Waypoint
+artifactName: Waypoint-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - assets/**/*
+  - package.json
+
+# The Next.js server (prepared by scripts/prepare-server.mjs) is copied to resources/server.
+afterPack: scripts/after-pack.cjs
+
+asar: true
+# Releases are uploaded by CI (.github/workflows/desktop.yml), not by electron-builder.
+publish: null
+# No native modules in the shell itself; the server's better-sqlite3 is a prebuilt N-API binary.
+npmRebuild: false
+
+win:
+  icon: build/icon-win.png
+  target:
+    - target: portable
+      arch: [x64]
+    - target: nsis
+      arch: [x64]
+
+# Single .exe that runs without installing; data lives in a WaypointData folder next to it.
+portable:
+  artifactName: Waypoint-${version}-portatil.exe
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Waypoint
+  artifactName: Waypoint-${version}-instalador.exe
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  # Ad-hoc signature (no Apple Developer certificate): needed for Apple Silicon to run the app.
+  # Without notarization, a downloaded copy needs Privacy & Security → Open Anyway on first launch.
+  identity: "-"
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+
+linux:
+  icon: build/icon-win.png
+  executableName: waypoint
+  category: Office
+  synopsis: Visual Planner & Link Library
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]

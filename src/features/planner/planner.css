@@ -233,15 +233,18 @@
 /* Containers and sections behave like frames: only the header grabs the
    pointer, so the area itself lets you marquee-select and click through. */
 .wp-flow .react-flow__node-container,
-.wp-flow .react-flow__node-section {
+.wp-flow .react-flow__node-section,
+.wp-flow .react-flow__node-frame {
   pointer-events: none !important;
 }
 .wp-flow .react-flow__node-container .wp-hit,
 .wp-flow .react-flow__node-section .wp-hit,
+.wp-flow .react-flow__node-frame .wp-hit,
 .wp-flow .react-flow__node-container .react-flow__handle,
 .wp-flow .react-flow__node-section .react-flow__handle,
 .wp-flow .react-flow__node-container .react-flow__resize-control,
-.wp-flow .react-flow__node-section .react-flow__resize-control {
+.wp-flow .react-flow__node-section .react-flow__resize-control,
+.wp-flow .react-flow__node-frame .react-flow__resize-control {
   pointer-events: all;
 }
 .wp-flow.wp-view .react-flow__node-container .react-flow__handle,
@@ -361,4 +364,391 @@
   font: 500 12px/1.4 var(--font-sans);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ---------------------------------------------------------------- layers */
+/* Layer opacity is an inline style on nodes and edges (canvas-adapter). */
+/* Isolating a layer: everything else steps back and can't be picked. */
+.wp-flow .react-flow__node.wp-isolate-out,
+.wp-flow .react-flow__edge.wp-isolate-out {
+  opacity: 0.18 !important;
+  filter: grayscale(0.6);
+  pointer-events: none !important;
+}
+/* Animated layer: dashes travel along its connections to show the direction of a flow. */
+.wp-flow .react-flow__edge.animated .wp-edge-path {
+  stroke-dasharray: 7 6;
+  animation: wp-flow-dash 0.9s linear infinite;
+}
+.wp-flow .react-flow__edge.animated .wp-edge-arrow {
+  stroke-dasharray: none;
+  animation: none;
+}
+@keyframes wp-flow-dash {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+/* ---------------------------------------------------------------- ink */
+/* Only the painted stroke takes the pointer: a drawing never blocks what is under its box. */
+.wp-flow .react-flow__node-ink {
+  pointer-events: none !important;
+}
+.wp-flow .react-flow__node-ink .wp-ink-hit {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.wp-flow .react-flow__node-ink .wp-ink-stroke {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+.wp-flow .react-flow__node-ink .react-flow__resize-control {
+  pointer-events: all;
+}
+.wp-ink.is-highlighter {
+  opacity: 0.4;
+}
+/* Light canvas: the marker multiplies with what is under it, like a real one (text stays crisp). */
+:root:not(.dark) .wp-flow .react-flow__node-ink:has(.is-highlighter) {
+  mix-blend-mode: multiply;
+}
+:root:not(.dark) .wp-ink.is-highlighter {
+  opacity: 0.6;
+}
+
+/* A locked element: plain cursor, and a quiet lock badge when it is selected from the layers panel. */
+.wp-flow .react-flow__node.wp-locked {
+  cursor: default;
+}
+.wp-flow .react-flow__node.wp-locked.selected::after {
+  content: "";
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V7a4 4 0 0 1 8 0v4'/%3E%3C/svg%3E") center / 11px no-repeat;
+  box-shadow: 0 0 0 1px var(--line-2), 0 1px 3px rgb(0 0 0 / 0.12);
+  pointer-events: none;
+}
+
+/* The middle handle of a selected drawn connection: drag to bend it. */
+.wp-bend-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  pointer-events: all;
+  cursor: grab;
+  touch-action: none;
+  z-index: 2;
+}
+.wp-bend-handle:hover {
+  background: var(--accent-soft);
+}
+.wp-bend-handle:active {
+  cursor: grabbing;
+}
+.wp-flow .react-flow__node-ink.selected .wp-ink-stroke {
+  filter: drop-shadow(0 0 1.5px var(--accent));
+}
+.wp-flow .react-flow__node-ink.is-erasing,
+.wp-flow .react-flow__node-shape.is-erasing,
+.wp-flow .react-flow__edge.is-erasing {
+  opacity: 0.2;
+}
+/* Drawing and erasing tools. */
+.wp-tool-draw .react-flow__pane,
+.wp-tool-draw .react-flow__node {
+  cursor: crosshair !important;
+}
+.wp-tool-erase .react-flow__pane,
+.wp-tool-erase .react-flow__node {
+  cursor: cell !important;
+}
+.wp-tool-draw .react-flow__node-ink .wp-ink-hit,
+.wp-tool-draw .react-flow__node-ink .wp-ink-stroke {
+  pointer-events: none;
+}
+/* No connection handles while drawing or erasing. */
+.wp-tool-draw .wp-handle,
+.wp-tool-erase .wp-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+/* Drawings are not interactive when reading a plan. */
+.wp-view .react-flow__node-ink .wp-ink-hit,
+.wp-view .react-flow__node-ink .wp-ink-stroke {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* Text annotations (handwritten style) and drawn shapes. */
+.wp-ink-text {
+  font-family: Excalifont, "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.wp-flow .react-flow__node-ink span.wp-ink-text {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.wp-flow .react-flow__node-ink.selected span.wp-ink-text {
+  text-shadow: 0 0 1.5px var(--accent);
+}
+.wp-tool-draw .react-flow__node-ink span.wp-ink-text,
+.wp-view .react-flow__node-ink span.wp-ink-text {
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- flow steps */
+.wp-edge-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 11px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  vertical-align: -3px;
+}
+.wp-edge-label.is-step-only {
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+.wp-edge-label.is-step-only .wp-edge-step {
+  margin-right: 0;
+  vertical-align: 0;
+  box-shadow: 0 0 0 3px var(--wp-canvas-bg, var(--canvas));
+}
+
+/* ---------------------------------------------------------------- comparing views */
+/* Fixed hues (like canvas node colors): they read on both the light and dark canvas. */
+.wp-flow {
+  --wp-diff-added: #30a46c;
+  --wp-diff-removed: #e5484d;
+  --wp-diff-changed: #f5a524;
+}
+.wp-flow .react-flow__node.wp-diff-added,
+.wp-flow .react-flow__node.wp-diff-removed,
+.wp-flow .react-flow__node.wp-diff-changed {
+  outline: 2.5px solid var(--wp-diff);
+  outline-offset: 5px;
+  border-radius: 14px;
+}
+.wp-flow .react-flow__node.wp-diff-added {
+  --wp-diff: var(--wp-diff-added);
+}
+.wp-flow .react-flow__node.wp-diff-removed {
+  --wp-diff: var(--wp-diff-removed);
+  outline-style: dashed;
+  opacity: 0.6;
+}
+.wp-flow .react-flow__node.wp-diff-changed {
+  --wp-diff: var(--wp-diff-changed);
+}
+.wp-flow .react-flow__node.wp-diff-same {
+  opacity: 0.45;
+}
+/* Drawings: tint the stroke instead of boxing it. */
+.wp-flow .react-flow__node-ink.wp-diff-added,
+.wp-flow .react-flow__node-ink.wp-diff-removed,
+.wp-flow .react-flow__node-ink.wp-diff-changed {
+  outline: none;
+  filter: drop-shadow(0 0 2px var(--wp-diff)) drop-shadow(0 0 1px var(--wp-diff));
+}
+.wp-flow .react-flow__edge.wp-diff-added .wp-edge-path,
+.wp-flow .react-flow__edge.wp-diff-added .wp-edge-arrow {
+  stroke: var(--wp-diff-added);
+}
+.wp-flow .react-flow__edge.wp-diff-added .wp-edge-arrow {
+  fill: var(--wp-diff-added);
+}
+.wp-flow .react-flow__edge.wp-diff-removed .wp-edge-path,
+.wp-flow .react-flow__edge.wp-diff-removed .wp-edge-arrow {
+  stroke: var(--wp-diff-removed);
+  opacity: 0.7;
+}
+.wp-flow .react-flow__edge.wp-diff-removed .wp-edge-arrow {
+  fill: var(--wp-diff-removed);
+}
+.wp-flow .react-flow__edge.wp-diff-same {
+  opacity: 0.45;
+}
+.wp-edge-label.wp-diff-same {
+  opacity: 0.45;
+}
+
+/* ---------------------------------------------------------------- drawn shapes and frames */
+.wp-shape.is-selected {
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.wp-shape-svg path {
+  vector-effect: none;
+}
+.wp-shape-input {
+  width: 100%;
+  min-height: 1.4em;
+  line-height: 1.25;
+  font-weight: inherit;
+}
+.wp-flow .react-flow__node-shape .wp-shape.is-text .wp-shape-text {
+  white-space: pre;
+}
+.wp-frame {
+  background: color-mix(in srgb, var(--surface) 35%, transparent);
+}
+.wp-view .wp-frame {
+  background: transparent;
+}
+.wp-frame.is-selected {
+  outline-offset: 2px;
+}
+
+/* Shape, arrow, line, text and frame tools. */
+:is(.wp-tool-rect, .wp-tool-diamond, .wp-tool-ellipse, .wp-tool-arrow, .wp-tool-line, .wp-tool-frame) :is(.react-flow__pane, .react-flow__node) {
+  cursor: crosshair !important;
+}
+.wp-tool-text :is(.react-flow__pane, .react-flow__node) {
+  cursor: text !important;
+}
+:is(.wp-tool-rect, .wp-tool-diamond, .wp-tool-ellipse, .wp-tool-arrow, .wp-tool-line, .wp-tool-text, .wp-tool-frame) .wp-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+/* The element an arrow being drawn will attach to. */
+.wp-flow .react-flow__node.wp-bind-target > :not(.react-flow__handle):first-child,
+.wp-flow .react-flow__node.wp-bind-target .wp-node {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+.wp-flow .react-flow__edge.wp-drawn-edge .wp-edge-head {
+  pointer-events: none;
+}
+
+/* Overlays (another plan on a layer, or the "papel vegetal"): seen, never touched. */
+.react-flow__node.wp-overlay,
+.react-flow__edge.wp-overlay {
+  pointer-events: none !important;
+  cursor: default;
+}
+.react-flow__node.wp-overlay .react-flow__handle,
+.react-flow__node.wp-overlay .react-flow__resize-control {
+  display: none;
+}
+.react-flow__node.wp-onion,
+.react-flow__edge.wp-onion {
+  filter: grayscale(1);
+  opacity: 0.32;
+}
+
+/* Annotations: highlighted areas and brackets let clicks through (only their label and outline
+   grab the pointer); hidden ones (filters, "ocultar anotações") are removed by the editor. */
+.wp-flow .react-flow__node-annotation:has(.wp-ann-highlight),
+.wp-flow .react-flow__node-annotation:has(.wp-ann-bracket) {
+  pointer-events: none !important;
+}
+.wp-flow .react-flow__node-annotation .wp-hit,
+.wp-flow .react-flow__node-annotation .react-flow__resize-control {
+  pointer-events: all;
+}
+.wp-ann-highlight {
+  border-style: dashed;
+}
+.wp-ann.is-selected.wp-ann-callout {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.wp-ann.is-selected.wp-ann-pin > span {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+.wp-ann.is-selected.wp-ann-highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Review mode: annotations stand out, the drawing steps back. */
+.wp-review .react-flow__node:not(.react-flow__node-annotation),
+.wp-review .react-flow__edge {
+  opacity: 0.3;
+  filter: saturate(0.4);
+}
+
+/* A label that slides along its connection (editor). */
+.wp-edge-label.is-movable {
+  cursor: grab;
+}
+.wp-edge-label.is-movable:active {
+  cursor: grabbing;
+}
+
+/* Equal-spacing guides: a measured span between two elements, with its size. */
+.wp-spacing {
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e5484d;
+}
+.wp-spacing.is-x {
+  height: 0;
+  border-top: 1px solid currentColor;
+}
+.wp-spacing.is-y {
+  width: 0;
+  border-left: 1px solid currentColor;
+}
+.wp-spacing.is-x::before,
+.wp-spacing.is-x::after,
+.wp-spacing.is-y::before,
+.wp-spacing.is-y::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+.wp-spacing.is-x::before,
+.wp-spacing.is-x::after {
+  top: -5px;
+  width: 1px;
+  height: 9px;
+}
+.wp-spacing.is-x::before {
+  left: 0;
+}
+.wp-spacing.is-x::after {
+  right: 0;
+}
+.wp-spacing.is-y::before,
+.wp-spacing.is-y::after {
+  left: -5px;
+  height: 1px;
+  width: 9px;
+}
+.wp-spacing.is-y::before {
+  top: 0;
+}
+.wp-spacing.is-y::after {
+  bottom: 0;
+}
+.wp-spacing span {
+  position: absolute;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  white-space: nowrap;
 }

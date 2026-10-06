@@ -17,7 +17,8 @@ import { PlanCanvasView, type CanvasExtras, type ViewerExport } from "./viewer";
 import { EdgeLegend } from "./edges";
 import { ResourceIcon } from "./resource-picker";
 import { refKey, fallbackResource, type ResolvedResource } from "./resource-types";
-import { ExportMenu, type ExportKind } from "./topbar";
+import { ExportMenu, ViewExportItems, type ExportKind } from "./topbar";
+import { layersOf } from "@/domain/layers";
 import { ShareDialog } from "./share-dialog";
 import { PresentationMode } from "./presentation";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
@@ -71,7 +72,7 @@ export function ViewBody({
       {/* desktop: info column */}
       <aside className="scrollbar-thin hidden shrink-0 flex-col gap-7 overflow-y-auto pb-8 pl-12 pr-8 pt-10 lg:flex lg:w-[380px]">
         <div className="flex flex-col gap-3.5">
-          <h1 className="font-display text-[46px] font-normal leading-[1.02] tracking-[-.01em] text-balance">{plan.title}</h1>
+          <h1 className="font-display font-semibold text-[36px] leading-[1.02] tracking-[-.025em] text-balance">{plan.title}</h1>
           {plan.description && <p className="whitespace-pre-line text-lead leading-[23px] text-ink-2 text-pretty">{plan.description}</p>}
           {plan.tags.length > 0 && <Tags tags={plan.tags} />}
         </div>
@@ -81,7 +82,7 @@ export function ViewBody({
       {/* phones & tablets: compact header + "Detalhes" sheet */}
       <CompactInfo plan={plan} refs={refs} kinds={kinds} />
       <section aria-label="Plan" className="relative min-h-0 flex-1 lg:min-h-[420px]">
-        <PlanCanvasView document={document} resources={resources} focusNodeId={focusNodeId} meta={meta} exportRef={exportRef} {...canvas} />
+        <PlanCanvasView document={document} planId={plan.id} resources={resources} focusNodeId={focusNodeId} meta={meta} exportRef={exportRef} {...canvas} />
       </section>
     </div>
   );
@@ -141,7 +142,7 @@ function CompactInfo({ plan, refs, kinds }: { plan: ViewPlanMeta; refs: Resolved
   return (
     <div className="flex shrink-0 flex-col gap-1.5 px-4 pb-3 pt-1 lg:hidden">
       <div className="flex items-start gap-3">
-        <h1 className="min-w-0 flex-1 font-display text-[28px] font-normal leading-[1.05] tracking-[-.01em] text-balance">{plan.title}</h1>
+        <h1 className="min-w-0 flex-1 font-display font-semibold text-[24px] leading-[1.05] tracking-[-.025em] text-balance">{plan.title}</h1>
         {hasDetails && (
           <Button size="sm" variant="secondary" className="mt-0.5" onClick={() => setSheet(true)} aria-haspopup="dialog">
             <Info /> Detalhes
@@ -263,7 +264,8 @@ export function PlanViewPage({
   const [share, setShare] = useState(false);
   const [presenting, setPresenting] = useState(present);
   const presentBtn = useRef<HTMLButtonElement>(null);
-  const onExport = (k: ExportKind) => void exportRef.current?.(k);
+  const onExport = (k: ExportKind, viewId?: string) => void exportRef.current?.(k, viewId);
+  const views = document.views ?? [];
 
   const panel = useCommentsPanel();
   const comments = useComments({ planId: plan.id, token: shareToken, enabled: !!viewer, open: panel.open });
@@ -276,7 +278,8 @@ export function PlanViewPage({
     () => (viewer ? { commentCount, openNodeComments, focusRequest: focus } : {}),
     [viewer, commentCount, openNodeComments, focus],
   );
-  const commentNodes = useMemo(() => document.nodes.map((n) => ({ id: n.id, kind: n.kind, title: n.data.title || (resources[n.id]?.title ?? "") })), [document, resources]);
+  const commentNodes = useMemo(() => document.nodes.map((n) => ({ id: n.id, kind: n.kind, layer: n.layer, title: n.data.title || (resources[n.id]?.title ?? "") })), [document, resources]);
+  const commentLayers = useMemo(() => layersOf(document).map((l) => ({ id: l.id, name: l.name, color: l.color })), [document]);
 
   const startPresenting = () => {
     setPresenting(true);
@@ -294,7 +297,7 @@ export function PlanViewPage({
   const empty = document.nodes.length === 0;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-surface-2 text-ink">
+    <div className="flex h-app flex-col overflow-hidden bg-surface-2 text-ink">
       <header className="wp-no-print flex h-14 shrink-0 items-center gap-2 px-3 sm:gap-3 sm:px-5">
         <Link href={homeHref} aria-label="Waypoint — início" className="inline-flex shrink-0 rounded-control">
           <Logo />
@@ -337,9 +340,9 @@ export function PlanViewPage({
           </Button>
         )}
         <div className="hidden md:block">
-          <ExportMenu onExport={onExport} />
+          <ExportMenu onExport={onExport} views={views} frames={document.nodes.filter((n) => n.kind === "frame").length} />
         </div>
-        <MobileMenu planId={plan.id} canEdit={canEdit} onShare={() => setShare(true)} onExport={onExport} />
+        <MobileMenu planId={plan.id} canEdit={canEdit} onShare={() => setShare(true)} onExport={onExport} views={views} />
       </header>
       {status.kind === "draft" && (
         <Notice>
@@ -365,19 +368,32 @@ export function PlanViewPage({
             target={panel}
             onClose={panel.close}
             nodes={commentNodes}
+            layers={commentLayers}
             onSelectNode={(id) => setFocus((f) => ({ id, seq: (f?.seq ?? 0) + 1 }))}
             className="fixed inset-0 z-30 w-full border-l-0 lg:static lg:z-auto lg:w-[340px] lg:border-l"
           />
         )}
       </div>
       {canEdit && <ShareDialog planId={plan.id} open={share} onOpenChange={setShare} workspaceName={workspaceName ?? "seu workspace"} />}
-      {presenting && !empty && <PresentationMode title={plan.title} document={document} resources={resources} onExit={stopPresenting} />}
+      {presenting && !empty && <PresentationMode title={plan.title} planId={plan.id} document={document} resources={resources} onExit={stopPresenting} />}
     </div>
   );
 }
 
 /** Phones/tablets: header actions collapse into one menu. */
-function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; canEdit: boolean; onShare: () => void; onExport: (k: ExportKind) => void }) {
+function MobileMenu({
+  planId,
+  canEdit,
+  onShare,
+  onExport,
+  views,
+}: {
+  planId: string;
+  canEdit: boolean;
+  onShare: () => void;
+  onExport: (k: ExportKind, viewId?: string) => void;
+  views: { id: string; name: string }[];
+}) {
   const router = useRouter();
   return (
     <div className="md:hidden">
@@ -412,6 +428,7 @@ function MobileMenu({ planId, canEdit, onShare, onExport }: { planId: string; ca
           <DropdownMenuItem onSelect={() => onExport("json")}>
             <FileJson /> JSON
           </DropdownMenuItem>
+          <ViewExportItems views={views} onExport={onExport} />
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

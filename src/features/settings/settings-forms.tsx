@@ -3,9 +3,10 @@ import { useEffect, useState, useTransition } from "react";
 import { Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useDesktop } from "@/lib/desktop";
 import { Field, Input, selectClass } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
-import { applyTheme, useThemePref, type ThemePref } from "@/lib/theme";
+import { applyMotion, applyTheme, useMotionPref, useThemePref, type MotionPref, type ThemePref } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { ask } from "@/components/ui/ask";
 import {
@@ -48,36 +49,42 @@ export function ProfileForm({ name, email }: { name: string; email: string }) {
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const { pending, run } = useAction();
+  // The desktop app has no login: the e-mail is a placeholder and the password is never asked.
+  const desktop = useDesktop();
   return (
     <>
       <div className="flex max-w-md flex-col gap-4">
         <Field label="Nome" htmlFor="p-name">
           <Input id="p-name" value={value} onChange={(e) => setValue(e.target.value)} />
         </Field>
-        <Field label="E-mail" htmlFor="p-email">
-          <Input id="p-email" value={email} disabled />
-        </Field>
+        {!desktop && (
+          <Field label="E-mail" htmlFor="p-email">
+            <Input id="p-email" value={email} disabled />
+          </Field>
+        )}
         <Button className="self-start" disabled={pending || value === name} onClick={() => run(() => updateProfileAction(value))}>
           Salvar perfil
         </Button>
       </div>
-      <form
-        className="flex max-w-md flex-col gap-4 border-t border-line pt-5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          run(() => changePasswordAction(cur, next), () => (setCur(""), setNext("")));
-        }}
-      >
-        <Field label="Senha atual" htmlFor="p-cur">
-          <Input id="p-cur" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} />
-        </Field>
-        <Field label="Nova senha" htmlFor="p-new" hint="Mínimo de 8 caracteres.">
-          <Input id="p-new" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
-        </Field>
-        <Button type="submit" className="self-start" disabled={pending || !cur || next.length < 8}>
-          Alterar senha
-        </Button>
-      </form>
+      {!desktop && (
+        <form
+          className="flex max-w-md flex-col gap-4 border-t border-line pt-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(() => changePasswordAction(cur, next), () => (setCur(""), setNext("")));
+          }}
+        >
+          <Field label="Senha atual" htmlFor="p-cur">
+            <Input id="p-cur" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} />
+          </Field>
+          <Field label="Nova senha" htmlFor="p-new" hint="Mínimo de 8 caracteres.">
+            <Input id="p-new" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+          </Field>
+          <Button type="submit" className="self-start" disabled={pending || !cur || next.length < 8}>
+            Alterar senha
+          </Button>
+        </form>
+      )}
     </>
   );
 }
@@ -94,6 +101,23 @@ export function ThemePicker() {
         { value: "light", label: "Claro", icon: <Sun /> },
         { value: "dark", label: "Escuro", icon: <Moon /> },
         { value: "system", label: "Sistema", icon: <Monitor /> },
+      ]}
+    />
+  );
+}
+
+/** Animations: as the system says, or always reduced. */
+export function MotionPicker() {
+  const pref = useMotionPref();
+  return (
+    <Segmented
+      className="self-start"
+      label="Animações"
+      value={pref}
+      onChange={(v: MotionPref) => applyMotion(v)}
+      options={[
+        { value: "system", label: "Como no sistema" },
+        { value: "reduce", label: "Reduzir animações" },
       ]}
     />
   );

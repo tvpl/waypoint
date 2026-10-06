@@ -38,3 +38,20 @@ export function stripTracking(raw: string): string {
     return raw;
   }
 }
+
+/**
+ * The http(s) URL in pasted text, or null. Accepts a bare domain ("example.com/page") and
+ * returns it with https://; anything with spaces or another scheme is not a URL.
+ */
+export function pastedUrl(text: string): string | null {
+  const t = text.trim();
+  if (!t || /\s/.test(t)) return null;
+  const candidate = /^https?:\/\//i.test(t) ? t : /^([\w-]+\.)+[a-z]{2,}(:\d+)?([/?#]\S*)?$/i.test(t) ? `https://${t}` : null;
+  if (!candidate) return null;
+  try {
+    const u = new URL(candidate);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}

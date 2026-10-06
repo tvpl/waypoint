@@ -27,14 +27,17 @@ import {
 } from "@xyflow/react";
 import { CloudOff, MonitorSmartphone, MousePointerClick, Plus, RotateCcw, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
-import type { EdgeKind, NodeData, NodeKind, PlanDocument, ResourceRef } from "@/domain/plan";
+import type { AnnotationCategory, AnnotationType, OutlineType, EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef, Shape } from "@/domain/plan";
+import { instantiateLibraryContent, libraryContentSchema, normalizeLibraryContent, type LibraryContent } from "@/domain/library";
+import { luminance } from "@/lib/color";
+import { iconPickSchema } from "./icon-library";
+import { addLayer, assignLayer, BASE_LAYER_ID, layerIdOf, layersOf, updateLayer } from "@/domain/layers";
 import {
   contentSignature,
   edgeMarker,
   flowFingerprint,
   fromFlow,
   sameFingerprint,
-  toFlowEdge,
   toFlowEdges,
   toFlowNodes,
   type PlanFlowEdge,
@@ -43,17 +46,42 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
-import { EditorContext, type EditorApi, type InspectorTab, type PlanMeta, type Tool } from "./editor-context";
+import {
+  CREATE_TOOLS,
+  EditorContext,
+  type EditorApi,
+  type IconPick,
+  type InkSettings,
+  type InspectorTab,
+  type PlanMeta,
+  type ShapeProps,
+  type Tool,
+} from "./editor-context";
+import { DEFAULT_STYLE, measureText, seedOf, type DrawStyle } from "./shape-geometry";
+import { applyStyle, edgeStyleFromStyle, shapeFromStyle, styleOfSelection } from "./shape-style";
+import { ShapeTools } from "./draw-tools";
+import { buildInk, buildTextInk, INK_SIZES, textBox, type Point } from "./ink-geometry";
+import { clearSteps as clearFlowSteps, numberFlow, stepTargets } from "./flow-steps";
+import { InkCanvas } from "./ink-canvas";
 import { nodeTypes } from "./nodes";
-import { edgeTypes } from "./edges";
+import { edgeTypes, useAvoidance } from "./edges";
+import { PaletteContext } from "./style-controls";
+import { useEditorKeys } from "./editor-keys";
+import { useLayersApi } from "./use-layers-api";
+import { exportFromEditor } from "./editor-export";
+import { useEditorClipboard } from "./editor-clipboard";
+import { useLibraryLinks } from "./library-links";
+import { contentRev } from "@/domain/library";
 import { History } from "./history";
 import {
+  absRect,
   addNodes,
   alignNodes,
   bringToFront,
   copySubgraph,
   distributeNodes,
   duplicateNodes,
+  replaceColor,
   findDropTarget,
   groupNodes,
   pasteClip,
@@ -72,7 +100,8 @@ import { helperLines, type Guides } from "./helper-lines";
 import { autoLayout, type LayoutDirection } from "./auto-layout";
 import { clearBackup, readBackup, useAutosave } from "./autosave";
 import { Toolbox } from "./toolbox";
-import { Inspector } from "./inspector";
+import { IsolateBanner } from "./layers-panel";
+import { Inspector, InspectorDock, InspectorFloat, PlanDetailsButton } from "./inspector";
 import { BottomPill, SelectionBar } from "./canvas-controls";
 import { CanvasContextMenu, type MenuTarget } from "./context-menu";
 import { EditorTopbar, type ExportKind } from "./topbar";
@@ -81,13 +110,21 @@ import { ViewBody } from "./view-page";
 import { readDragPayload, DND_MIME } from "./resource-picker";
 import { DND_MIME as LIBRARY_MIME } from "@/features/links/dnd";
 import { fallbackResource, refKey, type ResolvedResource } from "./resource-types";
-import { exportImage, exportJson, exportPdf, openPrintWindow } from "./export";
+import { centerOn, fromExcalidraw, parseScene, subsetDoc } from "./excalidraw";
+import { EXCALIDRAW_ACCEPT, readSceneFile } from "./excalidraw-file";
+import { sceneName, withUploadedImages } from "./excalidraw-import";
+import { overlayFlow, useOverlays } from "./overlays";
+import { usePanels } from "./panels";
+import { SelectionToolbar } from "./selection-toolbar";
+import { ALL_ANNOTATIONS, annotationOf, annotationVisible, TYPE_META, type AnnotationView } from "./annotations";
+import { convertNodes, type ConvertTarget } from "./convert";
+import { componentDef } from "./components/registry";
+import { QuickInsert } from "./quick-insert";
 import { publishPlanAction, updatePlanMetaAction } from "./actions";
 import type { ViewerExport } from "./viewer";
 import { CommentsPanel, CommentsToggle, useComments, useCommentsPanel } from "./comments";
 
 /** Marks our own nodes on the system clipboard (set on copy, checked on paste). */
-const NODES_MIME = "application/x-waypoint-nodes";
 
 export type PlanEditorProps = {
   plan: { id: string; title: string; description: string | null; tags: string[]; visibility: string };
@@ -123,12 +160,6 @@ function readClip(): Clip | null {
   }
 }
 
-function isTyping(t: EventTarget | null) {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
-  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
-}
-
 const isDefaultViewport = (v: Viewport) => v.x === 0 && v.y === 0 && v.zoom === 1;
 
 // Where each person last left a plan's canvas (per device), so reopening continues there.
@@ -149,7 +180,29 @@ function writeViewport(planId: string, v: Viewport) {
   }
 }
 
-const normalizeForCanvas = (doc: PlanDocument) => fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport);
+const normalizeForCanvas = (doc: PlanDocument): PlanDocument => ({
+  ...fromFlow(toFlowNodes(doc), toFlowEdges(doc), doc.viewport),
+  ...(doc.layers ? { layers: doc.layers } : {}),
+  ...(doc.views ? { views: doc.views } : {}),
+  ...(doc.palette?.length ? { palette: doc.palette } : {}),
+});
+
+/** Document-level state beside the React Flow state: layers, saved views and the plan's palette. */
+type LayerState = { layers?: PlanLayer[]; views?: PlanView[]; palette?: string[] };
+const INK_KEY = "wp-planner-ink";
+const STYLE_KEY = "wp-planner-style";
+
+/** Default sizes of the shapes, when clicked instead of dragged. */
+const DEFAULT_SHAPE_SIZE: Partial<Record<OutlineType, [number, number]>> = {
+  rect: [180, 100],
+  diamond: [160, 120],
+  ellipse: [180, 110],
+  cylinder: [120, 140],
+  triangle: [130, 112],
+  star: [130, 124],
+  speech: [190, 120],
+  cloud: [200, 120],
+};
 
 function EditorShell(props: PlanEditorProps) {
   const planId = props.plan.id;
@@ -167,13 +220,71 @@ function EditorShell(props: PlanEditorProps) {
   edgesRef.current = edges;
   const viewportRef = useRef<Viewport>(initialDoc.viewport);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Layers and saved views live beside the React Flow state (they are document-level).
+  const [layerState, setLayerState] = useState<LayerState>(() => ({ layers: initialDoc.layers, views: initialDoc.views, palette: initialDoc.palette }));
+  const layerStateRef = useRef(layerState);
 
-  const docOf = useCallback(() => fromFlow(nodesRef.current, edgesRef.current, viewportRef.current), []);
+  const docOf = useCallback((): PlanDocument => {
+    const d = fromFlow(nodesRef.current, edgesRef.current, viewportRef.current);
+    const { layers, views, palette } = layerStateRef.current;
+    return { ...d, ...(layers ? { layers } : {}), ...(views ? { views } : {}), ...(palette?.length ? { palette } : {}) };
+  }, []);
 
   // ---------------------------------------------------------------- ui state
   const [meta, setMeta] = useState<PlanMeta>({ title: props.plan.title, description: props.plan.description, tags: props.plan.tags, visibility: props.plan.visibility });
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [tool, setToolState] = useState<Tool>("select");
+  const [ink, setInkState] = useState<InkSettings>({ mode: "pen", color: undefined, size: INK_SIZES[1] });
+  const inkRef = useRef(ink);
+  inkRef.current = ink;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(INK_KEY) ?? "null") as Partial<InkSettings> | null;
+      // Arrows, boxes and text have their own tools now: the pencil keeps pen or highlighter.
+      if (saved) setInkState((cur) => ({ ...cur, ...saved, mode: saved.mode === "highlighter" ? "highlighter" : "pen" }));
+    } catch {}
+  }, []);
+  // Style new shapes and arrows are drawn with (kept between sessions).
+  const [style, setStyleState] = useState<DrawStyle>(DEFAULT_STYLE);
+  const styleRef = useRef(style);
+  styleRef.current = style;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STYLE_KEY) ?? "null") as Partial<DrawStyle> | null;
+      if (saved) setStyleState((cur) => ({ ...cur, ...saved }));
+    } catch {}
+  }, []);
+  const setInk = useCallback((patch: Partial<InkSettings>) => {
+    setInkState((cur) => {
+      const next = { ...cur, ...patch };
+      try {
+        localStorage.setItem(INK_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+  const [activeLayer, setActiveLayer] = useState<string>(BASE_LAYER_ID);
+  const activeLayerRef = useRef(activeLayer);
+  activeLayerRef.current = activeLayer;
+  // Editing one layer alone: the others fade and can't be touched (not saved with the plan).
+  const [isolated, setIsolatedState] = useState<string | null>(null);
+  const [annotationView, setAnnotationViewState] = useState<AnnotationView>(ALL_ANNOTATIONS);
+  const setAnnotationView = useCallback((patch: Partial<AnnotationView>) => setAnnotationViewState((v) => ({ ...v, ...patch })), []);
+  const [review, setReview] = useState(false);
+  const [onion, setOnion] = useState<{ versionId: string; label: string } | null>(null);
+  const overlays = useOverlays(planId, layerState.layers, onion?.versionId ?? null);
+  const overlay = useMemo(() => overlayFlow(layerState, overlays, { isolate: isolated }), [layerState, overlays, isolated]);
+  // Annotations the reader filtered out leave the canvas (the document keeps them).
+  const shownNodes = useMemo(
+    () => nodes.map((n) => (n.type === "annotation" && !n.hidden && !annotationVisible(annotationOf(n), annotationView) ? { ...n, hidden: true, selected: false } : n)),
+    [nodes, annotationView],
+  );
+  const renderNodes = useMemo(() => (overlay.nodes.length ? [...overlay.nodes, ...shownNodes] : shownNodes), [overlay.nodes, shownNodes]);
+  const allEdges = useMemo(() => (overlay.edges.length ? [...overlay.edges, ...edges] : edges), [overlay.edges, edges]);
+  const renderEdges = useAvoidance(renderNodes, allEdges);
+  const isolateRef = useRef<string | null>(null);
+  // Element hovered in the layers panel, outlined on the canvas.
+  const [hoverId, setHoverId] = useState<string | null>(null);
   const [connectKind, setConnectKind] = useState<EdgeKind>("flow");
   const [connectSource, setConnectSource] = useState<string | null>(null);
   const connectOnce = useRef(false);
@@ -191,8 +302,12 @@ function EditorShell(props: PlanEditorProps) {
       localStorage.setItem("wp-planner-minimap", v ? "1" : "0");
     } catch {}
   }, []);
+  const panels = usePanels();
+  // "/" or a double click on the canvas: insert anything at that point.
+  const [quickInsert, setQuickInsert] = useState<{ x: number; y: number } | null>(null);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
-  const altDown = useRef(false);
+  const freeMove = useRef(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("content");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -206,6 +321,7 @@ function EditorShell(props: PlanEditorProps) {
   const [backup, setBackup] = useState<{ document: PlanDocument; at: number } | null>(null);
   const previewExport = useRef<ViewerExport | null>(null);
   const commentsPanel = useCommentsPanel();
+  const openLayerComments = commentsPanel.openLayer;
   const comments = useComments({ planId, enabled: true, open: commentsPanel.open });
   const [previewFocus, setPreviewFocus] = useState<{ id: string; seq: number } | null>(null);
   // phones: a notice first; "Editar mesmo assim" shows the canvas with panels as overlays
@@ -226,7 +342,7 @@ function EditorShell(props: PlanEditorProps) {
   useEffect(() => {
     if (nodes.some((n) => n.dragging || n.resizing)) return;
     // selection / hover updates don't touch content: skip the full serialization
-    const print = flowFingerprint(nodes, edges);
+    const print = [...flowFingerprint(nodes, edges), layerState];
     if (sameFingerprint(lastPrint.current, print)) {
       pendingKey.current = null;
       return;
@@ -246,7 +362,7 @@ function EditorShell(props: PlanEditorProps) {
       setUnpublished(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges]);
+  }, [nodes, edges, layerState]);
 
   // local safety-net copy newer than the server draft?
   useEffect(() => {
@@ -255,6 +371,11 @@ function EditorShell(props: PlanEditorProps) {
     if (b.at > props.initial.updatedAt && contentSignature(b.document) !== initialSig) setBackup(b);
     else clearBackup(planId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The hand-drawn font is measured when texts are created: have it ready.
+  useEffect(() => {
+    document.fonts?.load('20px "Excalifont"').catch(() => {});
   }, []);
 
   // ---------------------------------------------------------------- doc plumbing
@@ -267,8 +388,54 @@ function EditorShell(props: PlanEditorProps) {
     const cur = selectedIds();
     const n = sel?.nodes ? new Set(sel.nodes) : cur.nodes;
     const e = sel?.edges ? new Set(sel.edges) : sel?.nodes ? new Set<string>() : cur.edges;
-    setNodes(toFlowNodes(doc, { selected: n }));
-    setEdges(toFlowEdges(doc, { selected: e }));
+    const ls: LayerState = { layers: doc.layers, views: doc.views, palette: doc.palette };
+    layerStateRef.current = ls;
+    setLayerState(ls);
+    // The refs move now, so a second change in the same tick builds on this one.
+    const ns = toFlowNodes(doc, { selected: n, isolate: isolateRef.current });
+    const es = toFlowEdges(doc, { selected: e, isolate: isolateRef.current });
+    nodesRef.current = ns;
+    edgesRef.current = es;
+    setNodes(ns);
+    setEdges(es);
+  }, []);
+
+  const setIsolated = useCallback(
+    (id: string | null) => {
+      isolateRef.current = id;
+      setIsolatedState(id);
+      if (id) setActiveLayer(id);
+      // Re-render with the new fading; what is selected on other layers is let go.
+      const keep = (layer?: string) => !id || (layer ?? BASE_LAYER_ID) === id;
+      const sel = selectedIds();
+      applyDoc(docOf(), {
+        nodes: [...sel.nodes].filter((n) => keep(nodesRef.current.find((x) => x.id === n)?.data._layer)),
+        edges: [...sel.edges].filter((e) => keep(edgesRef.current.find((x) => x.id === e)?.data?.layer)),
+      });
+    },
+    [applyDoc, docOf],
+  );
+
+  /** Areas on hidden or locked layers don't take dropped elements. */
+  const canHold = useCallback((n: PlanNode) => {
+    const l = layersOf(layerStateRef.current).find((x) => x.id === layerIdOf(n));
+    return !l || (l.visible !== false && !l.locked);
+  }, []);
+
+  /**
+   * New elements go to the active layer; if it is hidden or locked, it is shown and unlocked
+   * so what was just added can be seen and edited.
+   */
+  const placeInActive = useCallback((doc: PlanDocument, nodeIds: string[], edgeIds: string[] = []): PlanDocument => {
+    const want = activeLayerRef.current;
+    const id = layersOf(doc).some((l) => l.id === want) ? want : BASE_LAYER_ID;
+    let next = assignLayer(doc, id, { nodes: nodeIds, edges: edgeIds });
+    const layer = layersOf(next).find((l) => l.id === id);
+    if (layer && (layer.visible === false || layer.locked)) {
+      next = updateLayer(next, id, { visible: true, locked: false });
+      toast(`A camada “${layer.name}” foi exibida e destravada para receber o novo elemento.`);
+    }
+    return next;
   }, []);
 
   const mutate = useCallback(
@@ -361,18 +528,20 @@ function EditorShell(props: PlanEditorProps) {
     const p = rf.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
     return { x: p.x + jitter, y: p.y + jitter };
   }, [rf]);
+  const viewportCenterRef = useRef(viewportCenter);
+  viewportCenterRef.current = viewportCenter;
 
   const insert = useCallback(
     (node: ReturnType<typeof createNode>) => {
-      let doc = addNodes(docOf(), [node]);
+      let doc = placeInActive(addNodes(docOf(), [node]), [node.id]);
       if (!PARENT_KINDS.has(node.kind)) {
-        const target = findDropTarget(doc, node.id);
+        const target = findDropTarget(doc, node.id, canHold);
         if (target) doc = reparent(doc, node.id, target);
       }
       pendingKey.current = null;
       applyDoc(doc, { nodes: [node.id] });
     },
-    [docOf, applyDoc],
+    [docOf, applyDoc, placeInActive, canHold],
   );
 
   const addNode = useCallback(
@@ -387,7 +556,7 @@ function EditorShell(props: PlanEditorProps) {
       else if (kind === "image") setInspectorTab("content");
       else {
         setInspectorTab("content");
-        setTimeout(() => setEditingId(node.id), 30);
+        setEditingId(node.id);
       }
     },
     [insert, viewportCenter, snap],
@@ -430,7 +599,7 @@ function EditorShell(props: PlanEditorProps) {
           .catch(() => {});
       });
       pendingKey.current = null;
-      applyDoc(doc, { nodes: ids });
+      applyDoc(placeInActive(doc, ids), { nodes: ids });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [docOf, applyDoc, viewportCenter, cacheResource],
@@ -448,9 +617,9 @@ function EditorShell(props: PlanEditorProps) {
         doc = addNodes(doc, [node]);
       });
       pendingKey.current = null;
-      applyDoc(doc, { nodes: ids });
+      applyDoc(placeInActive(doc, ids), { nodes: ids });
     },
-    [docOf, applyDoc, viewportCenter],
+    [docOf, applyDoc, viewportCenter, placeInActive],
   );
 
   const uploadImage = useCallback(
@@ -471,6 +640,59 @@ function EditorShell(props: PlanEditorProps) {
     [],
   );
 
+  /**
+   * Brings an Excalidraw drawing in: into a new layer named after the file (or the active layer
+   * when pasted), centered where it was dropped. Layers saved by a Waypoint export come back as
+   * layers of their own.
+   */
+  const insertScene = useCallback(
+    async (scene: NonNullable<ReturnType<typeof parseScene>>, opts: { at?: { x: number; y: number }; layerName?: string } = {}) => {
+      const r = fromExcalidraw(scene, { newId });
+      if (!r.nodes.length) return void toast.error("Não há nada para importar neste desenho.");
+      let nodes = await withUploadedImages(r.nodes, r.images);
+      nodes = centerOn(nodes, opts.at ?? viewportCenter()).map(({ layer: _l, ...n }) => n);
+      const ids = new Set(nodes.map((n) => n.id));
+      const edges = r.edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map(({ layer: _l, ...e }) => e);
+      const fromLayer = new Map([...r.nodes.map((n) => [n.id, n.layer] as const), ...r.edges.map((e) => [e.id, e.layer] as const)]);
+      const top = nodes.filter((n) => !n.parentId || !ids.has(n.parentId)).map((n) => n.id);
+      let target: string | null = null;
+      mutate(
+        (d) => {
+          let doc: PlanDocument = { ...d, nodes: [...d.nodes, ...nodes], edges: [...d.edges, ...edges] };
+          if (!opts.layerName) return placeInActive(doc, top, edges.map((e) => e.id));
+          // The drawing's own layers (from a Waypoint export) come back next to the file's layer.
+          const made = new Map<string | undefined, string>();
+          const add = (name: string, extra?: Partial<PlanLayer>) => {
+            const a = addLayer(doc, name);
+            doc = extra ? updateLayer(a.doc, a.id, extra) : a.doc;
+            return a.id;
+          };
+          made.set(undefined, (target = add(opts.layerName)));
+          for (const l of r.layers) made.set(l.id, add(l.name, { sketch: l.sketch, opacity: l.opacity, description: l.description }));
+          for (const [src, id] of made) {
+            const ns = top.filter((n) => fromLayer.get(n) === src || (src === undefined && !made.has(fromLayer.get(n))));
+            const es = edges.filter((e) => fromLayer.get(e.id) === src || (src === undefined && !made.has(fromLayer.get(e.id)))).map((e) => e.id);
+            if (ns.length || es.length) doc = assignLayer(doc, id, { nodes: ns, edges: es });
+          }
+          return doc;
+        },
+        { select: top },
+      );
+      if (target) setActiveLayer(target);
+      toast.success(opts.layerName ? `Desenho importado na camada “${opts.layerName}”` : "Desenho do Excalidraw colado");
+    },
+    [mutate, placeInActive, viewportCenter],
+  );
+  const insertSceneRef = useRef(insertScene);
+  insertSceneRef.current = insertScene;
+  const importInput = useRef<HTMLInputElement>(null);
+  const importSceneFile = useCallback(async (file: File, at?: { x: number; y: number }) => {
+    const scene = await readSceneFile(file);
+    if (!scene) return false;
+    await insertSceneRef.current(scene, { at, layerName: sceneName(file).slice(0, 60) || "Excalidraw" });
+    return true;
+  }, []);
+
   const updateNodeData = useCallback((id: string, patch: Partial<NodeData>, key?: string) => {
     pendingKey.current = key ?? null;
     setNodes((list) => list.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
@@ -481,7 +703,7 @@ function EditorShell(props: PlanEditorProps) {
     setNodes((list) => list.map((n) => (n.id === id ? { ...n, width: size.width ?? n.width, height: size.height ?? n.height } : n)));
   }, []);
 
-  const updateEdge = useCallback((id: string, patch: { label?: string; description?: string; kind?: EdgeKind }, key?: string) => {
+  const updateEdge = useCallback((id: string, patch: { label?: string; description?: string; kind?: EdgeKind; step?: number }, key?: string) => {
     pendingKey.current = key ?? null;
     setEdges((list) =>
       list.map((e) => {
@@ -533,11 +755,11 @@ function EditorShell(props: PlanEditorProps) {
       mutate((d) => {
         const r = pasteClip(d, clip, at ? { at } : { offset: { x: off, y: off } });
         created = r.ids;
-        return r.doc;
+        return placeInActive(r.doc, r.ids);
       });
       if (created.length) select(created);
     },
-    [mutate, select],
+    [mutate, select, placeInActive],
   );
 
   const group = useCallback(() => {
@@ -634,13 +856,459 @@ function EditorShell(props: PlanEditorProps) {
           }
         }
       }
-      const edge = toFlowEdge({ id: newId(), source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null, kind: connectKind });
+      // Through the document: the connection goes to the active layer (it can link elements of any layer).
+      const edge: PlanEdge = { id: newId(), source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null, kind: connectKind };
+      const base = docOf();
       pendingKey.current = null;
-      setEdges((list) => [...list.map((e) => (e.selected ? { ...e, selected: false } : e)), { ...edge, selected: true }]);
-      setNodes((list) => list.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      applyDoc(placeInActive({ ...base, edges: [...base.edges, edge] }, [], [edge.id]), { nodes: [], edges: [edge.id] });
     },
-    [rf, connectKind],
+    [rf, connectKind, docOf, applyDoc, placeInActive],
   );
+
+  // ---------------------------------------------------------------- drawing
+  const addInk = useCallback(
+    (points: Point[], zoom: number) => {
+      const s = inkRef.current;
+      const built = buildInk(points, { size: s.size, mode: s.mode, zoom });
+      if (!built) return;
+      const node: PlanNode = {
+        id: newId(),
+        kind: "ink",
+        x: built.x,
+        y: built.y,
+        width: built.width,
+        height: built.height,
+        data: { title: "", ink: built.ink, ...(s.color ? { color: s.color } : {}) },
+      };
+      pendingKey.current = null;
+      applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [] });
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
+  const removeInk = useCallback(
+    (ids: string[]) => {
+      const set = new Set(ids);
+      mutate((d) => {
+        // The eraser takes drawings, drawn shapes and connections drawn with the arrow/line tools.
+        const drop = d.nodes.filter((n) => set.has(n.id) && (n.kind === "ink" || n.kind === "shape")).map((n) => n.id);
+        const dropEdges = d.edges.filter((e) => set.has(e.id) && e.style).map((e) => e.id);
+        if (!drop.length && !dropEdges.length) return d;
+        return removeEdges(removeNodes(d, drop), dropEdges);
+      });
+    },
+    [mutate],
+  );
+
+  // ---------------------------------------------------------------- shapes, arrows, style
+  const setStyle = useCallback(
+    (patch: Partial<DrawStyle>) => {
+      setStyleState((cur) => {
+        const next = { ...cur, ...patch };
+        try {
+          localStorage.setItem(STYLE_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      const ns = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+      const es = edgesRef.current.filter((e) => e.selected).map((e) => e.id);
+      if (ns.length || es.length) mutate((d) => applyStyle(d, { nodes: ns, edges: es }, patch), { key: `style:${Object.keys(patch).sort().join(",")}` });
+    },
+    [mutate],
+  );
+
+  const convertTo = useCallback(
+    (to: ConvertTarget) => {
+      const ids = nodesRef.current.filter((n) => n.selected).map((n) => n.id);
+      if (ids.length) mutate((d) => convertNodes(d, ids, to), { select: ids });
+    },
+    [mutate],
+  );
+
+  const [shapeType, setShapeTypeState] = useState<OutlineType>("hexagon");
+  const setShapeType = useCallback((t: OutlineType) => {
+    setShapeTypeState(t);
+    setToolState("shape");
+  }, []);
+  const shapeTypeRef = useRef(shapeType);
+  shapeTypeRef.current = shapeType;
+
+  const setFlag = useCallback(
+    (flag: "locked" | "hidden", on: boolean, ids?: string[] | null) => {
+      const pick = ids === null ? null : new Set(ids ?? nodesRef.current.filter((n) => n.selected).map((n) => n.id));
+      if (pick && !pick.size) return;
+      let changed = 0;
+      mutate(
+        (d) => {
+          const nodes = d.nodes.map((n) => {
+            if ((pick && !pick.has(n.id)) || !!n.data[flag] === on) return n;
+            changed++;
+            const data = { ...n.data };
+            if (on) data[flag] = true;
+            else delete data[flag];
+            return { ...n, data };
+          });
+          return changed ? { ...d, nodes } : d;
+        },
+        // Hidden or locked elements leave the selection.
+        on ? { select: [] } : {},
+      );
+      if (!changed) return;
+      if (flag === "hidden") toast(on ? (changed === 1 ? "Elemento oculto — mostre-o de novo no painel de camadas" : `${changed} elementos ocultos`) : changed === 1 ? "Elemento visível de novo" : `${changed} elementos visíveis de novo`);
+      else toast(on ? (changed === 1 ? "Elemento travado — destrave pelo menu ou pelo painel de camadas" : `${changed} elementos travados`) : changed === 1 ? "Elemento destravado" : `${changed} elementos destravados`);
+    },
+    [mutate],
+  );
+
+  // The plan's palette: colors picked with "+" or the eyedropper, most recent first.
+  const palette = layerState.palette;
+  const setPalette = useCallback(
+    (colors: string[]) => mutate((d) => {
+      const next = [...new Set(colors.map((c) => c.toUpperCase()))].slice(0, 24);
+      const { palette: _p, ...rest } = d;
+      return next.length ? { ...rest, palette: next } : rest;
+    }, { key: "palette" }),
+    [mutate],
+  );
+  const paletteCtx = useMemo(
+    () => ({ colors: palette ?? [], add: (hex: string) => setPalette([hex, ...(layerStateRef.current.palette ?? [])]) }),
+    [palette, setPalette],
+  );
+
+  const setShapeProps = useCallback(
+    (patch: ShapeProps) => {
+      const ids = new Set(nodesRef.current.filter((n) => n.selected && n.data.shape).map((n) => n.id));
+      if (!ids.size) return;
+      mutate(
+        (d) => ({
+          ...d,
+          nodes: d.nodes.map((n) => {
+            if (!ids.has(n.id) || !n.data.shape) return n;
+            const shape = { ...n.data.shape, ...patch };
+            for (const k of Object.keys(patch) as (keyof ShapeProps)[]) if (shape[k] === undefined || shape[k] === false || (k === "rotation" && !shape[k])) delete shape[k];
+            return { ...n, data: { ...n.data, shape } };
+          }),
+        }),
+        { key: `shape-props:${Object.keys(patch).sort().join(",")}` },
+      );
+    },
+    [mutate],
+  );
+
+  // The look copied with ⌘⌥C: drawing style for shapes, strokes and connections, color for blocks.
+  const [copiedStyle, setCopiedStyle] = useState<{ draw: Partial<DrawStyle>; color?: string } | null>(null);
+  const copyStyle = useCallback(() => {
+    const n = nodesRef.current.find((x) => x.selected);
+    const e = n ? undefined : edgesRef.current.find((x) => x.selected);
+    if (!n && !e) return;
+    const full = styleOfSelection(DEFAULT_STYLE, n ? [n.data] : [], e ? [e.data?.style] : []);
+    let out: { draw: Partial<DrawStyle>; color?: string };
+    if (n?.type === "shape") {
+      const { start: _s, end: _e, routing: _r, ...draw } = full;
+      out = { draw, color: n.data.shape?.fill };
+    } else if (n?.type === "ink") out = { draw: { stroke: n.data.color as string | undefined } };
+    else if (n) out = { draw: { fill: n.data.color as string | undefined }, color: n.data.color as string | undefined };
+    else {
+      const { stroke, strokeWidth, strokeStyle, roughness, start, end, routing } = full;
+      out = { draw: { stroke, strokeWidth, strokeStyle, roughness, start, end, routing } };
+    }
+    setCopiedStyle(out);
+    toast("Estilo copiado — cole em outros elementos com ⌘⌥V");
+  }, []);
+  const pasteStyle = useCallback(() => {
+    if (!copiedStyle) return;
+    const ns = nodesRef.current.filter((n) => n.selected);
+    const es = edgesRef.current.filter((x) => x.selected).map((x) => x.id);
+    if (!ns.length && !es.length) return;
+    const drawn = ns.filter((n) => n.type === "shape" || n.type === "ink").map((n) => n.id);
+    const plain = ns.filter((n) => n.type !== "shape" && n.type !== "ink").map((n) => n.id);
+    mutate((d) => {
+      let doc = drawn.length || es.length ? applyStyle(d, { nodes: drawn, edges: es }, copiedStyle.draw) : d;
+      const color = copiedStyle.color ?? copiedStyle.draw.fill;
+      if (plain.length && color) doc = { ...doc, nodes: doc.nodes.map((n) => (plain.includes(n.id) ? { ...n, data: { ...n.data, color } } : n)) };
+      return doc;
+    });
+  }, [copiedStyle, mutate]);
+
+  // ---------------------------------------------------------------- annotations
+  const [annotStyle, setAnnotStyleState] = useState<{ type: AnnotationType; category: AnnotationCategory }>({ type: "pin", category: "note" });
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("wp-planner-annot") ?? "null");
+      if (saved?.type && saved?.category) setAnnotStyleState(saved);
+    } catch {}
+  }, []);
+  const setAnnotStyle = useCallback((patch: Partial<{ type: AnnotationType; category: AnnotationCategory }>, opts: { restyle?: boolean } = {}) => {
+    setAnnotStyleState((cur) => {
+      const next = { ...cur, ...patch };
+      try {
+        localStorage.setItem("wp-planner-annot", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    // Restyle the selected annotations too (not while picking what the tool adds next).
+    if ((patch.category || patch.type) && opts.restyle !== false) {
+      const ids = nodesRef.current.filter((n) => n.selected && n.type === "annotation").map((n) => n.id);
+      if (ids.length)
+        mutate((d) => ({
+          ...d,
+          nodes: d.nodes.map((n) => (ids.includes(n.id) && n.data.annotation ? { ...n, data: { ...n.data, annotation: { ...n.data.annotation, ...(patch.category ? { category: patch.category } : {}) } } } : n)),
+        }));
+    }
+  }, [mutate]);
+  const annotStyleRef = useRef(annotStyle);
+  annotStyleRef.current = annotStyle;
+
+  const addAnnotation = useCallback(
+    (box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }, target: string | null, style?: { type: AnnotationType; category: AnnotationCategory }) => {
+      const { type, category } = style ?? annotStyleRef.current;
+      const [dw, dh] = TYPE_META[type].size;
+      const id = newId();
+      const w = box && type !== "pin" ? Math.max(40, box.w) : dw;
+      const h = box && type !== "pin" ? Math.max(type === "bracket" ? 24 : 40, box.h) : dh;
+      // A pin sits on the point; a callout floats up and to the right of it; areas cover the box.
+      let x = box && type !== "pin" ? box.x : type === "pin" ? at.x - w / 2 : type === "callout" ? at.x + 28 : at.x - w / 2;
+      let y = box && type !== "pin" ? box.y : type === "pin" ? at.y - h / 2 : type === "callout" ? at.y - h - 28 : at.y - h / 2;
+      const base = docOf();
+      const parent = target && (type === "pin" || type === "callout") ? base.nodes.find((n) => n.id === target) : undefined;
+      if (parent) {
+        const r = absRect(base, parent.id);
+        x -= r.x;
+        y -= r.y;
+      }
+      const node: PlanNode = {
+        id,
+        kind: "annotation",
+        x: Math.round(x),
+        y: Math.round(y),
+        width: w,
+        height: h,
+        ...(parent ? { parentId: parent.id } : {}),
+        data: { title: "", annotation: { type, category } },
+      };
+      pendingKey.current = null;
+      const doc = addNodes(base, [node]);
+      applyDoc(parent ? doc : placeInActive(doc, [id]), { nodes: [id] });
+      // New annotations are shown even when that category was filtered out.
+      setAnnotationViewState((v) => (v.show && v.categories.has(category) ? v : { ...v, show: true, categories: new Set([...v.categories, category]) }));
+      setToolState("select");
+      setEditingId(id);
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
+  const addShape = useCallback(
+    (type: OutlineType | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }) => {
+      const s = styleRef.current;
+      const id = newId();
+      let node: PlanNode;
+      if (type === "frame") {
+        const count = nodesRef.current.filter((n) => n.type === "frame").length;
+        const w = box?.w ?? 640;
+        const h = box?.h ?? 420;
+        node = { id, kind: "frame", x: box?.x ?? at.x - w / 2, y: box?.y ?? at.y - h / 2, width: w, height: h, data: { title: `Quadro ${count + 1}` } };
+      } else {
+        const shape = shapeFromStyle(type, s, seedOf(id));
+        const size =
+          type === "text"
+            ? measureText("", s.font, s.fontSize)
+            : { width: box?.w ?? DEFAULT_SHAPE_SIZE[type]?.[0] ?? 180, height: box?.h ?? DEFAULT_SHAPE_SIZE[type]?.[1] ?? 100 };
+        const x = box?.x ?? (type === "text" ? at.x : at.x - size.width / 2);
+        const y = box?.y ?? at.y - size.height / 2;
+        node = { id, kind: "shape", x, y, width: Math.max(16, size.width), height: Math.max(16, size.height), data: { title: "", shape } };
+      }
+      if (snap && type !== "text") {
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
+      }
+      pendingKey.current = null;
+      let doc = placeInActive(addNodes(docOf(), [node]), [id]);
+      // Drawn inside a frame or area: it goes in it.
+      const parent = type === "frame" ? undefined : findDropTarget(doc, id, canHold);
+      if (parent) doc = reparent(doc, id, parent);
+      applyDoc(doc, { nodes: [id] });
+      setToolState("select");
+      if (type === "text") setEditingId(id);
+    },
+    [docOf, applyDoc, placeInActive, canHold, snap],
+  );
+
+  const addIcon = useCallback(
+    (icon: IconPick, at?: { x: number; y: number }) => {
+      const id = newId();
+      const p = at ?? viewportCenter();
+      // Brand logos keep their color, except near-black or white ones, which follow the theme.
+      const lum = icon.color ? luminance(icon.color) : -1;
+      const color = icon.color && lum > 0.03 && lum < 0.85 ? icon.color : styleRef.current.stroke;
+      const shape: Shape = { type: "icon", glyph: icon.glyph, ...(color ? { stroke: color } : {}) };
+      const title = icon.set === "brand" ? icon.name.slice(0, 300) : "";
+      const size = 64;
+      const h = size + (title ? 24 : 0);
+      const node: PlanNode = { id, kind: "shape", x: Math.round(p.x - size / 2), y: Math.round(p.y - h / 2), width: size, height: h, data: { title, shape } };
+      if (snap) {
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
+      }
+      pendingKey.current = null;
+      let doc = placeInActive(addNodes(docOf(), [node]), [id]);
+      const parent = findDropTarget(doc, id, canHold);
+      if (parent) doc = reparent(doc, id, parent);
+      applyDoc(doc, { nodes: [id] });
+    },
+    [docOf, applyDoc, placeInActive, canHold, snap, viewportCenter],
+  );
+
+  const addComponent = useCallback(
+    (pack: string, type: string, at?: { x: number; y: number }) => {
+      const def = componentDef(pack, type);
+      if (!def) return;
+      const id = newId();
+      const p = at ?? viewportCenter();
+      const [w, h] = def.size;
+      const node: PlanNode = def.preset
+        ? { id, kind: def.preset.kind, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h, data: { title: def.title, ...def.preset.data } }
+        : { id, kind: "component", x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h, data: { title: def.title, component: { pack, type, ...(def.defaults ? { props: def.defaults } : {}) } } };
+      if (snap) {
+        node.x = Math.round(node.x / 20) * 20;
+        node.y = Math.round(node.y / 20) * 20;
+      }
+      pendingKey.current = null;
+      let doc = placeInActive(addNodes(docOf(), [node]), [id]);
+      const parent = findDropTarget(doc, id, canHold);
+      if (parent) doc = reparent(doc, id, parent);
+      applyDoc(doc, { nodes: [id] });
+    },
+    [docOf, applyDoc, placeInActive, canHold, snap, viewportCenter],
+  );
+
+  const insertFragment = useCallback(
+    (content: LibraryContent, at?: { x: number; y: number }, link?: { item: string; rev: string }) => {
+      const c = instantiateLibraryContent(content, at ?? viewportCenter(), newId, link);
+      const ids = new Set(c.nodes.map((n) => n.id));
+      const top = c.nodes.filter((n) => !n.parentId || !ids.has(n.parentId)).map((n) => n.id);
+      pendingKey.current = null;
+      const base = docOf();
+      applyDoc(placeInActive({ ...base, nodes: [...base.nodes, ...c.nodes], edges: [...base.edges, ...c.edges] }, top, c.edges.map((e) => e.id)), { nodes: top });
+    },
+    [docOf, applyDoc, placeInActive, viewportCenter],
+  );
+
+  const libraryLinks = useLibraryLinks({ nodes, docOf, mutate, canEdit: true });
+
+  const selectionFragment = useCallback((): LibraryContent | null => {
+    const sel = selectedIds();
+    if (!sel.nodes.size) return null;
+    try {
+      return normalizeLibraryContent(subsetDoc(docOf(), sel.nodes, sel.edges));
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docOf]);
+
+  const addLink = useCallback(
+    (kind: "arrow" | "line", from: { x: number; y: number }, to: { x: number; y: number }, source?: string | null, target?: string | null) => {
+      const s = styleRef.current;
+      pendingKey.current = null;
+      if (source && target && source !== target) {
+        const id = newId();
+        const edge: PlanEdge = { id, source, target, kind: kind === "arrow" ? "flow" : "relation", style: edgeStyleFromStyle(kind, s, seedOf(id)) };
+        const base = docOf();
+        applyDoc(placeInActive({ ...base, edges: [...base.edges, edge] }, [], [id]), { nodes: [], edges: [id] });
+      } else {
+        // Not between two elements: a free line or arrow.
+        const built = buildInk([[from.x, from.y], [to.x, to.y]], { size: s.strokeWidth, mode: "arrow" });
+        if (!built) return void setToolState("select");
+        const ink = kind === "line" ? { ...built.ink, arrow: undefined, line: true } : built.ink;
+        const node: PlanNode = { id: newId(), kind: "ink", x: built.x, y: built.y, width: built.width, height: built.height, data: { title: "", ink, ...(s.stroke ? { color: s.stroke } : {}) } };
+        applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [node.id] });
+      }
+      setToolState("select");
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
+  const addInkText = useCallback(
+    (at: { x: number; y: number }) => {
+      const s = inkRef.current;
+      const built = buildTextInk(at, s.size);
+      const node: PlanNode = {
+        id: newId(),
+        kind: "ink",
+        x: built.x,
+        y: built.y,
+        width: built.width,
+        height: built.height,
+        data: { title: "", ink: built.ink, ...(s.color ? { color: s.color } : {}) },
+      };
+      pendingKey.current = null;
+      applyDoc(placeInActive(addNodes(docOf(), [node]), [node.id]), { nodes: [] });
+      setEditingId(node.id);
+    },
+    [docOf, applyDoc, placeInActive],
+  );
+
+  /** Text annotations: the box follows the text; one emptied goes away. */
+  const commitInkText = useCallback(
+    (id: string, title: string) => {
+      mutate((d) => {
+        const n = d.nodes.find((x) => x.id === id);
+        if (!n?.data.ink) return d;
+        if (!title.trim()) return removeNodes(d, [id]);
+        const box = textBox(title, n.data.ink.size);
+        const ink = { ...n.data.ink, w: box.width, h: box.height, points: [0, 0, box.width, box.height] };
+        return { ...d, nodes: d.nodes.map((x) => (x.id === id ? { ...x, width: box.width, height: box.height, data: { ...x.data, title, ink } } : x)) };
+      });
+    },
+    [mutate],
+  );
+
+  /** Text elements: the box follows the text; one emptied goes away. */
+  const commitShapeText = useCallback(
+    (id: string, title: string) => {
+      mutate((d) => {
+        const n = d.nodes.find((x) => x.id === id);
+        if (!n?.data.shape) return d;
+        if (!title.trim()) return removeNodes(d, [id]);
+        const box = measureText(title, n.data.shape.font ?? DEFAULT_STYLE.font, n.data.shape.fontSize ?? DEFAULT_STYLE.fontSize);
+        return { ...d, nodes: d.nodes.map((x) => (x.id === id ? { ...x, width: box.width, height: box.height, data: { ...x.data, title } } : x)) };
+      });
+    },
+    [mutate],
+  );
+
+  // A text annotation left empty (Esc right after placing it) disappears.
+  const lastEditing = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = lastEditing.current;
+    lastEditing.current = editingId;
+    if (!prev || prev === editingId) return;
+    const n = nodesRef.current.find((x) => x.id === prev);
+    const emptyText = (n?.type === "ink" && n.data.ink?.shape === "text") || (n?.type === "shape" && n.data.shape?.type === "text");
+    if (emptyText && !n!.data.title.trim()) mutate((d) => removeNodes(d, [prev]));
+  }, [editingId, mutate]);
+
+  // ---------------------------------------------------------------- layers
+  const layersApi = useLayersApi({
+    planId,
+    layerState,
+    nodes,
+    edges,
+    nodesRef,
+    edgesRef,
+    activeLayer,
+    setActiveLayer,
+    activeLayerRef,
+    mutate,
+    select,
+    openLayerComments,
+    isolated,
+    setIsolated,
+    setHoverId,
+    overlays,
+    onion,
+    setOnion,
+  });
 
   const focusNode = useCallback(
     (id: string) => {
@@ -690,13 +1358,57 @@ function EditorShell(props: PlanEditorProps) {
     swapEdge: (id) => mutate((d) => swapEdge(d, id)),
     autoArrange,
     select,
-    selectAll: () => select(nodesRef.current.filter((n) => !n.hidden).map((n) => n.id)),
+    selectAll: () => select(nodesRef.current.filter((n) => !n.hidden && n.selectable !== false).map((n) => n.id)),
     focusNode,
     toggleCollapsed: (id) => mutate((d) => setCollapsed(d, id, !d.nodes.find((n) => n.id === id)?.data.collapsed)),
     startEditing,
     startConnectFrom,
     tool,
     setTool,
+    ink,
+    setInk,
+    addInk,
+    removeInk,
+    addInkText,
+    style,
+    setStyle,
+    addShape,
+    shapeType,
+    setShapeType,
+    setShapeProps,
+    libraryLinks,
+    palette: palette ?? [],
+    setPalette,
+    replaceColor: (from: string, to: string) => mutate((d) => replaceColor(d, from, to)),
+    setLocked: (on: boolean, ids?: string[] | null) => setFlag("locked", on, ids),
+    setHidden: (on: boolean, ids?: string[] | null) => setFlag("hidden", on, ids),
+    annotStyle,
+    setAnnotStyle,
+    addAnnotation,
+    detach: (id: string) => mutate((d) => reparent(d, id, undefined)),
+    annotationView,
+    setAnnotationView,
+    review,
+    setReview,
+    convertTo,
+    copyStyle,
+    pasteStyle,
+    hasCopiedStyle: !!copiedStyle,
+    addIcon,
+    addComponent,
+    insertFragment,
+    selectionFragment,
+    addLink,
+    numberSteps: (edgeIds) => {
+      const ids = stepTargets(docOf(), edgeIds ? { nodes: new Set(), edges: new Set(edgeIds) } : selectedIds());
+      if (!ids.length) return void toast.info("Selecione as conexões (ou os elementos entre elas) para numerar.");
+      mutate((d) => numberFlow(d, ids));
+    },
+    clearSteps: (edgeIds) => {
+      const ids = stepTargets(docOf(), edgeIds ? { nodes: new Set(), edges: new Set(edgeIds) } : selectedIds());
+      if (ids.length) mutate((d) => clearFlowSteps(d, ids));
+    },
+    layers: layersApi,
     connectKind,
     setConnectKind,
     grid,
@@ -705,12 +1417,14 @@ function EditorShell(props: PlanEditorProps) {
     setSnap,
     minimap,
     setMinimap,
+    panels,
     inspectorTab,
     setInspectorTab,
     resourceFor,
     cacheResource,
     openShare,
     openComments: (id) => commentsPanel.openPanel(id ?? null),
+    exportView: (k, id) => void onExport(k, id),
   };
   const apiRef = useRef(api);
   apiRef.current = api;
@@ -735,138 +1449,77 @@ function EditorShell(props: PlanEditorProps) {
       resourceFor,
       editingId,
       setEditingId,
-      commitTitle: (id, title) => updateNodeData(id, { title }),
+      commitTitle: (id, title) => {
+        const n = nodesRef.current.find((x) => x.id === id);
+        if (n?.type === "ink" && n.data.ink?.shape === "text") commitInkText(id, title);
+        else if (n?.type === "shape" && n.data.shape?.type === "text") commitShapeText(id, title);
+        else updateNodeData(id, { title });
+      },
       commitEdgeLabel: (id, label) => updateEdge(id, { label: label.trim() || undefined }),
+      moveEdgeLabel: (id, pos) => {
+        pendingKey.current = `label-pos:${id}`;
+        setEdges((list) =>
+          list.map((e) => {
+            if (e.id !== id) return e;
+            const data = { ...(e.data ?? { kind: "flow" as const }) };
+            if (pos === null || Math.abs(pos - 0.5) < 0.02) delete data.labelPos;
+            else data.labelPos = Math.round(pos * 1000) / 1000;
+            return { ...e, data };
+          }),
+        );
+      },
+      bendEdge: (id, bend) => {
+        pendingKey.current = `bend:${id}`;
+        setEdges((list) =>
+          list.map((e) => {
+            if (e.id !== id || !e.data?.style) return e;
+            const style = { ...e.data.style };
+            if (bend === null) {
+              style.routing = "straight";
+              delete style.bend;
+            } else {
+              style.routing = "curve";
+              style.bend = bend;
+            }
+            return { ...e, data: { ...e.data, style } };
+          }),
+        );
+      },
       toggleCollapsed: (id) => apiRef.current.toggleCollapsed(id),
       childCount,
       singleSelectedId,
-      highlightId: null,
+      highlightId: hoverId,
       dropTargetId: dropTarget,
       connectSourceId: connectSource,
       isInteractive: () => false,
       commentCount,
       openNodeComments,
     }),
-    [resourceFor, editingId, updateNodeData, updateEdge, childCount, singleSelectedId, dropTarget, connectSource, commentCount, openNodeComments],
+    [resourceFor, editingId, updateNodeData, commitInkText, commitShapeText, updateEdge, childCount, singleSelectedId, hoverId, dropTarget, connectSource, commentCount, openNodeComments],
   );
 
   const commentNodes = useMemo(
-    () => (commentsPanel.open ? nodes.map((n) => ({ id: n.id, kind: n.type ?? "block", title: n.data.title || (n.data.resource ? (resourceFor(n)?.title ?? "") : "") })) : []),
+    () =>
+      commentsPanel.open
+        ? nodes.map((n) => ({ id: n.id, kind: n.type ?? "block", layer: n.data._layer, title: n.data.title || (n.data.resource ? (resourceFor(n)?.title ?? "") : "") }))
+        : [],
     [commentsPanel.open, nodes, resourceFor],
   );
+  const commentLayers = useMemo(() => layersApi.list.map((l) => ({ id: l.id, name: l.name, color: l.color })), [layersApi.list]);
   const commentsAside = commentsPanel.open ? (
     <CommentsPanel
       store={comments}
       target={commentsPanel}
       onClose={commentsPanel.close}
       nodes={commentNodes}
+      layers={commentLayers}
       onSelectNode={(id) => (mode === "edit" ? focusNode(id) : setPreviewFocus((f) => ({ id, seq: (f?.seq ?? 0) + 1 })))}
     />
   ) : null;
 
-  // ---------------------------------------------------------------- keyboard
-  useEffect(() => {
-    if (mode !== "edit") return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || isTyping(e.target)) return;
-      const t = e.target as HTMLElement | null;
-      if (t?.closest?.('[role="dialog"], [role="menu"], [role="listbox"], [data-planner-panel]')) return;
-      const a = apiRef.current;
-      const mod = e.metaKey || e.ctrlKey;
-      const k = e.key.toLowerCase();
-      if (mod && k === "k") return; // global palette
-      const run = (fn: () => void) => {
-        e.preventDefault();
-        fn();
-      };
-      if (mod && k === "z" && !e.shiftKey) return run(undo);
-      if ((mod && k === "y") || (mod && k === "z" && e.shiftKey)) return run(redo);
-      // ⌘C / ⌘V go through the copy/paste events below (they need the system clipboard).
-      if (mod && k === "d") return run(a.duplicate);
-      if (mod && k === "a") return run(a.selectAll);
-      if (mod && k === "g" && e.shiftKey) return run(a.ungroup);
-      if (mod && k === "g") return run(a.group);
-      if (mod && k === "l") return a.selectedNodes.length === 1 ? run(() => a.setInspectorTab("action")) : undefined;
-      // ⇧L vertical, ⌥⇧L horizontal (e.code: ⌥ changes e.key on macOS)
-      if (!mod && e.shiftKey && e.code === "KeyL") return run(() => a.autoArrange(e.altKey ? "LR" : "TB"));
-      if (mod || e.altKey) return;
-      if (k === "delete" || k === "backspace") return run(a.remove);
-      if (k === "escape") {
-        setEditingId(null);
-        if (a.tool === "connect") return run(() => a.setTool("select"));
-        return run(() => a.select([]));
-      }
-      if (k === "enter" && a.selectedNodes.length === 1) return run(() => a.startEditing(a.selectedNodes[0].id));
-      if (k === "v") return run(() => a.setTool("select"));
-      if (k === "h") return run(() => a.setTool("hand"));
-      if (k === "c") return run(() => (a.selectedNodes.length === 1 ? a.startConnectFrom(a.selectedNodes[0].id) : a.setTool("connect")));
-      if (k === "+" || k === "=") return run(() => rf.zoomIn({ duration: motionMs(150) }));
-      if (k === "-" || k === "_") return run(() => rf.zoomOut({ duration: motionMs(150) }));
-      if (k === "0") return run(() => rf.zoomTo(1, { duration: motionMs(150) }));
-      if (k === "1") return run(() => rf.fitView({ padding: 0.15, duration: motionMs(250) }));
-      if (k === "m") return run(() => a.setMinimap(!a.minimap));
-      if (k === "]") return run(a.bringToFront);
-      if (k === "[") return run(a.sendToBack);
-      if (k.startsWith("arrow")) pendingKey.current = "nudge";
-    };
-    const onAlt = (e: KeyboardEvent) => (altDown.current = e.altKey);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keydown", onAlt, true);
-    window.addEventListener("keyup", onAlt, true);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keydown", onAlt, true);
-      window.removeEventListener("keyup", onAlt, true);
-    };
-  }, [mode, undo, redo, rf]);
-
-  // ---------------------------------------------------------------- clipboard
-  useEffect(() => {
-    if (mode !== "edit") return;
-    const outside = (e: Event) => isTyping(e.target) || !!(e.target as HTMLElement | null)?.closest?.('[role="dialog"], [data-planner-panel]');
-    const onCopy = (e: ClipboardEvent) => {
-      if (outside(e) || !apiRef.current.selectedNodes.length || window.getSelection()?.toString()) return;
-      apiRef.current.copy();
-      // Mark the system clipboard so a later paste knows these nodes are the newest thing there.
-      e.clipboardData?.setData(NODES_MIME, "1");
-      e.clipboardData?.setData("text/plain", `${apiRef.current.selectedNodes.map((n) => n.data.title).filter(Boolean).join("\n")}`);
-      e.preventDefault();
-    };
-    // Pasted content lands under the pointer when it's over the canvas (else the viewport center).
-    let pointer: { x: number; y: number } | null = null;
-    const onMove = (e: PointerEvent) => (pointer = { x: e.clientX, y: e.clientY });
-    const pasteAt = () => {
-      const r = wrapRef.current?.getBoundingClientRect();
-      if (!pointer || !r || pointer.x < r.left || pointer.x > r.right || pointer.y < r.top || pointer.y > r.bottom) return undefined;
-      return rf.screenToFlowPosition(pointer);
-    };
-    const onPaste = (e: ClipboardEvent) => {
-      if (outside(e)) return;
-      const cd = e.clipboardData;
-      e.preventDefault();
-      if (cd?.types.includes(NODES_MIME)) return apiRef.current.paste();
-      const at = pasteAt();
-      const image = Array.from(cd?.files ?? []).find((f) => f.type.startsWith("image/"));
-      if (image) return void uploadImage(image, at);
-      const text = cd?.getData("text/plain")?.trim() ?? "";
-      const urls = text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t));
-      if (urls.length && urls.join(" ").length >= text.replace(/\s+/g, " ").length - urls.length) return addUrlNodes(urls, at);
-      if (text) {
-        // Plain text becomes a note (first line as the title).
-        const [first, ...rest] = text.split("\n");
-        return addNodeRef.current("note", { at, data: { title: first.slice(0, 120), description: rest.join("\n").trim().slice(0, 4000) } });
-      }
-      apiRef.current.paste();
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("copy", onCopy);
-    window.addEventListener("paste", onPaste);
-    return () => {
-      window.removeEventListener("copy", onCopy);
-      window.removeEventListener("paste", onPaste);
-      window.removeEventListener("pointermove", onMove);
-    };
-  }, [mode, addUrlNodes, uploadImage, rf]);
+  // ---------------------------------------------------------------- keyboard and clipboard
+  useEditorKeys({ mode, apiRef, rf, undo, redo, setEditingId, wrapRef, lastPointer, viewportCenterRef, setQuickInsert, pendingKey, freeMove });
+  useEditorClipboard({ mode, apiRef, rf, wrapRef, insertSceneRef, addNodeRef, uploadImage, addUrlNodes });
 
   // ---------------------------------------------------------------- flow handlers
   const onNodesChange = useCallback(
@@ -874,8 +1527,8 @@ function EditorShell(props: PlanEditorProps) {
       // removal goes through our own delete (keeps descendants/edges consistent)
       const filtered = changes.filter((c) => c.type !== "remove");
       const ch = filtered.length === 1 ? filtered[0] : null;
-      // Alignment guides while dragging one node (hold Alt to move freely).
-      if (ch?.type === "position" && ch.dragging && ch.position && !altDown.current) {
+      // Alignment guides while dragging one node (hold ⌘/Ctrl to move freely).
+      if (ch?.type === "position" && ch.dragging && ch.position && !freeMove.current) {
         const node = nodesRef.current.find((n) => n.id === ch.id);
         if (node) {
           const size = (n: PlanFlowNode) => ({ width: n.measured?.width ?? n.width ?? 0, height: n.measured?.height ?? n.height ?? 0 });
@@ -891,6 +1544,7 @@ function EditorShell(props: PlanEditorProps) {
           setGuides({
             vertical: g.vertical && { x: g.vertical.x + ox, y1: g.vertical.y1 + oy, y2: g.vertical.y2 + oy },
             horizontal: g.horizontal && { y: g.horizontal.y + oy, x1: g.horizontal.x1 + ox, x2: g.horizontal.x2 + ox },
+            spacing: g.spacing?.map((sp) => (sp.axis === "x" ? { ...sp, from: sp.from + ox, to: sp.to + ox, at: sp.at + oy } : { ...sp, from: sp.from + oy, to: sp.to + oy, at: sp.at + ox })),
           });
         }
       } else if (ch?.type === "position" && !ch.dragging) setGuides(null);
@@ -932,10 +1586,20 @@ function EditorShell(props: PlanEditorProps) {
         [],
         viewportRef.current,
       );
-      const target = findDropTarget(doc, node.id) ?? null;
+      const target = findDropTarget(doc, node.id, canHold) ?? null;
       setDropTarget(target !== (node.parentId ?? null) ? target : null);
     },
-    [],
+    [canHold],
+  );
+
+  // ⌥-drag: a copy stays where the selection was, and the originals move.
+  const onNodeDragStart: OnNodeDrag<PlanFlowNode> = useCallback(
+    (e, _node, dragged) => {
+      if (!e.altKey || mode !== "edit") return;
+      const ids = dragged.filter((d) => d.draggable !== false).map((d) => d.id);
+      if (ids.length) mutate((d) => duplicateNodes(d, ids, { x: 0, y: 0 }).doc);
+    },
+    [mode, mutate],
   );
 
   const onNodeDragStop: OnNodeDrag<PlanFlowNode> = useCallback((_e, _node, dragged) => {
@@ -944,17 +1608,17 @@ function EditorShell(props: PlanEditorProps) {
     const ids = dragged.map((d) => d.id);
     // functional update: runs after React Flow's final position change in the same batch
     setNodes((prev) => {
-      const base = fromFlow(prev, [], viewportRef.current);
+      const base: PlanDocument = { ...fromFlow(prev, [], viewportRef.current), ...(layerStateRef.current.layers ? { layers: layerStateRef.current.layers } : {}) };
       let doc = base;
       for (const id of selectionRoots(base, ids)) {
-        const target = findDropTarget(doc, id);
+        const target = findDropTarget(doc, id, canHold);
         const cur = doc.nodes.find((n) => n.id === id)?.parentId;
         if (target !== cur) doc = reparent(doc, id, target);
       }
       if (doc === base) return prev;
-      return toFlowNodes(doc, { selected: new Set(prev.filter((n) => n.selected).map((n) => n.id)) });
+      return toFlowNodes(doc, { selected: new Set(prev.filter((n) => n.selected).map((n) => n.id)), isolate: isolateRef.current });
     });
-  }, []);
+  }, [canHold]);
 
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: PlanFlowNode) => {
@@ -984,7 +1648,19 @@ function EditorShell(props: PlanEditorProps) {
     if (p) {
       e.preventDefault();
       if (p.type === "kind") addNode(p.kind, { at });
-      else addResourceNode(p.ref, p.resource, at);
+      else if (p.type === "resource") addResourceNode(p.ref, p.resource, at);
+      else if (p.type === "icon") {
+        const icon = iconPickSchema.safeParse(p.icon);
+        if (icon.success) addIcon(icon.data, at);
+      } else if (p.type === "component") {
+        if (typeof p.pack === "string" && typeof p.component === "string") addComponent(p.pack, p.component, at);
+      } else if (p.type === "fragment") {
+        const content = libraryContentSchema.safeParse(p.content);
+        if (content.success) {
+          const c = normalizeLibraryContent(content.data);
+          insertFragment(c, at, typeof p.item === "string" && p.item.length <= 64 ? { item: p.item, rev: contentRev(c) } : undefined);
+        }
+      }
       return;
     }
     // Links dragged from the library (another tab or window).
@@ -995,11 +1671,12 @@ function EditorShell(props: PlanEditorProps) {
         return addFavoriteNodes(lib.ids, at);
       }
     } catch {}
-    const file = Array.from(e.dataTransfer.files ?? []).find((f) => f.type.startsWith("image/"));
-    if (file) {
-      e.preventDefault();
-      return uploadImage(file, at);
-    }
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) e.preventDefault();
+    // An Excalidraw file, or a PNG/SVG exported with its scene, comes in as a drawing.
+    for (const f of files) if (/\.(excalidraw|json|png|svg)$/i.test(f.name) && (await importSceneFile(f, at))) return;
+    const file = files.find((f) => f.type.startsWith("image/"));
+    if (file) return uploadImage(file, at);
     // A link dragged from the browser's address bar or another page.
     const urls = (e.dataTransfer.getData("text/uri-list") || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#") && /^https?:/i.test(l));
     if (urls.length) {
@@ -1028,26 +1705,10 @@ function EditorShell(props: PlanEditorProps) {
     }
   };
 
-  const onExport = async (k: ExportKind) => {
-    if (mode === "preview") return void previewExport.current?.(k);
-    const title = meta.title || "plan";
-    if (k === "json") return exportJson({ title, description: meta.description, tags: meta.tags }, docOf());
-    const visible = rf.getNodes().filter((n) => !n.hidden);
-    if (!visible.length) return void toast.error("O plan está vazio.");
-    const printWin = k === "pdf" ? openPrintWindow(title) : null;
-    if (k === "pdf" && !printWin) return void toast.error("Permita pop-ups para exportar em PDF.");
-    const prevSel = selNodeIds();
-    select([]);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    try {
-      const bounds = rf.getNodesBounds(visible);
-      if (k === "pdf") await exportPdf(wrapRef.current!, bounds, title, printWin);
-      else await exportImage(wrapRef.current!, bounds, k, title);
-    } catch {
-      toast.error("Não foi possível exportar. Tente novamente.");
-    } finally {
-      select(prevSel);
-    }
+  /** Exports the canvas as it is, or a saved view (see editor-export.ts). */
+  const onExport = async (k: ExportKind, viewId?: string) => {
+    if (mode === "preview") return void previewExport.current?.(k, viewId);
+    await exportFromEditor(k, viewId, { doc: docOf(), meta, rf, wrap: wrapRef.current!, selectedIds, select, setNodes, setEdges, applyDoc });
   };
 
   const reloadFromServer = () => {
@@ -1100,8 +1761,24 @@ function EditorShell(props: PlanEditorProps) {
 
   return (
     <EditorContext.Provider value={api}>
+      <PaletteContext.Provider value={paletteCtx}>
       <PlannerContext.Provider value={plannerCtx}>
-        <div className="flex h-dvh flex-col overflow-hidden bg-bg text-ink">
+        <div data-planner-root className="flex h-app flex-col overflow-hidden bg-bg text-ink">
+          <input
+            ref={importInput}
+            type="file"
+            accept={EXCALIDRAW_ACCEPT}
+            className="hidden"
+            aria-label="Importar do Excalidraw"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file)
+                void importSceneFile(file).then((ok) => {
+                  if (!ok) toast.error("Arquivo não reconhecido. Use um .excalidraw, ou um PNG/SVG exportado com a cena.");
+                });
+            }}
+          />
           <EditorTopbar
             planId={planId}
             workspaceName={props.workspaceName}
@@ -1132,6 +1809,10 @@ function EditorShell(props: PlanEditorProps) {
             publishing={publishing}
             people={props.people}
             onExport={onExport}
+            onImport={() => importInput.current?.click()}
+            details={<PlanDetailsButton />}
+            frames={nodes.filter((n) => n.type === "frame").length}
+            views={layerState.views}
             comments={<CommentsToggle count={comments.counts.unresolvedThreads} open={commentsPanel.open} onClick={commentsPanel.toggle} />}
           />
 
@@ -1202,12 +1883,21 @@ function EditorShell(props: PlanEditorProps) {
               <CanvasContextMenu target={menuTarget}>
                 <div
                   ref={wrapRef}
-                  className={cn("relative min-w-0 flex-1 bg-canvas", dropping && "wp-dropping")}
+                  tabIndex={-1}
+                  role="region"
+                  aria-label="Canvas"
+                  data-planner-region="canvas"
+                  className={cn("relative min-w-0 flex-1 bg-canvas outline-none", dropping && "wp-dropping")}
                   onDragOver={onDragOver}
                   onDragLeave={(e) => {
                     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
                   }}
                   onDrop={(e) => void onDrop(e)}
+                  onPointerMove={(e) => (lastPointer.current = { x: e.clientX, y: e.clientY })}
+                  onDoubleClick={(e) => {
+                    if (tool !== "select" || !(e.target as HTMLElement).classList?.contains("react-flow__pane")) return;
+                    setQuickInsert(rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+                  }}
                   onContextMenuCapture={(e) => {
                     const el = e.target as HTMLElement;
                     if (!el.closest(".react-flow__pane, .react-flow__node, .react-flow__edge, .react-flow__nodesselection, .react-flow__edgelabel-renderer")) {
@@ -1218,8 +1908,8 @@ function EditorShell(props: PlanEditorProps) {
                   }}
                 >
                   <ReactFlow<PlanFlowNode, PlanFlowEdge>
-                    nodes={nodes}
-                    edges={edges}
+                    nodes={renderNodes}
+                    edges={renderEdges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
                     onNodesChange={onNodesChange}
@@ -1230,6 +1920,8 @@ function EditorShell(props: PlanEditorProps) {
                     edgesReconnectable
                     onEdgeDoubleClick={(_, ed) => tool === "select" && setEditingId(ed.id)}
                     onNodeDrag={onNodeDrag}
+                    onNodeDragStart={onNodeDragStart}
+                    onSelectionDragStart={(e, dragged) => onNodeDragStart(e.nativeEvent, dragged[0], dragged)}
                     onNodeDragStop={onNodeDragStop}
                     onNodeClick={onNodeClick}
                     onNodeDoubleClick={(_, n) => tool === "select" && startEditing(n.id)}
@@ -1271,13 +1963,15 @@ function EditorShell(props: PlanEditorProps) {
                     selectionMode={SelectionMode.Partial}
                     panOnDrag={tool === "hand" ? true : [1]}
                     panOnScroll
-                    nodesDraggable={tool !== "hand"}
+                    nodesDraggable={tool !== "hand" && !CREATE_TOOLS.has(tool)}
+                    elementsSelectable={!CREATE_TOOLS.has(tool)}
                     zoomOnDoubleClick={false}
                     elevateNodesOnSelect={false}
                     proOptions={{ hideAttribution: true }}
-                    className={cn("wp-flow", `wp-tool-${tool}`)}
+                    className={cn("wp-flow", `wp-tool-${tool}`, review && "wp-review")}
                   >
                     {grid && <Background variant={BackgroundVariant.Dots} gap={20} size={1.3} color="var(--canvas-dot)" />}
+                    {!editingId && <SelectionToolbar />}
                     {minimap && (
                       <MiniMap
                         pannable
@@ -1291,8 +1985,17 @@ function EditorShell(props: PlanEditorProps) {
                         maskColor="var(--minimap-mask)"
                       />
                     )}
-                    {guides && (guides.vertical || guides.horizontal) && (
+                    {guides && (guides.vertical || guides.horizontal || guides.spacing) && (
                       <ViewportPortal>
+                        {guides.spacing?.map((sp, i) => (
+                          <div
+                            key={i}
+                            className={cn("wp-spacing pointer-events-none absolute", sp.axis === "x" ? "is-x" : "is-y")}
+                            style={sp.axis === "x" ? { left: sp.from, top: sp.at, width: sp.to - sp.from } : { top: sp.from, left: sp.at, height: sp.to - sp.from }}
+                          >
+                            <span>{sp.gap}</span>
+                          </div>
+                        ))}
                         {guides.vertical && (
                           <div
                             className="wp-guide pointer-events-none absolute"
@@ -1317,7 +2020,12 @@ function EditorShell(props: PlanEditorProps) {
                       </div>
                     </div>
                   )}
+                  {(tool === "draw" || tool === "erase") && <InkCanvas wrapRef={wrapRef} />}
+                  <ShapeTools wrapRef={wrapRef} />
+                  {quickInsert && <QuickInsert at={quickInsert} onClose={() => setQuickInsert(null)} />}
                   <SelectionBar />
+                  {!commentsAside && <InspectorFloat />}
+                  <IsolateBanner />
                   <BottomPill />
                   <div className="wp-no-print absolute left-3 top-3 z-10 flex gap-2 md:hidden">
                     <Button size="sm" variant="secondary" className="shadow-pop" onClick={() => setPhonePanel("tools")}>
@@ -1332,9 +2040,14 @@ function EditorShell(props: PlanEditorProps) {
                 </div>
               </CanvasContextMenu>
               {commentsAside ?? (
-                <PhoneOverlay open={phonePanel === "props"} side="right" label="Propriedades" onClose={() => setPhonePanel(null)}>
-                  <Inspector />
-                </PhoneOverlay>
+                <>
+                  <div className="contents md:hidden">
+                    <PhoneOverlay open={phonePanel === "props"} side="right" label="Propriedades" onClose={() => setPhonePanel(null)}>
+                      {phonePanel === "props" && <Inspector />}
+                    </PhoneOverlay>
+                  </div>
+                  <InspectorDock />
+                </>
               )}
             </div>
           )}
@@ -1345,7 +2058,7 @@ function EditorShell(props: PlanEditorProps) {
               <MonitorSmartphone className="size-6" aria-hidden />
             </span>
             <div className="flex max-w-sm flex-col gap-2">
-              <h1 id="wp-phone-title" className="font-display text-display-sm font-normal leading-[1.05]">
+              <h1 id="wp-phone-title" className="font-display font-semibold text-display-sm leading-[1.05]">
                 Edição funciona melhor em telas maiores
               </h1>
               <p className="text-lead leading-[22px] text-muted">O editor precisa de espaço para as ferramentas e o painel de propriedades. No celular, você pode ver, apresentar e comentar o plan.</p>
@@ -1375,6 +2088,7 @@ function EditorShell(props: PlanEditorProps) {
           onVisibility={(visibility) => setMeta((m) => ({ ...m, visibility }))}
         />
       </PlannerContext.Provider>
+      </PaletteContext.Provider>
     </EditorContext.Provider>
   );
 }

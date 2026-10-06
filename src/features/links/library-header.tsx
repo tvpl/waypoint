@@ -176,7 +176,7 @@ export function LibraryHeader({
       </nav>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 max-sm:basis-full">
-          <h1 className="font-display font-normal text-display-sm leading-[1.05] tracking-[-0.01em] sm:text-display">
+          <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">
             {current ? (
               <InlineEdit
                 value={current.name}
@@ -184,7 +184,7 @@ export function LibraryHeader({
                 label="Nome da coleção"
                 canEdit={canEdit}
                 onSave={(v) => v && onRename(v)}
-                inputClassName="font-display text-display-sm sm:text-display leading-[1.05] tracking-[-0.01em] px-1.5 -mx-1.5"
+                inputClassName="font-display font-semibold text-display-sm sm:text-display leading-[1.05] tracking-[-0.025em] px-1.5 -mx-1.5"
               />
             ) : (
               title

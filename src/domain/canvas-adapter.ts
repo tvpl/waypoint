@@ -15,6 +15,7 @@ import {
   PLAN_SCHEMA_VERSION,
   sortParentsFirst,
   type EdgeKind,
+  type EdgeStyle,
   type NodeData,
   type NodeKind,
   type PlanDocument,
@@ -22,14 +23,30 @@ import {
   type PlanNode,
   type Viewport,
 } from "./plan";
+import { hiddenByLayers, layerIdOf, layerIndex, layerOpacity, layersOf, layerVisibility, LAYER_Z } from "./layers";
 
 // ------------------------------------------------------------------ types
 
-/** Node data as seen by React Flow. `_h` keeps the expanded height of a collapsed container. */
-export type FlowNodeData = NodeData & { _h?: number } & Record<string, unknown>;
+/**
+ * Node data as seen by React Flow. `_h` keeps the expanded height of a collapsed container;
+ * `_layer` and `_z` carry the node's layer and own z (React Flow's zIndex adds the layer's offset).
+ */
+export type FlowNodeData = NodeData & { _h?: number; _layer?: string; _z?: number; _sketch?: boolean; _num?: number } & Record<string, unknown>;
 export type PlanFlowNode = Node<FlowNodeData, NodeKind>;
 
-export type FlowEdgeData = { kind: EdgeKind; label?: string; description?: string } & Record<string, unknown>;
+export type FlowEdgeData = {
+  kind: EdgeKind;
+  label?: string;
+  description?: string;
+  layer?: string;
+  step?: number;
+  labelPos?: number;
+  style?: EdgeStyle;
+  _opacity?: number;
+  _diff?: string;
+  /** Drawn hand-drawn unless its style says otherwise (the layer's "à mão"). */
+  _sketch?: boolean;
+} & Record<string, unknown>;
 export type PlanFlowEdge = Edge<FlowEdgeData, "plan">;
 
 /** Height a collapsed container shrinks to (header only). */
@@ -82,8 +99,17 @@ function cleanData(data: FlowNodeData): NodeData {
   return out as NodeData;
 }
 
-/** Ids of every node living inside a collapsed container (any depth). */
+/** Ids of every node living inside a collapsed container (any depth), or hidden on its own with what is inside it. */
 export function hiddenByCollapse(doc: Pick<PlanDocument, "nodes">): Set<string> {
+  return hiddenWhere(doc, (n) => !!n.data.collapsed && (n.kind === "container" || n.kind === "section"));
+}
+
+/** Ids of the nodes hidden on their own ("Ocultar") and everything inside them. */
+export function hiddenElements(doc: Pick<PlanDocument, "nodes">): Set<string> {
+  return hiddenWhere(doc, () => false);
+}
+
+function hiddenWhere(doc: Pick<PlanDocument, "nodes">, collapsed: (n: PlanNode) => boolean): Set<string> {
   const children = new Map<string, string[]>();
   for (const n of doc.nodes) {
     if (!n.parentId) continue;
@@ -99,7 +125,12 @@ export function hiddenByCollapse(doc: Pick<PlanDocument, "nodes">): Set<string> 
       hide(c);
     }
   };
-  for (const n of doc.nodes) if (n.data.collapsed && (n.kind === "container" || n.kind === "section")) hide(n.id);
+  for (const n of doc.nodes) {
+    if (n.data.hidden) {
+      hidden.add(n.id);
+      hide(n.id);
+    } else if (collapsed(n)) hide(n.id);
+  }
   return hidden;
 }
 
@@ -115,11 +146,30 @@ export type ToFlowOptions = {
   selected?: ReadonlySet<string>;
   /** Read-only rendering (view mode): nodes can't be dragged/selected/connected. */
   readOnly?: boolean;
+  /** Per-viewer layer visibility on top of the document's (view mode toggles, saved views). */
+  layerVisibility?: Readonly<Record<string, boolean>>;
+  /** Editing one layer alone ("isolar"): the others fade and can't be selected. */
+  isolate?: string | null;
 };
 
-export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: ReadonlySet<string>): PlanFlowNode {
+/** What a node or edge needs to know about its layer when rendered. */
+type LayerRender = { z: number; hidden: boolean; locked: boolean; opacity: number; animate: boolean; out: boolean; sketch: boolean };
+
+function layerRender(doc: Pick<PlanDocument, "layers">, opts: ToFlowOptions): Map<string, LayerRender> {
+  const vis = layerVisibility(doc, opts.layerVisibility);
+  const idx = layerIndex(doc);
+  return new Map(
+    layersOf(doc).map((l) => [
+      l.id,
+      { z: (idx.get(l.id) ?? 0) * LAYER_Z, hidden: vis.get(l.id) === false, locked: !opts.readOnly && !!l.locked, opacity: layerOpacity(l), animate: !!l.animate, out: !!opts.isolate && opts.isolate !== l.id, sketch: !!l.sketch },
+    ]),
+  );
+}
+
+export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: ReadonlySet<string>, layer?: LayerRender): PlanFlowNode {
   const collapsed = !!n.data.collapsed && (n.kind === "container" || n.kind === "section");
-  const data: FlowNodeData = { ...n.data };
+  const data: FlowNodeData = { ...n.data, _layer: n.layer, _z: n.z };
+  if (layer?.sketch) data._sketch = true;
   if (collapsed) data._h = n.height;
   const out: PlanFlowNode = {
     id: n.id,
@@ -130,9 +180,35 @@ export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: Reado
     data,
   };
   if (n.parentId) out.parentId = n.parentId;
-  if (n.z !== undefined) out.zIndex = n.z;
+  if (n.z !== undefined || layer?.z) out.zIndex = (layer?.z ?? 0) + (n.z ?? 0);
+  // Pins and callouts float above their layer's drawing; highlighted areas sit under it.
+  if (n.kind === "annotation") {
+    const t = n.data.annotation?.type;
+    out.zIndex = (layer?.z ?? 0) + (n.z ?? 0) + (t === "highlight" ? -1 : t === "bracket" ? 0 : 900);
+  }
   if (hidden?.has(n.id)) out.hidden = true;
   if (opts.selected?.has(n.id)) out.selected = true;
+  if (n.data.locked && !opts.readOnly) {
+    // A locked element: stays put and out of the way of clicks; the layers panel still selects it.
+    out.draggable = false;
+    out.selectable = false;
+    out.deletable = false;
+    out.className = "wp-locked";
+  }
+  if (layer?.locked) {
+    // Locked layer: stays put, can't be selected, but can still be the end of a new connection.
+    out.draggable = false;
+    out.selectable = false;
+    out.deletable = false;
+  }
+  if (layer && layer.opacity < 1) out.style = { opacity: layer.opacity };
+  if (layer?.out) {
+    out.className = "wp-isolate-out";
+    out.draggable = false;
+    out.selectable = false;
+    out.deletable = false;
+    out.connectable = false;
+  }
   if (opts.readOnly) {
     out.draggable = false;
     out.selectable = false;
@@ -142,13 +218,23 @@ export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: Reado
   return out;
 }
 
-export function toFlowNodes(doc: Pick<PlanDocument, "nodes">, opts: ToFlowOptions = {}): PlanFlowNode[] {
+export function toFlowNodes(doc: Pick<PlanDocument, "nodes"> & Partial<Pick<PlanDocument, "layers" | "edges">>, opts: ToFlowOptions = {}): PlanFlowNode[] {
   const hidden = hiddenByCollapse(doc);
+  const layers = layerRender(doc, opts);
+  for (const id of hiddenByLayers({ nodes: doc.nodes, edges: [] }, new Map([...layers].map(([k, v]) => [k, !v.hidden]))).nodes) hidden.add(id);
+  // Pins carry their number (the legend uses the same order).
+  const pins = new Map<string, number>();
+  for (const n of doc.nodes) if (n.kind === "annotation" && n.data.annotation?.type === "pin") pins.set(n.id, pins.size + 1);
   // React Flow requires parents before children.
-  return sortParentsFirst(doc.nodes).map((n) => toFlowNode(n, opts, hidden));
+  return sortParentsFirst(doc.nodes).map((n) => {
+    const out = toFlowNode(n, opts, hidden, layers.get(layerIdOf(n)));
+    const num = pins.get(n.id);
+    if (num) out.data._num = num;
+    return out;
+  });
 }
 
-export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}): PlanFlowEdge {
+export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}, layer?: LayerRender): PlanFlowEdge {
   const kind = isEdgeKind(e.kind) ? e.kind : "flow";
   const out: PlanFlowEdge = {
     id: e.id,
@@ -157,12 +243,32 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}): PlanFlowEdge 
     sourceHandle: e.sourceHandle ?? null,
     targetHandle: e.targetHandle ?? null,
     type: "plan",
-    data: { kind, label: e.label, description: e.description },
+    data: { kind, label: e.label, description: e.description, layer: e.layer, step: e.step, labelPos: e.labelPos, style: e.style },
     markerEnd: edgeMarker(kind),
-    // Above top-level containers so connectors crossing an area stay visible.
-    zIndex: 1,
+    // Above top-level containers so connectors crossing an area stay visible (and above
+    // everything on lower layers).
+    zIndex: (layer?.z ?? 0) + 1,
   };
   if (opts.selected?.has(e.id)) out.selected = true;
+  if (layer?.hidden) out.hidden = true;
+  if (layer?.animate) out.animated = true;
+  // Read by the edge component (React Flow doesn't apply edge styles to the label).
+  if (layer && layer.opacity < 1) out.data!._opacity = layer.opacity;
+  if (layer?.sketch) out.data!._sketch = true;
+  // Drawn with the arrow/line tools: the eraser can take it.
+  if (e.style) out.className = out.className ? `${out.className} wp-drawn-edge` : "wp-drawn-edge";
+  if (layer?.out) {
+    out.className = out.className ? `${out.className} wp-isolate-out` : "wp-isolate-out";
+    out.selectable = false;
+    out.deletable = false;
+    out.reconnectable = false;
+    out.data!._dim = true;
+  }
+  if (layer?.locked) {
+    out.selectable = false;
+    out.deletable = false;
+    out.reconnectable = false;
+  }
   if (opts.readOnly) {
     out.selectable = false;
     out.focusable = false;
@@ -174,8 +280,8 @@ export function toFlowEdge(e: PlanEdge, opts: ToFlowOptions = {}): PlanFlowEdge 
  * Picks facing sides for edges stored without handles (imports, seeds) so
  * they don't all leave from the top handle.
  */
-export function autoHandles(nodes: PlanNode[], source: string, target: string): { sourceHandle: string; targetHandle: string } | null {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
+export function autoHandles(nodes: PlanNode[] | ReadonlyMap<string, PlanNode>, source: string, target: string): { sourceHandle: string; targetHandle: string } | null {
+  const byId = nodes instanceof Map ? nodes : new Map((nodes as PlanNode[]).map((n) => [n.id, n]));
   const center = (id: string) => {
     const n = byId.get(id);
     if (!n) return null;
@@ -200,11 +306,14 @@ export function autoHandles(nodes: PlanNode[], source: string, target: string): 
   return dy >= 0 ? { sourceHandle: "b", targetHandle: "t" } : { sourceHandle: "t", targetHandle: "b" };
 }
 
-export function toFlowEdges(doc: Pick<PlanDocument, "edges"> & Partial<Pick<PlanDocument, "nodes">>, opts: ToFlowOptions = {}): PlanFlowEdge[] {
+export function toFlowEdges(doc: Pick<PlanDocument, "edges"> & Partial<Pick<PlanDocument, "nodes" | "layers">>, opts: ToFlowOptions = {}): PlanFlowEdge[] {
+  const layers = layerRender(doc, opts);
+  let byId: Map<string, PlanNode> | null = null;
   return doc.edges.map((e) => {
-    const out = toFlowEdge(e, opts);
+    const out = toFlowEdge(e, opts, layers.get(layerIdOf(e)));
     if ((!out.sourceHandle || !out.targetHandle) && doc.nodes) {
-      const h = autoHandles(doc.nodes, e.source, e.target);
+      byId ??= new Map(doc.nodes.map((n) => [n.id, n]));
+      const h = autoHandles(byId, e.source, e.target);
       if (h) {
         out.sourceHandle = out.sourceHandle || h.sourceHandle;
         out.targetHandle = out.targetHandle || h.targetHandle;
@@ -239,7 +348,10 @@ export function fromFlowNode(n: AnyFlowNode): PlanNode {
     data: cleanData(data),
   };
   if (n.parentId) out.parentId = n.parentId;
-  if (typeof n.zIndex === "number" && Number.isInteger(n.zIndex)) out.z = n.zIndex;
+  // Nodes from toFlowNode carry their own z (zIndex includes the layer offset).
+  const z = "_z" in data ? data._z : n.zIndex;
+  if (typeof z === "number" && Number.isInteger(z)) out.z = z;
+  if (typeof data._layer === "string") out.layer = data._layer;
   return out;
 }
 
@@ -255,6 +367,13 @@ export function fromFlowEdge(e: AnyFlowEdge): PlanEdge {
   if (e.targetHandle) out.targetHandle = e.targetHandle;
   if (d.label) out.label = d.label;
   if (d.description) out.description = d.description;
+  if (typeof d.layer === "string") out.layer = d.layer;
+  if (typeof d.step === "number" && Number.isInteger(d.step) && d.step >= 1) out.step = d.step;
+  if (typeof d.labelPos === "number" && d.labelPos >= 0 && d.labelPos <= 1) out.labelPos = d.labelPos;
+  if (d.style && typeof d.style === "object") {
+    const style = Object.fromEntries(Object.entries(d.style).filter(([, v]) => v !== undefined)) as EdgeStyle;
+    if (Object.keys(style).length) out.style = style;
+  }
   return out;
 }
 
@@ -291,8 +410,8 @@ export function sameFingerprint(a: readonly unknown[] | null, b: readonly unknow
 }
 
 /** Stable string of the document *content* (viewport excluded) — used to detect real changes. */
-export function contentSignature(doc: Pick<PlanDocument, "nodes" | "edges">): string {
-  return stableStringify([doc.nodes, doc.edges]);
+export function contentSignature(doc: Pick<PlanDocument, "nodes" | "edges"> & Partial<Pick<PlanDocument, "layers" | "views" | "palette">>): string {
+  return stableStringify([doc.nodes, doc.edges, doc.layers ?? null, doc.views ?? null, ...(doc.palette?.length ? [doc.palette] : [])]);
 }
 
 /** JSON with sorted object keys and undefined values dropped (key order independent). */

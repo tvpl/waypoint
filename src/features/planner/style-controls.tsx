@@ -319,3 +319,16 @@ export function OpacitySlider({ value, onChange }: { value: number; onChange: (v
     </div>
   );
 }
+
+/** A range with its value at the end, like the opacity slider. */
+export function ValueSlider({ label, value, min, max, step = 1, unit = "", onChange }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <input type="range" min={min} max={max} step={step} aria-label={label} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-1 min-w-0 flex-1 accent-[var(--accent)]" />
+      <span className="w-10 text-right text-caption tabular-nums text-muted">
+        {value}
+        {unit}
+      </span>
+    </div>
+  );
+}

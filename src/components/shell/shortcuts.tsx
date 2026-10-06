@@ -58,7 +58,7 @@ const GROUPS: Group[] = [
     scope: /^\/plans\/[^/]+/,
     items: [
       ["Selecionar · mover canvas · conectar", "v h c"],
-      ["Retângulo · losango · elipse", "R D O"],
+      ["Retângulo · losango · elipse · mais formas", "R D O S"],
       ["Seta · linha · texto · quadro", "A L T F"],
       ["Anotar · mostrar/ocultar anotações", "N ⇧N"],
       ["Inserir qualquer coisa aqui (ou duplo clique)", "/"],
@@ -67,6 +67,8 @@ const GROUPS: Group[] = [
       ["Ferramentas pela ordem da barra (com algo selecionado ou outra ferramenta ativa)", "1 … 0"],
       ["Desenho: manter proporção", "⇧ ao arrastar"],
       ["Duplicar", "⌘D"],
+      ["Arrastar uma cópia · mover sem guias", "⌥ ⌘ ao arrastar"],
+      ["Travar · ocultar a seleção", "⇧⌘L ⇧⌘H"],
       ["Copiar · colar", "⌘C ⌘V"],
       ["Agrupar · desagrupar", "⌘G ⇧⌘G"],
       ["Organizar vertical · horizontal", "⇧L ⌥⇧L"],

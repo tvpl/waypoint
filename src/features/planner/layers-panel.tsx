@@ -50,7 +50,7 @@ import { ask } from "@/components/ui/ask";
 import { cn } from "@/lib/utils";
 import { useEditor } from "./editor-context";
 import { OnionSection, OverlayPlanButton } from "./overlay-panel";
-import { KIND_LABEL } from "./defaults";
+import { KIND_LABEL, SHAPE_LABEL } from "./defaults";
 import { ConnectorIcon, KIND_ICON } from "./icons";
 import { pairsOf } from "./ink-geometry";
 
@@ -469,11 +469,11 @@ function LayerElements({ layer, nested }: { layer: PlanLayer; nested: boolean })
   const byId = React.useMemo(() => new Map(ed.nodes.map((n) => [n.id, n])), [ed.nodes]);
   const nodes = ed.nodes.filter((n) => !n.parentId && layerOf(n) === layer.id);
   const edges = ed.edges.filter((e) => edgeLayerOf(e) === layer.id);
-  const name = (n?: PlanFlowNode) => (n ? n.data.title || KIND_LABEL[n.type as NodeKind] || "Elemento" : "?");
+  const name = (n?: PlanFlowNode) => (n ? n.data.title || (n.type === "shape" && n.data.shape ? SHAPE_LABEL[n.data.shape.type] : KIND_LABEL[n.type as NodeKind]) || "Elemento" : "?");
   const selected = new Set([...ed.selectedNodes.map((n) => n.id), ...ed.selectedEdges.map((e) => e.id)]);
   if (!nodes.length && !edges.length) return <p className={cn("py-1.5 pl-9 text-caption text-muted", nested && "ml-3")}>Nada nesta camada ainda.</p>;
-  const row = (key: string, icon: React.ReactNode, label: string, payload: { nodes?: string[]; edges?: string[] }, select: () => void, hidden?: boolean) => (
-    <li key={key}>
+  const row = (key: string, icon: React.ReactNode, label: string, payload: { nodes?: string[]; edges?: string[] }, select: () => void, hidden?: boolean, node?: PlanFlowNode) => (
+    <li key={key} className={cn("group/el relative", nested && "ml-3")}>
       <button
         type="button"
         draggable
@@ -489,13 +489,39 @@ function LayerElements({ layer, nested }: { layer: PlanLayer; nested: boolean })
           "flex h-7 w-full items-center gap-2 rounded-md pl-9 pr-2 text-left text-body outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
           selected.has(key) ? "bg-accent-soft text-accent-ink" : "text-ink-2 hover:bg-surface-2",
           hidden && "opacity-55",
-          nested && "ml-3",
+          node && "pr-16",
         )}
         title={`${label} — arraste para outra camada`}
       >
         {icon}
         <span className="truncate">{label}</span>
       </button>
+      {node && (
+        <span className="absolute right-1 top-0.5 flex items-center gap-0.5">
+          <Tooltip content={node.data.locked ? "Destravar" : "Travar (não seleciona nem move no canvas)"} side="right">
+            <button
+              type="button"
+              aria-label={node.data.locked ? `Destravar ${label}` : `Travar ${label}`}
+              aria-pressed={!!node.data.locked}
+              className={cn(iconBtn, node.data.locked ? "text-ink-2" : "hidden group-focus-within/el:inline-flex group-hover/el:inline-flex")}
+              onClick={() => ed.setLocked(!node.data.locked, [node.id])}
+            >
+              {node.data.locked ? <Lock /> : <LockOpen />}
+            </button>
+          </Tooltip>
+          <Tooltip content={node.data.hidden ? "Mostrar" : "Ocultar"} side="right">
+            <button
+              type="button"
+              aria-label={node.data.hidden ? `Mostrar ${label}` : `Ocultar ${label}`}
+              aria-pressed={!!node.data.hidden}
+              className={cn(iconBtn, node.data.hidden ? "text-ink-2" : "hidden group-focus-within/el:inline-flex group-hover/el:inline-flex")}
+              onClick={() => ed.setHidden(!node.data.hidden, [node.id])}
+            >
+              {node.data.hidden ? <EyeOff /> : <Eye />}
+            </button>
+          </Tooltip>
+        </span>
+      )}
     </li>
   );
   return (
@@ -504,7 +530,7 @@ function LayerElements({ layer, nested }: { layer: PlanLayer; nested: boolean })
         const Icon = KIND_ICON[n.type as NodeKind] ?? KIND_ICON.block;
         const ink = n.data.ink;
         const label = n.type === "ink" ? (ink?.shape === "text" ? n.data.title || "Texto" : ink?.shape === "rect" ? "Retângulo" : ink?.shape === "ellipse" ? "Elipse" : ink?.arrow ? "Seta" : "Desenho") : name(n);
-        return row(n.id, <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />, label, { nodes: [n.id] }, () => ed.select([n.id]), n.hidden);
+        return row(n.id, <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />, label, { nodes: [n.id] }, () => ed.select([n.id]), n.hidden || !!n.data.hidden, n);
       })}
       {edges.map((e) =>
         row(

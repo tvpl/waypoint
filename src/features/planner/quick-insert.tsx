@@ -9,6 +9,7 @@ import { KIND_ICON } from "./icons";
 import { COMPONENTS, PACKS, searchComponents } from "./components/registry";
 import { ComponentPreview } from "./library-panel";
 import { CATEGORY_META, TYPE_META } from "./annotations";
+import { ShapeGlyph } from "./canvas-controls";
 
 type Pt = { x: number; y: number };
 type Item = { id: string; group: string; label: string; hint?: string; icon: React.ReactNode; run: (at: Pt) => void };
@@ -24,6 +25,14 @@ const SHAPES = [
   { type: "rect", label: "Retângulo", words: "retangulo caixa forma" },
   { type: "ellipse", label: "Elipse", words: "elipse circulo forma" },
   { type: "diamond", label: "Losango", words: "losango decisao forma" },
+  { type: "hexagon", label: "Hexágono", words: "hexagono preparacao forma" },
+  { type: "parallelogram", label: "Paralelogramo", words: "paralelogramo entrada saida dados forma" },
+  { type: "triangle", label: "Triângulo", words: "triangulo forma" },
+  { type: "cylinder", label: "Cilindro", words: "cilindro banco de dados armazenamento forma" },
+  { type: "document", label: "Documento", words: "documento arquivo relatorio forma" },
+  { type: "cloud", label: "Nuvem", words: "nuvem cloud internet forma" },
+  { type: "speech", label: "Balão de fala", words: "balao fala dialogo forma" },
+  { type: "star", label: "Estrela", words: "estrela destaque forma" },
   { type: "text", label: "Texto", words: "texto rotulo" },
   { type: "frame", label: "Quadro", words: "quadro frame pagina area" },
 ] as const;
@@ -49,7 +58,8 @@ export function QuickInsert({ at, onClose }: { at: Pt; onClose: () => void }) {
     for (const s of SHAPES) {
       if (!match(`${s.label} ${s.words}`)) continue;
       const Icon = KIND_ICON.shape;
-      out.push({ id: `s:${s.type}`, group: "Formas", label: s.label, icon: <Icon className="size-4" />, run: (p) => ed.addShape(s.type, null, p) });
+      const icon = s.type === "text" || s.type === "frame" ? <Icon className="size-4" /> : <ShapeGlyph type={s.type} />;
+      out.push({ id: `s:${s.type}`, group: "Formas", label: s.label, icon, run: (p) => ed.addShape(s.type, null, p) });
     }
     for (const type of ["pin", "callout", "highlight", "bracket"] as const) {
       if (!match(`${TYPE_META[type].label} anotacao comentario nota`)) continue;

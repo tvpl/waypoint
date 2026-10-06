@@ -7,6 +7,7 @@ import {
   Eraser,
   Frame,
   Grid3x3,
+  Hexagon,
   Hand,
   Highlighter,
   ImagePlus,
@@ -27,14 +28,15 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { EDGE_KINDS, type NodeKind } from "@/domain/plan";
+import { EDGE_KINDS, type NodeKind, type OutlineType } from "@/domain/plan";
+import { outlinePath } from "./shape-geometry";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
 import { Tooltip } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { SHAPE_TOOLS, useEditor, type Tool } from "./editor-context";
 import { ConnectorIcon, KIND_ICON } from "./icons";
-import { KIND_LABEL } from "./defaults";
+import { KIND_LABEL, SHAPE_LABEL } from "./defaults";
 import { ArrowheadPicker, FillColors, FontPicker, RoughnessPicker, RoutingPicker, SizePicker, StrokeColors, WidthPicker } from "./style-controls";
 import { EdgeSample } from "./edges";
 import { ZoomControls, pillBtn } from "./zoom-controls";
@@ -89,7 +91,9 @@ export function BottomPill() {
     >
       {DOCK[0].map(tool)}
       <Sep />
-      {DOCK[1].map(tool)}
+      {DOCK[1].slice(0, 3).map(tool)}
+      <MoreShapes />
+      {DOCK[1].slice(3).map(tool)}
       <Tooltip content="Imagem — 9" side="top">
         <button type="button" aria-label="Imagem" className={cn(pillBtn, "relative")} onClick={() => ed.addNode("image")}>
           <ImagePlus strokeWidth={1.75} />
@@ -149,6 +153,50 @@ export function BottomPill() {
   );
 }
 
+/** Hexagon, cylinder, cloud…: the shapes past the three on the dock, drawn with the "shape" tool (S). */
+export const MORE_SHAPES: OutlineType[] = ["hexagon", "parallelogram", "triangle", "cylinder", "document", "cloud", "speech", "star"];
+
+/** A tiny outline of a shape type, for menus. */
+export function ShapeGlyph({ type, size = 18 }: { type: OutlineType; size?: number }) {
+  const w = size;
+  const h = type === "cylinder" || type === "document" ? size : Math.round(size * 0.78);
+  return (
+    <svg width={w} height={size} viewBox={`0 0 ${w} ${size}`} aria-hidden className="shrink-0">
+      <path d={outlinePath(type, 1.5, (size - h) / 2 + 1, w - 3, h - 2)} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MoreShapes() {
+  const ed = useEditor();
+  const on = ed.tool === "shape";
+  const label = SHAPE_LABEL[ed.shapeType];
+  return (
+    <DropdownMenu>
+      <Tooltip content={on ? `${label} — S` : "Mais formas — S"} side="top">
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label="Mais formas" aria-pressed={on} className={cn(pillBtn, on && pillOn)}>
+            {on ? <ShapeGlyph type={ed.shapeType} /> : <Hexagon strokeWidth={1.75} />}
+          </button>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent side="top" align="center" sideOffset={10} className="grid min-w-0 grid-cols-4 gap-0.5 p-1.5" onCloseAutoFocus={(e) => e.preventDefault()}>
+        {MORE_SHAPES.map((m) => (
+            <DropdownMenuItem
+              key={m}
+              aria-label={SHAPE_LABEL[m]}
+              title={SHAPE_LABEL[m]}
+              onSelect={() => ed.setShapeType(m)}
+              className={cn("size-10 justify-center p-0 text-ink-2", on && ed.shapeType === m && "bg-accent-soft text-accent-ink")}
+            >
+              <ShapeGlyph type={m} size={22} />
+            </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** Narrow windows: grid, snap, minimap and arrange, folded into one menu. */
 function ViewOptionsMenu() {
   const ed = useEditor();
@@ -191,7 +239,7 @@ function StyleBar() {
   const s = ed.style;
   const t = ed.tool;
   const set = ed.setStyle;
-  const shape = t === "rect" || t === "diamond" || t === "ellipse";
+  const shape = t === "rect" || t === "diamond" || t === "ellipse" || t === "shape";
   const link = t === "arrow" || t === "line";
   const hint =
     t === "text" ? "Clique para escrever" : link ? "Arraste de uma forma a outra para ligar — ou solte no vazio" : t === "frame" ? "Arraste para criar um quadro" : "Arraste para desenhar · ⇧ mantém a proporção";

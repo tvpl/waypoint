@@ -1,8 +1,8 @@
 "use client";
 import { memo, useEffect, useRef, useState } from "react";
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, useInternalNode, type EdgeProps, type EdgeTypes, type InternalNode } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, useInternalNode, useReactFlow, type EdgeProps, type EdgeTypes, type InternalNode } from "@xyflow/react";
 import { EDGE_KINDS, type EdgeKind, type EdgeStyle } from "@/domain/plan";
-import { arrowheadPath, curveControl, dashFor, DEFAULT_STYLE, endTangent, floatingEnds, headInset, linkPaths, seedOf, type Pt } from "./shape-geometry";
+import { arrowheadPath, bendThrough, curveApex, curveControl, dashFor, DEFAULT_BEND, DEFAULT_STYLE, endTangent, floatingEnds, headInset, linkPaths, seedOf, type Pt } from "./shape-geometry";
 import { EDGE_APPEARANCE, type PlanFlowEdge } from "@/domain/canvas-adapter";
 import { cn } from "@/lib/utils";
 import { usePlanner } from "./context";
@@ -41,7 +41,8 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
   const st = p.edgeStyle;
   const src = useInternalNode(p.source);
   const tgt = useInternalNode(p.target);
-  const { mode, editingId, setEditingId, commitEdgeLabel } = usePlanner();
+  const { mode, editingId, setEditingId, commitEdgeLabel, bendEdge } = usePlanner();
+  const rf = useReactFlow();
   const editing = mode === "edit" && editingId === p.id && !!commitEdgeLabel;
   if (!src || !tgt) return null;
   const width = st.strokeWidth ?? DEFAULT_STYLE.strokeWidth;
@@ -58,14 +59,37 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
   const a = startHead === "none" ? start : shorten(end, start, headInset(startHead, width));
   const b = endHead === "none" ? end : shorten(start, end, headInset(endHead, width));
   const seed = st.seed ?? seedOf(p.id);
-  const lines = linkPaths(a, b, { curve, roughness, seed, strokeWidth: width });
+  const bend = st.bend;
+  const lines = linkPaths(a, b, { curve, bend, roughness, seed, strokeWidth: width });
   const heads = [
-    arrowheadPath(startHead, start, endTangent(start, end, curve, false).angle, width),
-    arrowheadPath(endHead, end, endTangent(start, end, curve, true).angle, width),
+    arrowheadPath(startHead, start, endTangent(start, end, curve, false, bend).angle, width),
+    arrowheadPath(endHead, end, endTangent(start, end, curve, true, bend).angle, width),
   ];
   const color = st.stroke ?? "var(--wp-edge-ink)";
-  const mid = curve ? curveControl(start, end) : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-  const labelAt = curve ? { x: (start.x + end.x) / 4 + mid.x / 2, y: (start.y + end.y) / 4 + mid.y / 2 } : mid;
+  const mid = curve ? curveControl(start, end, bend) : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const labelAt = curve ? curveApex(start, end, bend) : mid;
+  // Drag the middle handle to bend the line through the pointer (back near the middle: straight).
+  const onBend = (e: React.PointerEvent) => {
+    if (!bendEdge || e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget as Element;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const pt = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+      const k = bendThrough(start, end, pt);
+      bendEdge(p.id, Math.abs(k) < 0.03 ? null : k);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move as EventListener);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+    el.addEventListener("pointermove", move as EventListener);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+
   const label = p.data?.label;
   const step = p.data?.step;
   const opacity = p.data?._opacity;
@@ -118,6 +142,23 @@ function StyledEdge(p: EdgeProps<PlanFlowEdge> & { edgeStyle: EdgeStyle }) {
             )}
             {label}
           </div>
+        </EdgeLabelRenderer>
+      )}
+      {p.selected && mode === "edit" && bendEdge && !editing && (
+        <EdgeLabelRenderer>
+          <div
+            role="slider"
+            aria-label="Curvatura da conexão"
+            aria-valuenow={Math.round((curve ? (bend ?? DEFAULT_BEND) : 0) * 100)}
+            title="Arraste para curvar · clique duplo endireita"
+            className="wp-bend-handle nodrag nopan"
+            style={{ transform: `translate(-50%, -50%) translate(${labelAt.x}px, ${labelAt.y}px)` }}
+            onPointerDown={onBend}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              bendEdge(p.id, null);
+            }}
+          />
         </EdgeLabelRenderer>
       )}
     </g>

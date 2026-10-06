@@ -1,5 +1,5 @@
 /** Pure defaults for new planner elements (no React imports — shared by tests and ops). */
-import type { NodeData, NodeKind, NodeStatus, PlanNode } from "@/domain/plan";
+import type { NodeData, NodeKind, NodeStatus, PlanNode, ShapeType } from "@/domain/plan";
 import { newId } from "@/lib/utils";
 
 export const KIND_DEFAULTS: Record<NodeKind, { width: number; height: number; title: string; data?: Partial<NodeData> }> = {
@@ -15,6 +15,23 @@ export const KIND_DEFAULTS: Record<NodeKind, { width: number; height: number; ti
   frame: { width: 640, height: 420, title: "Quadro" },
   annotation: { width: 240, height: 88, title: "", data: { annotation: { type: "callout", category: "note" } } },
   component: { width: 200, height: 72, title: "Componente", data: { component: { pack: "sistemas", type: "service" } } },
+};
+
+/** What a drawn shape is called in the interface. */
+export const SHAPE_LABEL: Record<ShapeType, string> = {
+  rect: "Retângulo",
+  diamond: "Losango",
+  ellipse: "Elipse",
+  text: "Texto",
+  icon: "Ícone",
+  hexagon: "Hexágono",
+  parallelogram: "Paralelogramo",
+  triangle: "Triângulo",
+  cylinder: "Cilindro",
+  document: "Documento",
+  cloud: "Nuvem",
+  speech: "Balão de fala",
+  star: "Estrela",
 };
 
 export const KIND_LABEL: Record<NodeKind, string> = {

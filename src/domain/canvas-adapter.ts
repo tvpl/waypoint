@@ -98,8 +98,17 @@ function cleanData(data: FlowNodeData): NodeData {
   return out as NodeData;
 }
 
-/** Ids of every node living inside a collapsed container (any depth). */
+/** Ids of every node living inside a collapsed container (any depth), or hidden on its own with what is inside it. */
 export function hiddenByCollapse(doc: Pick<PlanDocument, "nodes">): Set<string> {
+  return hiddenWhere(doc, (n) => !!n.data.collapsed && (n.kind === "container" || n.kind === "section"));
+}
+
+/** Ids of the nodes hidden on their own ("Ocultar") and everything inside them. */
+export function hiddenElements(doc: Pick<PlanDocument, "nodes">): Set<string> {
+  return hiddenWhere(doc, () => false);
+}
+
+function hiddenWhere(doc: Pick<PlanDocument, "nodes">, collapsed: (n: PlanNode) => boolean): Set<string> {
   const children = new Map<string, string[]>();
   for (const n of doc.nodes) {
     if (!n.parentId) continue;
@@ -115,7 +124,12 @@ export function hiddenByCollapse(doc: Pick<PlanDocument, "nodes">): Set<string> 
       hide(c);
     }
   };
-  for (const n of doc.nodes) if (n.data.collapsed && (n.kind === "container" || n.kind === "section")) hide(n.id);
+  for (const n of doc.nodes) {
+    if (n.data.hidden) {
+      hidden.add(n.id);
+      hide(n.id);
+    } else if (collapsed(n)) hide(n.id);
+  }
   return hidden;
 }
 
@@ -173,6 +187,13 @@ export function toFlowNode(n: PlanNode, opts: ToFlowOptions = {}, hidden?: Reado
   }
   if (hidden?.has(n.id)) out.hidden = true;
   if (opts.selected?.has(n.id)) out.selected = true;
+  if (n.data.locked && !opts.readOnly) {
+    // A locked element: stays put and out of the way of clicks; the layers panel still selects it.
+    out.draggable = false;
+    out.selectable = false;
+    out.deletable = false;
+    out.className = "wp-locked";
+  }
   if (layer?.locked) {
     // Locked layer: stays put, can't be selected, but can still be the end of a new connection.
     out.draggable = false;

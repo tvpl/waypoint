@@ -27,7 +27,7 @@ import {
 } from "@xyflow/react";
 import { CloudOff, MonitorSmartphone, MousePointerClick, Plus, RotateCcw, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
-import type { AnnotationCategory, AnnotationType, EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef, Shape } from "@/domain/plan";
+import type { AnnotationCategory, AnnotationType, OutlineType, EdgeKind, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanNode, PlanView, ResourceRef, Shape } from "@/domain/plan";
 import { instantiateLibraryContent, libraryContentSchema, normalizeLibraryContent, type LibraryContent } from "@/domain/library";
 import { luminance } from "@/lib/color";
 import { iconPickSchema } from "./icon-library";
@@ -68,7 +68,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, domainOf, motionMs, newId, timeAgo } from "@/lib/utils";
 import { PlannerContext, type PlannerContextValue } from "./context";
-import { CREATE_TOOLS, EditorContext, type EditorApi, type IconPick, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type Tool } from "./editor-context";
+import { CREATE_TOOLS, EditorContext, type EditorApi, type IconPick, type InkSettings, type InspectorTab, type LayersApi, type PlanMeta, type ShapeProps, type Tool } from "./editor-context";
 import { DEFAULT_STYLE, measureText, seedOf, type DrawStyle } from "./shape-geometry";
 import { applyStyle, edgeStyleFromStyle, shapeFromStyle, styleOfSelection } from "./shape-style";
 import { ShapeTools } from "./draw-tools";
@@ -203,6 +203,18 @@ type LayerState = { layers?: PlanLayer[]; views?: PlanView[] };
 const INK_KEY = "wp-planner-ink";
 const STYLE_KEY = "wp-planner-style";
 
+/** Default sizes of the shapes, when clicked instead of dragged. */
+const DEFAULT_SHAPE_SIZE: Partial<Record<OutlineType, [number, number]>> = {
+  rect: [180, 100],
+  diamond: [160, 120],
+  ellipse: [180, 110],
+  cylinder: [120, 140],
+  triangle: [130, 112],
+  star: [130, 124],
+  speech: [190, 120],
+  cloud: [200, 120],
+};
+
 function EditorShell(props: PlanEditorProps) {
   const planId = props.plan.id;
   const rf = useReactFlow<PlanFlowNode, PlanFlowEdge>();
@@ -305,7 +317,7 @@ function EditorShell(props: PlanEditorProps) {
   const [quickInsert, setQuickInsert] = useState<{ x: number; y: number } | null>(null);
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
-  const altDown = useRef(false);
+  const freeMove = useRef(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("content");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -913,6 +925,61 @@ function EditorShell(props: PlanEditorProps) {
     [mutate],
   );
 
+  const [shapeType, setShapeTypeState] = useState<OutlineType>("hexagon");
+  const setShapeType = useCallback((t: OutlineType) => {
+    setShapeTypeState(t);
+    setToolState("shape");
+  }, []);
+  const shapeTypeRef = useRef(shapeType);
+  shapeTypeRef.current = shapeType;
+
+  const setFlag = useCallback(
+    (flag: "locked" | "hidden", on: boolean, ids?: string[] | null) => {
+      const pick = ids === null ? null : new Set(ids ?? nodesRef.current.filter((n) => n.selected).map((n) => n.id));
+      if (pick && !pick.size) return;
+      let changed = 0;
+      mutate(
+        (d) => {
+          const nodes = d.nodes.map((n) => {
+            if ((pick && !pick.has(n.id)) || !!n.data[flag] === on) return n;
+            changed++;
+            const data = { ...n.data };
+            if (on) data[flag] = true;
+            else delete data[flag];
+            return { ...n, data };
+          });
+          return changed ? { ...d, nodes } : d;
+        },
+        // Hidden or locked elements leave the selection.
+        on ? { select: [] } : {},
+      );
+      if (!changed) return;
+      if (flag === "hidden") toast(on ? (changed === 1 ? "Elemento oculto — mostre-o de novo no painel de camadas" : `${changed} elementos ocultos`) : changed === 1 ? "Elemento visível de novo" : `${changed} elementos visíveis de novo`);
+      else toast(on ? (changed === 1 ? "Elemento travado — destrave pelo menu ou pelo painel de camadas" : `${changed} elementos travados`) : changed === 1 ? "Elemento destravado" : `${changed} elementos destravados`);
+    },
+    [mutate],
+  );
+
+  const setShapeProps = useCallback(
+    (patch: ShapeProps) => {
+      const ids = new Set(nodesRef.current.filter((n) => n.selected && n.data.shape).map((n) => n.id));
+      if (!ids.size) return;
+      mutate(
+        (d) => ({
+          ...d,
+          nodes: d.nodes.map((n) => {
+            if (!ids.has(n.id) || !n.data.shape) return n;
+            const shape = { ...n.data.shape, ...patch };
+            for (const k of Object.keys(patch) as (keyof ShapeProps)[]) if (shape[k] === undefined || shape[k] === false || (k === "rotation" && !shape[k])) delete shape[k];
+            return { ...n, data: { ...n.data, shape } };
+          }),
+        }),
+        { key: `shape-props:${Object.keys(patch).sort().join(",")}` },
+      );
+    },
+    [mutate],
+  );
+
   // The look copied with ⌘⌥C: drawing style for shapes, strokes and connections, color for blocks.
   const [copiedStyle, setCopiedStyle] = useState<{ draw: Partial<DrawStyle>; color?: string } | null>(null);
   const copyStyle = useCallback(() => {
@@ -1016,7 +1083,7 @@ function EditorShell(props: PlanEditorProps) {
   );
 
   const addShape = useCallback(
-    (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }) => {
+    (type: OutlineType | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: { x: number; y: number }) => {
       const s = styleRef.current;
       const id = newId();
       let node: PlanNode;
@@ -1030,7 +1097,7 @@ function EditorShell(props: PlanEditorProps) {
         const size =
           type === "text"
             ? measureText("", s.font, s.fontSize)
-            : { width: box?.w ?? (type === "diamond" ? 160 : 180), height: box?.h ?? (type === "diamond" ? 120 : type === "ellipse" ? 110 : 100) };
+            : { width: box?.w ?? DEFAULT_SHAPE_SIZE[type]?.[0] ?? 180, height: box?.h ?? DEFAULT_SHAPE_SIZE[type]?.[1] ?? 100 };
         const x = box?.x ?? (type === "text" ? at.x : at.x - size.width / 2);
         const y = box?.y ?? at.y - size.height / 2;
         node = { id, kind: "shape", x, y, width: Math.max(16, size.width), height: Math.max(16, size.height), data: { title: "", shape } };
@@ -1357,6 +1424,11 @@ function EditorShell(props: PlanEditorProps) {
     style,
     setStyle,
     addShape,
+    shapeType,
+    setShapeType,
+    setShapeProps,
+    setLocked: (on: boolean, ids?: string[] | null) => setFlag("locked", on, ids),
+    setHidden: (on: boolean, ids?: string[] | null) => setFlag("hidden", on, ids),
     annotStyle,
     setAnnotStyle,
     addAnnotation,
@@ -1431,6 +1503,23 @@ function EditorShell(props: PlanEditorProps) {
         else updateNodeData(id, { title });
       },
       commitEdgeLabel: (id, label) => updateEdge(id, { label: label.trim() || undefined }),
+      bendEdge: (id, bend) => {
+        pendingKey.current = `bend:${id}`;
+        setEdges((list) =>
+          list.map((e) => {
+            if (e.id !== id || !e.data?.style) return e;
+            const style = { ...e.data.style };
+            if (bend === null) {
+              style.routing = "straight";
+              delete style.bend;
+            } else {
+              style.routing = "curve";
+              style.bend = bend;
+            }
+            return { ...e, data: { ...e.data, style } };
+          }),
+        );
+      },
       toggleCollapsed: (id) => apiRef.current.toggleCollapsed(id),
       childCount,
       singleSelectedId,
@@ -1489,6 +1578,8 @@ function EditorShell(props: PlanEditorProps) {
       if (mod && k === "a") return run(a.selectAll);
       if (mod && k === "g" && e.shiftKey) return run(a.ungroup);
       if (mod && k === "g") return run(a.group);
+      if (mod && e.shiftKey && k === "l" && a.selectedNodes.length) return run(() => a.setLocked(!a.selectedNodes.every((n) => n.data.locked)));
+      if (mod && e.shiftKey && k === "h" && a.selectedNodes.length) return run(() => a.setHidden(true));
       if (mod && k === "l") return a.selectedNodes.length === 1 ? run(() => a.setInspectorTab("action")) : undefined;
       // ⇧L vertical, ⌥⇧L horizontal (e.code: ⌥ changes e.key on macOS)
       if (!mod && e.shiftKey && e.code === "KeyL") return run(() => a.autoArrange(e.altKey ? "LR" : "TB"));
@@ -1544,6 +1635,7 @@ function EditorShell(props: PlanEditorProps) {
       if (k === "l") return run(() => a.setTool("line"));
       if (k === "t") return run(() => a.setTool("text"));
       if (k === "f") return run(() => a.setTool("frame"));
+      if (k === "s") return run(() => a.setTool(a.tool === "shape" ? "select" : "shape"));
       // ⇧N shows or hides every annotation at once; N is the annotation tool.
       if (k === "n" && e.shiftKey) return run(() => a.setAnnotationView({ show: !a.annotationView.show }));
       if (k === "n") return run(() => a.setTool(a.tool === "annotate" ? "select" : "annotate"));
@@ -1556,7 +1648,7 @@ function EditorShell(props: PlanEditorProps) {
       if (k === "[") return run(a.sendToBack);
       if (k.startsWith("arrow")) pendingKey.current = "nudge";
     };
-    const onAlt = (e: KeyboardEvent) => (altDown.current = e.altKey);
+    const onAlt = (e: KeyboardEvent) => (freeMove.current = e.metaKey || e.ctrlKey);
     window.addEventListener("keydown", onKey);
     window.addEventListener("keydown", onAlt, true);
     window.addEventListener("keyup", onAlt, true);
@@ -1629,8 +1721,8 @@ function EditorShell(props: PlanEditorProps) {
       // removal goes through our own delete (keeps descendants/edges consistent)
       const filtered = changes.filter((c) => c.type !== "remove");
       const ch = filtered.length === 1 ? filtered[0] : null;
-      // Alignment guides while dragging one node (hold Alt to move freely).
-      if (ch?.type === "position" && ch.dragging && ch.position && !altDown.current) {
+      // Alignment guides while dragging one node (hold ⌘/Ctrl to move freely).
+      if (ch?.type === "position" && ch.dragging && ch.position && !freeMove.current) {
         const node = nodesRef.current.find((n) => n.id === ch.id);
         if (node) {
           const size = (n: PlanFlowNode) => ({ width: n.measured?.width ?? n.width ?? 0, height: n.measured?.height ?? n.height ?? 0 });
@@ -1691,6 +1783,16 @@ function EditorShell(props: PlanEditorProps) {
       setDropTarget(target !== (node.parentId ?? null) ? target : null);
     },
     [canHold],
+  );
+
+  // ⌥-drag: a copy stays where the selection was, and the originals move.
+  const onNodeDragStart: OnNodeDrag<PlanFlowNode> = useCallback(
+    (e, _node, dragged) => {
+      if (!e.altKey || mode !== "edit") return;
+      const ids = dragged.filter((d) => d.draggable !== false).map((d) => d.id);
+      if (ids.length) mutate((d) => duplicateNodes(d, ids, { x: 0, y: 0 }).doc);
+    },
+    [mode, mutate],
   );
 
   const onNodeDragStop: OnNodeDrag<PlanFlowNode> = useCallback((_e, _node, dragged) => {
@@ -2067,6 +2169,8 @@ function EditorShell(props: PlanEditorProps) {
                     edgesReconnectable
                     onEdgeDoubleClick={(_, ed) => tool === "select" && setEditingId(ed.id)}
                     onNodeDrag={onNodeDrag}
+                    onNodeDragStart={onNodeDragStart}
+                    onSelectionDragStart={(e, dragged) => onNodeDragStart(e.nativeEvent, dragged[0], dragged)}
                     onNodeDragStop={onNodeDragStop}
                     onNodeClick={onNodeClick}
                     onNodeDoubleClick={(_, n) => tool === "select" && startEditing(n.id)}

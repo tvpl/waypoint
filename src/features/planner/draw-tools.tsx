@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { SHAPE_TOOLS, useEditor, type Tool } from "./editor-context";
-import { arrowheadPath, type Pt } from "./shape-geometry";
+import { arrowheadPath, outlinePath, type Pt } from "./shape-geometry";
+import type { OutlineType } from "@/domain/plan";
 import { CATEGORY_META } from "./annotations";
 
 /** Where a press starts something: the canvas itself, not the floating toolbars over it. */
@@ -99,7 +100,7 @@ export function ShapeTools({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nu
         return;
       }
       if (d.tool === "annotate") return api.addAnnotation(moved ? boxOf(d) : null, d.start, null);
-      const type = d.tool as "rect" | "diamond" | "ellipse" | "frame";
+      const type = d.tool === "shape" ? api.shapeType : (d.tool as "rect" | "diamond" | "ellipse" | "frame");
       if (!moved) return api.addShape(type, null, d.start);
       api.addShape(type, boxOf(d), d.start);
     };
@@ -142,12 +143,8 @@ export function ShapeTools({ wrapRef }: { wrapRef: RefObject<HTMLDivElement | nu
       </svg>
     );
   }
-  const path =
-    drag.tool === "ellipse"
-      ? `M${r.x} ${r.y + r.h / 2} a${r.w / 2} ${r.h / 2} 0 1 0 ${r.w} 0 a${r.w / 2} ${r.h / 2} 0 1 0 ${-r.w} 0 Z`
-      : drag.tool === "diamond"
-        ? `M${r.x + r.w / 2} ${r.y} L${r.x + r.w} ${r.y + r.h / 2} L${r.x + r.w / 2} ${r.y + r.h} L${r.x} ${r.y + r.h / 2} Z`
-        : `M${r.x} ${r.y} h${r.w} v${r.h} h${-r.w} Z`;
+  const outline: OutlineType = drag.tool === "shape" ? ed.shapeType : drag.tool === "frame" ? "rect" : (drag.tool as OutlineType);
+  const path = outlinePath(outline, r.x, r.y, r.w, r.h, false);
   return (
     <svg className="pointer-events-none absolute inset-0 z-[5] h-full w-full" aria-hidden>
       <path

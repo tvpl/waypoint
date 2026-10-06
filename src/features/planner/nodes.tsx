@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Handle, NodeResizer, Position, useInternalNode, type NodeProps, type NodeTypes } from "@xyflow/react";
 import { ArrowUpRight, ChevronDown, ChevronRight, CircleCheck, CircleHelp, ExternalLink, ImagePlus, Link2, ListTodo, MessageSquare, StickyNote, TriangleAlert } from "lucide-react";
-import type { NodeKind } from "@/domain/plan";
+import type { NodeKind, Shape } from "@/domain/plan";
 import type { PlanFlowNode } from "@/domain/canvas-adapter";
 import { SiteIcon } from "@/components/ui/misc";
 import { cn } from "@/lib/utils";
@@ -552,9 +552,9 @@ export const ShapeNode = memo(function ShapeNode(p: P) {
   if (s.type === "icon" && shape.glyph) return <IconShape p={p} cls={cls} editing={editing} />;
   return (
     <Chrome p={p} kind="shape" handles={!text}>
-      <div className={cn(cls, "wp-shape relative h-full w-full", text && "is-text")} style={{ opacity: s.opacity }}>
+      <div className={cn(cls, "wp-shape relative h-full w-full", text && "is-text")} style={{ opacity: s.opacity, transform: rotate(shape) }}>
         {!text && (
-          <svg className="wp-shape-svg absolute inset-0 overflow-visible" width={w} height={h} aria-hidden>
+          <svg className="wp-shape-svg absolute inset-0 overflow-visible" width={w} height={h} aria-hidden style={{ transform: flip(shape), filter: shape.shadow ? SHADOW : undefined }}>
             {paths.map((d, i) => (
               <path
                 key={i}
@@ -580,6 +580,10 @@ export const ShapeNode = memo(function ShapeNode(p: P) {
   );
 });
 
+const SHADOW = "drop-shadow(0 6px 10px rgb(15 23 42 / .18)) drop-shadow(0 1px 2px rgb(15 23 42 / .12))";
+const rotate = (s: Shape) => (s.rotation ? `rotate(${s.rotation}deg)` : undefined);
+const flip = (s: Shape) => (s.flipX || s.flipY ? `scale(${s.flipX ? -1 : 1}, ${s.flipY ? -1 : 1})` : undefined);
+
 /** An icon (with an optional tile behind it and a label under it). */
 function IconShape({ p, cls, editing }: { p: P; cls: string; editing: boolean }) {
   const shape = p.data.shape!;
@@ -593,8 +597,8 @@ function IconShape({ p, cls, editing }: { p: P; cls: string; editing: boolean })
   const color = s.stroke ?? "var(--ink)";
   return (
     <Chrome p={p} kind="shape" handles>
-      <div className={cn(cls, "wp-shape wp-icon relative flex h-full w-full flex-col items-center")} style={{ opacity: s.opacity }}>
-        <div className="flex w-full items-center justify-center" style={{ height: h - labelH }}>
+      <div className={cn(cls, "wp-shape wp-icon relative flex h-full w-full flex-col items-center")} style={{ opacity: s.opacity, transform: rotate(shape) }}>
+        <div className="flex w-full items-center justify-center" style={{ height: h - labelH, transform: flip(shape), filter: shape.shadow ? SHADOW : undefined }}>
           <div className="flex items-center justify-center" style={{ width: area, height: area, background: tile, borderRadius: tile ? area * 0.22 : undefined }}>
             <GlyphSvg glyph={shape.glyph!} size={area * (tile ? 0.6 : 0.92)} color={color} strokeWidth={s.strokeWidth} />
           </div>

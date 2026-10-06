@@ -6,7 +6,7 @@
  * and every element carries what Excalidraw can't hold (kind, layer, resource, status…) in its
  * `customData`, so exporting, editing in Excalidraw and importing again keeps layers and kinds.
  */
-import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
+import { EDGE_APPEARANCE, hiddenElements } from "@/domain/canvas-adapter";
 import { BASE_LAYER_ID, layersOf } from "@/domain/layers";
 import {
   planLayerSchema,
@@ -28,7 +28,7 @@ import { readableText } from "@/lib/color";
 import { CATEGORY_META } from "./annotations";
 
 import { HIGHLIGHTER_COLOR, inkFontSize, pairsOf } from "./ink-geometry";
-import { curveControl, floatingEnds, measureText, seedOf, type Box, type Pt } from "./shape-geometry";
+import { bendThrough, curveControl, DEFAULT_BEND, floatingEnds, measureText, outlinePoints, seedOf, type Box, type Pt } from "./shape-geometry";
 
 // ------------------------------------------------------------------ the Excalidraw format (the parts we use)
 
@@ -42,6 +42,8 @@ export type ExElement = {
   width: number;
   height: number;
   angle?: number;
+  /** A closed line drawn as an area (Excalidraw 0.18+). */
+  polygon?: boolean;
   strokeColor?: string;
   backgroundColor?: string;
   fillStyle?: string;
@@ -102,6 +104,8 @@ type WpCustom = {
   highlighter?: boolean;
   /** An icon (exported as an image): its drawing and label come back as they were. */
   icon?: Shape;
+  /** A shape Excalidraw has no element for (hexagon, cloud…), exported as a closed line. */
+  shape?: Shape;
   title?: string;
   /** The label under an icon (skipped on import: the icon brings its title). */
   labelOf?: string;
@@ -225,7 +229,9 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
   const layers = layersOf(doc);
   const layerById = new Map(layers.map((l, i) => [l.id, { ...l, order: i }]));
   const shown = opts.visible ?? ((id: string) => layerById.get(id)?.visible !== false);
-  const nodes = doc.nodes.filter((n) => shown(n.layer ?? BASE_LAYER_ID));
+  // Elements hidden on their own stay out unless every layer is asked for.
+  const hiddenOwn = opts.visible ? new Set<string>() : hiddenElements(doc);
+  const nodes = doc.nodes.filter((n) => shown(n.layer ?? BASE_LAYER_ID) && !hiddenOwn.has(n.id));
   const ids = new Set(nodes.map((n) => n.id));
   const abs = absolutePositions(doc.nodes);
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -405,16 +411,61 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
         els.set(n.id, el);
         return;
       }
+      const angle = s.rotation ? r1((s.rotation * Math.PI) / 180 * 1000) / 1000 : 0;
+      if (s.type !== "rect" && s.type !== "diamond" && s.type !== "ellipse" && s.type !== "icon") {
+        // No Excalidraw element for it: a closed, filled line along its outline (mirrored in place).
+        const pts = outlinePoints(s.type, 0, 0, box.w, box.h, { round: s.round, radius: s.radius }).map(([px, py]): [number, number] => [s.flipX ? r1(box.w - px) : px, s.flipY ? r1(box.h - py) : py]);
+        const el = base(n.id, "line", box, {
+          ...style,
+          angle,
+          points: pts,
+          polygon: true,
+          backgroundColor: s.fill ?? "transparent",
+          fillStyle: FILL_OUT[s.fillStyle ?? "solid"],
+          seed: s.seed ?? seedOf(n.id),
+          customData: custom(n, { shape: s, title: n.data.title }),
+        });
+        out.push(el);
+        els.set(n.id, el);
+        if (n.data.title.trim()) {
+          const fontSize = s.fontSize ?? 20;
+          const t = wrap(n.data.title, fontSize, Math.max(20, box.w * 0.7));
+          const size = textSize(t, fontSize);
+          out.push(
+            base(`${n.id}:t`, "text", { x: box.x + box.w / 2 - size.width / 2, y: box.y + box.h / 2 - size.height / 2, w: size.width, h: size.height }, {
+              strokeColor: stroke,
+              text: t,
+              originalText: n.data.title,
+              fontSize,
+              fontFamily: FONT_ID[s.font ?? "sans"],
+              textAlign: "center",
+              verticalAlign: "middle",
+              containerId: null,
+              autoResize: true,
+              lineHeight: 1.25,
+              angle,
+              frameId,
+              customData: { waypoint: { labelOf: n.id } satisfies WpCustom },
+            }),
+          );
+        }
+        return;
+      }
       const el = base(n.id, s.type === "rect" ? "rectangle" : s.type, box, {
         ...style,
+        angle,
         backgroundColor: s.fill ?? "transparent",
         fillStyle: FILL_OUT[s.fillStyle ?? "solid"],
         roundness: s.round === false || s.type === "ellipse" ? null : { type: s.type === "rect" ? 3 : 2 },
         seed: s.seed ?? seedOf(n.id),
+        // Mirroring and shadow have no Excalidraw twin: kept for the way back.
+        ...(s.flipX || s.flipY || s.shadow || s.radius !== undefined ? { customData: custom(n, { shape: s }) } : {}),
       });
       out.push(el);
       els.set(n.id, el);
       label(el, n.data.title, { fontSize: s.fontSize ?? 20, font: s.font ?? "sans", align: s.align, color: stroke });
+      const text = out.at(-1);
+      if (angle && text?.containerId === el.id) text.angle = angle;
       return;
     }
 
@@ -585,7 +636,7 @@ export function toExcalidraw(doc: PlanDocument, opts: ExportOpts = {}): ExScene 
     ];
     let roundness: ExElement["roundness"] = null;
     if (routing === "curve") {
-      const c = curveControl(start, end);
+      const c = curveControl(start, end, st?.bend);
       // Excalidraw's curve passes through its middle point: the quadratic's midpoint.
       points = [[0, 0], [(c.x - start.x) / 2 + dx / 4, (c.y - start.y) / 2 + dy / 4], [dx, dy]];
       roundness = { type: 2 };
@@ -753,6 +804,11 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
       if (type === "text" ? align !== "left" : align !== "center") s.align = align;
     } else if (type === "text") delete s.align;
     if (Number.isInteger(el.seed) && el.seed! >= 0 && el.seed! <= 2 ** 31) s.seed = el.seed;
+    const deg = el.angle ? Math.round(((el.angle * 180) / Math.PI) * 10) / 10 : 0;
+    const rotation = deg > 180 ? deg - 360 : deg;
+    if (rotation && Math.abs(rotation) <= 360) s.rotation = rotation;
+    const kept = wpOf(el).shape;
+    if (kept?.type === type) for (const k of ["flipX", "flipY", "shadow", "radius"] as const) if (kept[k] !== undefined) (s as Record<string, unknown>)[k] = kept[k];
     return s;
   };
 
@@ -827,9 +883,16 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
         break;
       }
       case "arrow":
-      case "line":
+      case "line": {
+        // A Waypoint shape with no Excalidraw twin (hexagon, cloud…) comes back as itself.
+        const kept = wp.kind === "shape" ? shapeSchema.safeParse(wp.shape) : null;
+        if (kept?.success) {
+          push(el, { kind: "shape", data: dataOf(el, { title: title(typeof wp.title === "string" ? wp.title : ""), shape: kept.data }) });
+          break;
+        }
         // Bound arrows become connections once every shape exists (below).
         break;
+      }
     }
   }
 
@@ -837,6 +900,7 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
   for (const el of live) {
     // "draw" is the old name of hand-drawn lines (libraries from before freedraw).
     if (el.type !== "arrow" && el.type !== "line" && el.type !== "draw") continue;
+    if (made.has(el.id)) continue;
     const wp = wpOf(el);
     const pts = el.points ?? [];
     if (pts.length < 2) continue;
@@ -866,6 +930,10 @@ export function fromExcalidraw(scene: Pick<ExScene, "elements" | "files" | "wayp
         if (start !== "none") style.start = start;
         style.end = headIn(el.endArrowhead);
         style.routing = pts.length > 2 ? (el.roundness && !el.elbowed ? "curve" : "elbow") : "straight";
+        if (style.routing === "curve" && pts.length === 3) {
+          const bend = bendThrough({ x: pts[0][0], y: pts[0][1] }, { x: pts[2][0], y: pts[2][1] }, { x: pts[1][0], y: pts[1][1] });
+          if (Math.abs(bend - DEFAULT_BEND) > 0.01) style.bend = bend;
+        }
         if (Number.isInteger(el.seed) && el.seed! >= 0 && el.seed! <= 2 ** 31) style.seed = el.seed;
         edge.style = style;
       }

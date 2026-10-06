@@ -30,6 +30,12 @@ import {
   PanelRightOpen,
   Pin,
   PinOff,
+  Lock,
+  EyeOff,
+  RotateCcw,
+  RotateCw,
+  FlipHorizontal2,
+  FlipVertical2,
   Ungroup,
   Upload,
   X,
@@ -48,7 +54,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip } from "@/components/ui/popover";
 import { useEditor, type InspectorTab } from "./editor-context";
 import { openShortcuts } from "@/components/shell/shortcuts";
-import { KIND_LABEL, PARENT_KINDS, STATUS_META, statusMeta } from "./defaults";
+import { KIND_LABEL, PARENT_KINDS, SHAPE_LABEL, STATUS_META, statusMeta } from "./defaults";
 import { nodeTone, toneVars } from "./colors";
 import { GlyphSvg } from "./glyph";
 import { CATEGORY_META } from "./annotations";
@@ -56,6 +62,7 @@ import { AnnotationFields } from "./annotations-panel";
 import { ComponentFields, componentLabel } from "./components/component-fields";
 import { ICON_NAMES, KIND_ICON, PLAN_ICONS, PlanIcon } from "./icons";
 import { EdgeSample } from "./edges";
+import { ShapeGlyph } from "./canvas-controls";
 import { TagInput } from "./tag-input";
 import { ResourceIcon, ResourceRow, useResourceSearch } from "./resource-picker";
 import { parseUserUrl, fallbackResource } from "./resource-types";
@@ -76,6 +83,7 @@ import {
   SizePicker,
   StrokeColors,
   StrokeStylePicker,
+  ValueSlider,
   WidthPicker,
 } from "./style-controls";
 
@@ -89,6 +97,40 @@ const VISIBILITY_LABEL: Record<string, string> = {
 
 /** What the properties show for the current selection (the plan's own when nothing is selected). */
 function InspectorBody({ empty }: { empty?: React.ReactNode }) {
+  const ed = useEditor();
+  const nodes = ed.selectedNodes;
+  const locked = nodes.filter((n) => n.data.locked);
+  const hidden = nodes.filter((n) => n.data.hidden);
+  if (!locked.length && !hidden.length) return <InspectorFor empty={empty} />;
+  const ids = (list: PlanFlowNode[]) => list.map((n) => n.id);
+  return (
+    <>
+      <div className="mx-3 mt-3 flex shrink-0 flex-col gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-body text-ink-2">
+        {locked.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Lock className="size-3.5 shrink-0" aria-hidden />
+            <span className="flex-1">{locked.length === 1 && nodes.length === 1 ? "Travado no canvas" : `${locked.length} travados`}</span>
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setLocked(false, ids(locked))}>
+              Destravar
+            </Button>
+          </div>
+        )}
+        {hidden.length > 0 && (
+          <div className="flex items-center gap-2">
+            <EyeOff className="size-3.5 shrink-0" aria-hidden />
+            <span className="flex-1">{hidden.length === 1 && nodes.length === 1 ? "Oculto" : `${hidden.length} ocultos`}</span>
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => ed.setHidden(false, ids(hidden))}>
+              Mostrar
+            </Button>
+          </div>
+        )}
+      </div>
+      <InspectorFor empty={empty} />
+    </>
+  );
+}
+
+function InspectorFor({ empty }: { empty?: React.ReactNode }) {
   const ed = useEditor();
   const nodes = ed.selectedNodes;
   const edges = ed.selectedEdges;
@@ -382,19 +424,16 @@ function DrawInspector() {
   const types = new Set(nodes.map((n) => n.data.shape?.type));
   const onlyText = types.size === 1 && types.has("text");
   const boxes = types.has("rect") || types.has("diamond");
+  const radius = (types.has("rect") && s.round) || types.has("speech");
   const set = ed.setStyle;
   const onlyIcons = types.size === 1 && types.has("icon");
   const glyph = one?.data.shape?.glyph;
+  const oneType = one?.data.shape?.type;
+  const outline = oneType && oneType !== "text" && oneType !== "icon" ? oneType : null;
   const label = one
     ? one.data.shape?.type === "icon"
       ? one.data.title || "Ícone"
-      : one.data.shape?.type === "text"
-        ? "Texto"
-        : one.data.shape?.type === "ellipse"
-          ? "Elipse"
-          : one.data.shape?.type === "diamond"
-            ? "Losango"
-            : "Retângulo"
+      : SHAPE_LABEL[one.data.shape?.type ?? "rect"]
     : onlyIcons
       ? `${nodes.length} ícones`
       : `${nodes.length} formas`;
@@ -417,7 +456,13 @@ function DrawInspector() {
       <Header
         icon={
           <span className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-subtle" style={{ color: s.stroke ?? "var(--ink)" }}>
-            {glyph ? <GlyphSvg glyph={glyph} size={16} color={s.stroke ?? "var(--ink)"} /> : <Icon className="size-4" strokeWidth={2} />}
+            {glyph ? (
+              <GlyphSvg glyph={glyph} size={16} color={s.stroke ?? "var(--ink)"} />
+            ) : outline ? (
+              <ShapeGlyph type={outline} size={17} />
+            ) : (
+              <Icon className="size-4" strokeWidth={2} />
+            )}
           </span>
         }
         kicker={one ? (glyph ? "Ícone" : "Forma") : "Seleção"}
@@ -473,6 +518,7 @@ function DrawInspector() {
           </div>
         </Section>
       )}
+      {!onlyText && <TransformSection radius={radius} />}
       {!onlyIcons && (
         <Section id="draw-text" title="Texto">
           <Row label="Fonte">
@@ -503,6 +549,60 @@ function DrawInspector() {
         </Button>
       </Section>
     </Scroll>
+  );
+}
+
+/** Rotation, mirroring, shadow and corner radius of the selected shapes (the first one's values). */
+function TransformSection({ radius }: { radius: boolean }) {
+  const ed = useEditor();
+  const first = ed.selectedNodes.find((n) => n.data.shape)?.data.shape;
+  if (!first) return null;
+  const rot = Math.round(first.rotation ?? 0);
+  const turn = (by: number) => {
+    let r = (rot + by) % 360;
+    if (r > 180) r -= 360;
+    if (r <= -180) r += 360;
+    ed.setShapeProps({ rotation: r });
+  };
+  return (
+    <Section id="draw-transform" title="Transformar" defaultOpen={false}>
+      <Row label="Rotação">
+        <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1">
+            <ValueSlider label="Rotação" value={rot} min={-180} max={180} step={1} unit="°" onChange={(rotation) => ed.setShapeProps({ rotation })} />
+          </div>
+          <Tooltip content="Girar 90° à esquerda">
+            <Button size="icon-sm" variant="ghost" aria-label="Girar 90° à esquerda" onClick={() => turn(-90)}>
+              <RotateCcw />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Girar 90° à direita">
+            <Button size="icon-sm" variant="ghost" aria-label="Girar 90° à direita" onClick={() => turn(90)}>
+              <RotateCw />
+            </Button>
+          </Tooltip>
+        </div>
+      </Row>
+      <Row label="Espelhar">
+        <div className="flex gap-2">
+          <Button size="sm" variant={first.flipX ? "soft" : "secondary"} aria-pressed={!!first.flipX} className="flex-1" onClick={() => ed.setShapeProps({ flipX: !first.flipX })}>
+            <FlipHorizontal2 /> Horizontal
+          </Button>
+          <Button size="sm" variant={first.flipY ? "soft" : "secondary"} aria-pressed={!!first.flipY} className="flex-1" onClick={() => ed.setShapeProps({ flipY: !first.flipY })}>
+            <FlipVertical2 /> Vertical
+          </Button>
+        </div>
+      </Row>
+      {radius && (
+        <Row label="Raio dos cantos">
+          <ValueSlider label="Raio dos cantos" value={first.radius ?? 12} min={2} max={60} unit="px" onChange={(radius) => ed.setShapeProps({ radius })} />
+        </Row>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-body text-ink-2">Sombra suave</span>
+        <Switch checked={!!first.shadow} onChange={(shadow) => ed.setShapeProps({ shadow })} label="Sombra suave" />
+      </div>
+    </Section>
   );
 }
 

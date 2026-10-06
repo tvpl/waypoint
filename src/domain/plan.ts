@@ -85,8 +85,14 @@ export const glyphSchema = z.object({
 export type Glyph = z.infer<typeof glyphSchema>;
 
 /** A drawn shape ("shape" node): a box, diamond or ellipse with text inside, a free text, or an icon. */
+export const SHAPE_TYPES = ["rect", "diamond", "ellipse", "text", "icon", "hexagon", "parallelogram", "triangle", "cylinder", "document", "cloud", "speech", "star"] as const;
+/** Closed outlines drawn by the shape tools (everything but text and icons). */
+export const OUTLINE_TYPES = ["rect", "diamond", "ellipse", "hexagon", "parallelogram", "triangle", "cylinder", "document", "cloud", "speech", "star"] as const;
+export type ShapeType = (typeof SHAPE_TYPES)[number];
+export type OutlineType = (typeof OUTLINE_TYPES)[number];
+
 export const shapeSchema = z.object({
-  type: z.enum(["rect", "diamond", "ellipse", "text", "icon"]),
+  type: z.enum(SHAPE_TYPES),
   /** The icon's drawing (type "icon"). */
   glyph: glyphSchema.optional(),
   /** Stroke and text color; missing = the theme's ink. */
@@ -100,6 +106,14 @@ export const shapeSchema = z.object({
   roughness: z.number().finite().min(0).max(3).optional(),
   /** Rounded corners (rectangles, diamonds). */
   round: z.boolean().optional(),
+  /** Corner radius when rounded (missing = proportional to the size). */
+  radius: z.number().finite().min(0).max(120).optional(),
+  /** Degrees, clockwise. */
+  rotation: z.number().finite().min(-360).max(360).optional(),
+  flipX: z.boolean().optional(),
+  flipY: z.boolean().optional(),
+  /** A soft drop shadow. */
+  shadow: z.boolean().optional(),
   opacity: z.number().finite().min(0.1).max(1).optional(),
   font: z.enum(FONT_FAMILIES).optional(),
   fontSize: z.number().finite().min(8).max(160).optional(),
@@ -153,6 +167,8 @@ export const edgeStyleSchema = z.object({
   end: z.enum(ARROWHEADS).optional(),
   /** "straight" and "curve" leave from the shapes' outlines; "elbow" uses the connection handles. */
   routing: z.enum(["straight", "curve", "elbow"]).optional(),
+  /** How far a curve bows, as a share of its length (sign = side); missing = a gentle default. */
+  bend: z.number().finite().min(-3).max(3).optional(),
   seed: z.number().int().min(0).max(2 ** 31).optional(),
 });
 export type EdgeStyle = z.infer<typeof edgeStyleSchema>;
@@ -172,6 +188,10 @@ export const nodeDataSchema = z.object({
   shape: shapeSchema.optional(),
   annotation: annotationSchema.optional(),
   component: componentSchema.optional(),
+  /** Can't be selected on the canvas, moved or deleted (the layers panel and the menu still reach it). */
+  locked: z.boolean().optional(),
+  /** Not drawn, with what is inside it (the layers panel lists it to show it again). */
+  hidden: z.boolean().optional(),
   /**
    * Presentation mode. Without any `order` in the plan, steps are the
    * top-level areas then the other top-level nodes (reading order) minus

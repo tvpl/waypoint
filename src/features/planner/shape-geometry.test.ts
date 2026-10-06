@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowheadPath, floatingEnds, headInset, linkPaths, outlinePoint, resolveShape, seedOf, shapePaths } from "./shape-geometry";
+import { arrowheadPath, bendThrough, curveApex, DEFAULT_BEND, floatingEnds, headInset, linkPaths, outlinePoint, outlinePoints, resolveShape, seedOf, shapePaths } from "./shape-geometry";
 
 describe("shape geometry", () => {
   it("resolves styles: own values, then the layer's sketch, then defaults", () => {
@@ -41,5 +41,46 @@ describe("shape geometry", () => {
     expect(arrowheadPath("triangle", { x: 0, y: 0 }, 0, 2)?.filled).toBe(true);
     expect(arrowheadPath("arrow", { x: 0, y: 0 }, 0, 2)?.filled).toBe(false);
     expect(headInset("triangle", 2)).toBeGreaterThan(0);
+  });
+});
+
+describe("more shapes", () => {
+  it("draws every outline type, clean and hand-drawn", async () => {
+    const { OUTLINE_TYPES } = await import("@/domain/plan");
+    for (const type of OUTLINE_TYPES) {
+      for (const roughness of [0, 1]) {
+        const paths = shapePaths({ type, roughness, fill: "#A5D8FF" }, 160, 100, { seed: 7 });
+        expect(paths.length).toBeGreaterThan(0);
+        for (const p of paths) expect(p.d).not.toMatch(/NaN|undefined/);
+      }
+    }
+    // the cylinder adds its rim
+    expect(shapePaths({ type: "cylinder" }, 100, 120, { seed: 1 }).length).toBe(2);
+  });
+});
+
+describe("outline points and bends", () => {
+  it("samples every outline into a closed polyline inside its box", () => {
+    for (const type of ["rect", "diamond", "ellipse", "hexagon", "parallelogram", "triangle", "cylinder", "document", "cloud", "speech", "star"] as const) {
+      const pts = outlinePoints(type, 0, 0, 200, 120);
+      expect(pts.length, type).toBeGreaterThan(3);
+      expect(pts[0], type).toEqual(pts.at(-1));
+      for (const [x, y] of pts) {
+        expect(x, type).toBeGreaterThanOrEqual(-12);
+        expect(x, type).toBeLessThanOrEqual(212);
+        expect(y, type).toBeGreaterThanOrEqual(-12);
+        expect(y, type).toBeLessThanOrEqual(132);
+      }
+    }
+    expect(outlinePoints("triangle", 0, 0, 100, 100)).toEqual([[50, 0], [100, 100], [0, 100], [50, 0]]);
+  });
+
+  it("finds the bend that runs a curve through a point, and back", () => {
+    const a = { x: 0, y: 0 };
+    const b = { x: 200, y: 0 };
+    expect(bendThrough(a, b, curveApex(a, b))).toBeCloseTo(DEFAULT_BEND, 3);
+    expect(bendThrough(a, b, curveApex(a, b, -0.8))).toBeCloseTo(-0.8, 3);
+    expect(bendThrough(a, b, { x: 100, y: 0 })).toBe(0);
+    expect(bendThrough(a, b, { x: 100, y: 1e6 })).toBe(3);
   });
 });

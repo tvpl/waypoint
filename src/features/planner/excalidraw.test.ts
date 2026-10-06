@@ -244,3 +244,41 @@ describe("annotations in Excalidraw", () => {
     expect(back.nodes.some((n) => n.id === "p:l")).toBe(false);
   });
 });
+
+describe("more shapes in Excalidraw", () => {
+  const more = normalizeDocument({
+    viewport: { x: 0, y: 0, zoom: 1 },
+    nodes: [
+      { id: "hx", kind: "shape", x: 0, y: 0, width: 160, height: 100, data: { title: "Gateway", shape: { type: "hexagon", fill: "#B2F2BB", rotation: 30, shadow: true } } },
+      { id: "cy", kind: "shape", x: 300, y: 0, width: 100, height: 140, data: { title: "", shape: { type: "cylinder", flipY: true } } },
+      { id: "r", kind: "shape", x: 0, y: 300, width: 160, height: 80, data: { title: "Girado", shape: { type: "rect", rotation: -45, flipX: true, radius: 20 } } },
+    ],
+    edges: [],
+  });
+  const scene = toExcalidraw(more, { now: 1 });
+  const byId = new Map(scene.elements.map((e) => [e.id, e]));
+
+  it("draws shapes Excalidraw lacks as closed, filled lines, with a free label", () => {
+    const hx = byId.get("hx")!;
+    expect(hx).toMatchObject({ type: "line", polygon: true, backgroundColor: "#B2F2BB" });
+    expect(hx.angle).toBeCloseTo(Math.PI / 6, 2);
+    const pts = hx.points!;
+    expect(pts[0]).toEqual(pts.at(-1));
+    expect(Math.max(...pts.map((p) => p[0]))).toBeLessThanOrEqual(160);
+    expect(byId.get("hx:t")).toMatchObject({ type: "text", containerId: null, originalText: "Gateway" });
+    expect(byId.get("cy")!.points!.length).toBeGreaterThan(20);
+    expect(byId.get("r")).toMatchObject({ type: "rectangle" });
+    expect(byId.get("r")!.angle).toBeCloseTo(-Math.PI / 4, 2);
+    expect(byId.get("r:t")!.angle).toBeCloseTo(-Math.PI / 4, 2);
+  });
+
+  it("comes back as the same shapes, rotation, mirroring and shadow included", () => {
+    const back = fromExcalidraw(scene);
+    const get = (id: string) => back.nodes.find((n) => n.id === id)!;
+    expect(get("hx")).toMatchObject({ kind: "shape", width: 160, height: 100, data: { title: "Gateway", shape: { type: "hexagon", rotation: 30, shadow: true } } });
+    expect(get("cy").data.shape).toMatchObject({ type: "cylinder", flipY: true });
+    expect(get("r").data.shape).toMatchObject({ type: "rect", rotation: -45, flipX: true, radius: 20 });
+    expect(back.nodes.some((n) => n.kind === "ink")).toBe(false);
+    expect(back.nodes).toHaveLength(3);
+  });
+});

@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext } from "react";
 import type { LibraryContent } from "@/domain/library";
-import type { AnnotationCategory, AnnotationType, EdgeKind, Glyph, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef } from "@/domain/plan";
+import type { AnnotationCategory, AnnotationType, OutlineType, EdgeKind, Glyph, NodeData, NodeKind, PlanDocument, PlanEdge, PlanLayer, PlanView, ResourceRef, Shape } from "@/domain/plan";
 import type { PlanFlowEdge, PlanFlowNode } from "@/domain/canvas-adapter";
 import type { AlignMode } from "./doc-ops";
 import type { LayoutDirection } from "./auto-layout";
@@ -17,11 +17,14 @@ import type { AnnotationView } from "./annotations";
  * tools draw a box by dragging; "arrow"/"line" connect the shapes they start and end on (or draw a
  * free line); "text" places a text where you click.
  */
-export type Tool = "select" | "hand" | "connect" | "draw" | "erase" | "rect" | "diamond" | "ellipse" | "arrow" | "line" | "text" | "frame" | "annotate";
+/** Per-shape geometry that is not part of the drawing style carried to the next shape. */
+export type ShapeProps = Partial<Pick<Shape, "rotation" | "flipX" | "flipY" | "shadow" | "radius">>;
+
+export type Tool = "select" | "hand" | "connect" | "draw" | "erase" | "rect" | "diamond" | "ellipse" | "arrow" | "line" | "text" | "frame" | "annotate" | "shape";
 
 /** Tools that create by pressing on the canvas (React Flow selection and dragging are off). */
-export const CREATE_TOOLS: ReadonlySet<Tool> = new Set(["draw", "erase", "rect", "diamond", "ellipse", "arrow", "line", "text", "frame", "annotate"]);
-export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set(["rect", "diamond", "ellipse", "arrow", "line", "text", "frame"]);
+export const CREATE_TOOLS: ReadonlySet<Tool> = new Set(["draw", "erase", "rect", "diamond", "ellipse", "arrow", "line", "text", "frame", "annotate", "shape"]);
+export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set(["rect", "diamond", "ellipse", "shape", "arrow", "line", "text", "frame"]);
 
 export type InkSettings = { mode: InkMode; color: string | undefined; size: number };
 
@@ -137,7 +140,15 @@ export type EditorApi = {
   pasteStyle: () => void;
   hasCopiedStyle: boolean;
   /** A shape, text or frame drawn on the canvas (canvas coordinates; a click gives a default size). */
-  addShape: (type: "rect" | "diamond" | "ellipse" | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: Pt) => void;
+  addShape: (type: OutlineType | "text" | "frame", box: { x: number; y: number; w: number; h: number } | null, at: Pt) => void;
+  /** The shape the "Mais formas" tool (S) draws. */
+  shapeType: OutlineType;
+  setShapeType: (t: OutlineType) => void;
+  /** Locks or hides elements (the selection by default); `null` ids = every element (unlock all, show all). */
+  setLocked: (on: boolean, ids?: string[] | null) => void;
+  setHidden: (on: boolean, ids?: string[] | null) => void;
+  /** Rotation, mirroring, shadow and corner radius of the selected shapes. */
+  setShapeProps: (patch: ShapeProps) => void;
   /** The kind and category the annotation tool (N) adds. */
   annotStyle: { type: AnnotationType; category: AnnotationCategory };
   setAnnotStyle: (patch: Partial<{ type: AnnotationType; category: AnnotationCategory }>, opts?: { restyle?: boolean }) => void;

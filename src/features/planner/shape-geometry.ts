@@ -4,7 +4,7 @@
  * that leave from a shape's border, and arrowheads.
  */
 import rough from "roughjs";
-import type { Arrowhead, EdgeStyle, Shape } from "@/domain/plan";
+import type { Arrowhead, EdgeStyle, OutlineType, Shape } from "@/domain/plan";
 
 const gen = rough.generator();
 
@@ -111,8 +111,71 @@ export function dashFor(style: DrawStyle["strokeStyle"], width: number): string 
   return undefined;
 }
 
+/** Joins points into a closed path. */
+const poly = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${f(px)} ${f(py)}`).join(" L")} Z`;
+
+/** A path written in a 0–1 box (absolute commands, x y pairs), scaled to `x,y,w,h`. */
+function unitPath(d: string, x: number, y: number, w: number, h: number): string {
+  let i = 0;
+  return d.replace(/-?\d*\.?\d+/g, (n) => f(i++ % 2 === 0 ? x + Number(n) * w : y + Number(n) * h));
+}
+
+const CLOUD = "M0.25 0.96 C0.07 0.96 -0.01 0.78 0.06 0.64 C-0.02 0.47 0.11 0.29 0.28 0.33 C0.32 0.11 0.56 0.04 0.68 0.2 C0.83 0.11 0.99 0.24 0.95 0.42 C1.03 0.56 1.0 0.86 0.79 0.96 Z";
+
+/** Extra lines drawn over a shape (a cylinder's front rim). */
+export function shapeDetail(type: OutlineType, x: number, y: number, w: number, h: number): string | null {
+  if (type !== "cylinder") return null;
+  const e = Math.min(h * 0.12, w * 0.25);
+  return `M${f(x)} ${f(y + e)} A${f(w / 2)} ${f(e)} 0 0 0 ${f(x + w)} ${f(y + e)}`;
+}
+
+/** The outline of a shape type in a box (previews while drawing). */
+export function outlinePath(type: OutlineType, x: number, y: number, w: number, h: number, round = true): string {
+  return cleanOutline(type, x, y, w, h, round);
+}
+
 /** Clean outline of a shape inside `x,y,w,h`. */
-function cleanOutline(type: "rect" | "diamond" | "ellipse", x: number, y: number, w: number, h: number, round: boolean): string {
+function cleanOutline(type: OutlineType, x: number, y: number, w: number, h: number, round: boolean, radius?: number): string {
+  if (type === "hexagon") {
+    const k = Math.min(w * 0.25, h * 0.5);
+    return poly([[x + k, y], [x + w - k, y], [x + w, y + h / 2], [x + w - k, y + h], [x + k, y + h], [x, y + h / 2]]);
+  }
+  if (type === "parallelogram") {
+    const k = Math.min(w * 0.22, h);
+    return poly([[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]]);
+  }
+  if (type === "triangle") return poly([[x + w / 2, y], [x + w, y + h], [x, y + h]]);
+  if (type === "star") {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const pts: [number, number][] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = i % 2 ? 0.42 : 1;
+      pts.push([cx + Math.cos(a) * (w / 2) * r, cy + Math.sin(a) * (h / 2) * r + h * 0.05]);
+    }
+    return poly(pts);
+  }
+  if (type === "cylinder") {
+    const e = Math.min(h * 0.12, w * 0.25);
+    const rx = w / 2;
+    return `M${f(x)} ${f(y + e)} A${f(rx)} ${f(e)} 0 0 1 ${f(x + w)} ${f(y + e)} V${f(y + h - e)} A${f(rx)} ${f(e)} 0 0 1 ${f(x)} ${f(y + h - e)} Z`;
+  }
+  if (type === "document") {
+    const wv = h * 0.1;
+    return `M${f(x)} ${f(y)} H${f(x + w)} V${f(y + h - wv)} C${f(x + w * 0.72)} ${f(y + h - wv * 2.8)} ${f(x + w * 0.3)} ${f(y + h + wv * 0.9)} ${f(x)} ${f(y + h - wv)} Z`;
+  }
+  if (type === "cloud") return unitPath(CLOUD, x, y, w, h);
+  if (type === "speech") {
+    const bh = h * 0.8;
+    const r = Math.min(radius ?? Math.min(w, bh) * 0.16, w / 2, bh / 2);
+    return [
+      `M${f(x + r)} ${f(y)} H${f(x + w - r)} Q${f(x + w)} ${f(y)} ${f(x + w)} ${f(y + r)}`,
+      `V${f(y + bh - r)} Q${f(x + w)} ${f(y + bh)} ${f(x + w - r)} ${f(y + bh)}`,
+      `H${f(x + w * 0.36)} L${f(x + w * 0.16)} ${f(y + h)} L${f(x + w * 0.2)} ${f(y + bh)}`,
+      `H${f(x + r)} Q${f(x)} ${f(y + bh)} ${f(x)} ${f(y + bh - r)} V${f(y + r)} Q${f(x)} ${f(y)} ${f(x + r)} ${f(y)} Z`,
+    ].join(" ");
+  }
   if (type === "ellipse") {
     const rx = w / 2;
     const ry = h / 2;
@@ -138,9 +201,82 @@ function cleanOutline(type: "rect" | "diamond" | "ellipse", x: number, y: number
       "Z",
     ].join(" ");
   }
-  const r = round ? Math.min(w, h) * 0.12 + 2 : 0;
+  const r = round ? Math.min(radius ?? Math.min(w, h) * 0.12 + 2, w / 2, h / 2) : 0;
   if (!r) return `M${f(x)} ${f(y)} H${f(x + w)} V${f(y + h)} H${f(x)} Z`;
   return `M${f(x + r)} ${f(y)} H${f(x + w - r)} Q${f(x + w)} ${f(y)} ${f(x + w)} ${f(y + r)} V${f(y + h - r)} Q${f(x + w)} ${f(y + h)} ${f(x + w - r)} ${f(y + h)} H${f(x + r)} Q${f(x)} ${f(y + h)} ${f(x)} ${f(y + h - r)} V${f(y + r)} Q${f(x)} ${f(y)} ${f(x + r)} ${f(y)} Z`;
+}
+
+/**
+ * The outline of a shape as a closed polyline (curves sampled), for formats that only know lines
+ * (an Excalidraw export). The last point repeats the first.
+ */
+export function outlinePoints(type: OutlineType, x: number, y: number, w: number, h: number, opts: { round?: boolean; radius?: number } = {}): [number, number][] {
+  if (type === "ellipse" || type === "cylinder") {
+    const pts: [number, number][] = [];
+    const n = 48;
+    if (type === "ellipse") for (let i = 0; i <= n; i++) pts.push([x + w / 2 + (Math.cos((i / n) * 2 * Math.PI) * w) / 2, y + h / 2 + (Math.sin((i / n) * 2 * Math.PI) * h) / 2]);
+    else {
+      const e = Math.min(h * 0.12, w * 0.25);
+      // Top rim (left to right, over the top), then down, bottom rim back, and up.
+      for (let i = 0; i <= n / 2; i++) pts.push([x + w / 2 - (Math.cos((i / (n / 2)) * Math.PI) * w) / 2, y + e - Math.sin((i / (n / 2)) * Math.PI) * e]);
+      for (let i = 0; i <= n / 2; i++) pts.push([x + w / 2 + (Math.cos((i / (n / 2)) * Math.PI) * w) / 2, y + h - e + Math.sin((i / (n / 2)) * Math.PI) * e]);
+      pts.push(pts[0]);
+    }
+    return pts.map(([px, py]) => [r2(px), r2(py)]);
+  }
+  return samplePath(cleanOutline(type, x, y, w, h, opts.round ?? true, opts.radius));
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Points along a path of absolute M, L, H, V, Q, C and Z commands (what the outlines use besides arcs). */
+function samplePath(d: string): [number, number][] {
+  const out: [number, number][] = [];
+  const tokens = d.match(/[MLHVQCZ]|-?\d*\.?\d+(?:e-?\d+)?/gi) ?? [];
+  let i = 0;
+  let cx = 0;
+  let cy = 0;
+  let sx = 0;
+  let sy = 0;
+  const num = () => Number(tokens[i++]);
+  const steps = 10;
+  while (i < tokens.length) {
+    const c = tokens[i++];
+    if (c === "M") {
+      cx = sx = num();
+      cy = sy = num();
+      out.push([cx, cy]);
+    } else if (c === "L") {
+      cx = num();
+      cy = num();
+      out.push([cx, cy]);
+    } else if (c === "H") out.push([(cx = num()), cy]);
+    else if (c === "V") out.push([cx, (cy = num())]);
+    else if (c === "Q") {
+      const [qx, qy, ex, ey] = [num(), num(), num(), num()];
+      for (let k = 1; k <= steps; k++) {
+        const t = k / steps;
+        const u = 1 - t;
+        out.push([u * u * cx + 2 * u * t * qx + t * t * ex, u * u * cy + 2 * u * t * qy + t * t * ey]);
+      }
+      cx = ex;
+      cy = ey;
+    } else if (c === "C") {
+      const [ax, ay, bx, by, ex, ey] = [num(), num(), num(), num(), num(), num()];
+      for (let k = 1; k <= steps; k++) {
+        const t = k / steps;
+        const u = 1 - t;
+        out.push([u * u * u * cx + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * ex, u * u * u * cy + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * ey]);
+      }
+      cx = ex;
+      cy = ey;
+    } else if (c === "Z" || c === "z") {
+      if (cx !== sx || cy !== sy) out.push([sx, sy]);
+      cx = sx;
+      cy = sy;
+    } // anything else (a stray number) is skipped
+  }
+  return out.map(([px, py]) => [r2(px), r2(py)]);
 }
 
 /**
@@ -159,7 +295,7 @@ export function shapePaths(shape: Shape, w: number, h: number, opts: { seed: num
   const ih = Math.max(1, h - pad * 2);
   const dash = dashFor(s.strokeStyle, sw);
   const out: DrawPath[] = [];
-  const outline = cleanOutline(s.type, x, y, iw, ih, s.round);
+  const outline = cleanOutline(s.type, x, y, iw, ih, s.round, shape.radius);
 
   if (s.fill) {
     if (s.fillStyle === "solid" && s.roughness === 0) out.push({ d: outline, fill: s.fill });
@@ -185,6 +321,12 @@ export function shapePaths(shape: Shape, w: number, h: number, opts: { seed: num
     const opt = { seed: opts.seed + 1, roughness: s.roughness, stroke: "#000", strokeWidth: sw, disableMultiStroke: s.strokeStyle !== "solid", preserveVertices: true };
     const drawable = s.type === "ellipse" ? gen.ellipse(x + iw / 2, y + ih / 2, iw, ih, opt) : s.type === "diamond" ? gen.polygon(diamondPts(x, y, iw, ih), opt) : gen.path(outline, opt);
     for (const p of gen.toPaths(drawable)) out.push({ d: p.d, stroke, strokeWidth: sw, dash });
+  }
+  // A cylinder's front rim.
+  const detail = shapeDetail(s.type, x, y, iw, ih);
+  if (detail) {
+    if (s.roughness === 0) out.push({ d: detail, stroke, strokeWidth: sw, dash });
+    else for (const p of gen.toPaths(gen.path(detail, { seed: opts.seed + 2, roughness: s.roughness, stroke: "#000", strokeWidth: sw }))) out.push({ d: p.d, stroke, strokeWidth: sw, dash });
   }
   return out;
 }
@@ -228,19 +370,35 @@ export function floatingEnds(a: Box & { type: "rect" | "diamond" | "ellipse" }, 
   return { start: outlinePoint(a, a.type, cb, gap), end: outlinePoint(b, b.type, ca, gap) };
 }
 
-/** The control point of a gentle curve between two points (bends to the left of the direction). */
-export function curveControl(a: Pt, b: Pt): Pt {
+export const DEFAULT_BEND = 0.22;
+
+/** The control point of a curve between two points (`bend` > 0 bows to the left of the direction). */
+export function curveControl(a: Pt, b: Pt, bend = DEFAULT_BEND): Pt {
   const mx = (a.x + b.x) / 2;
   const my = (a.y + b.y) / 2;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const k = 0.22;
-  return { x: mx - dy * k, y: my + dx * k };
+  return { x: mx - dy * bend, y: my + dx * bend };
+}
+
+/** The point halfway along the curve (where its bend handle sits). */
+export function curveApex(a: Pt, b: Pt, bend = DEFAULT_BEND): Pt {
+  const c = curveControl(a, b, bend);
+  return { x: (a.x + b.x) / 4 + c.x / 2, y: (a.y + b.y) / 4 + c.y / 2 };
+}
+
+/** The bend that puts the curve's middle through `p` (its offset across the line). */
+export function bendThrough(a: Pt, b: Pt, p: Pt): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy || 1;
+  const k = (2 * ((p.x - (a.x + b.x) / 2) * -dy + (p.y - (a.y + b.y) / 2) * dx)) / len2;
+  return Math.max(-3, Math.min(3, Math.round(k * 1000) / 1000));
 }
 
 /** Path of a connection: straight or curved, clean or hand-drawn. */
-export function linkPaths(a: Pt, b: Pt, opts: { curve?: boolean; roughness: number; seed: number; strokeWidth: number }): string[] {
-  const c = curveControl(a, b);
+export function linkPaths(a: Pt, b: Pt, opts: { curve?: boolean; bend?: number; roughness: number; seed: number; strokeWidth: number }): string[] {
+  const c = curveControl(a, b, opts.bend);
   if (opts.roughness === 0) return [opts.curve ? `M${f(a.x)} ${f(a.y)} Q${f(c.x)} ${f(c.y)} ${f(b.x)} ${f(b.y)}` : `M${f(a.x)} ${f(a.y)} L${f(b.x)} ${f(b.y)}`];
   const o = { seed: opts.seed, roughness: opts.roughness, strokeWidth: opts.strokeWidth, stroke: "#000" };
   const d = opts.curve ? gen.curve([[a.x, a.y], [c.x, c.y], [b.x, b.y]], o) : gen.line(a.x, a.y, b.x, b.y, o);
@@ -248,8 +406,8 @@ export function linkPaths(a: Pt, b: Pt, opts: { curve?: boolean; roughness: numb
 }
 
 /** Point and direction (radians, pointing out of the line) at an end of a connection. */
-export function endTangent(a: Pt, b: Pt, curve: boolean, atEnd: boolean): { at: Pt; angle: number } {
-  const from = curve ? curveControl(a, b) : atEnd ? a : b;
+export function endTangent(a: Pt, b: Pt, curve: boolean, atEnd: boolean, bend?: number): { at: Pt; angle: number } {
+  const from = curve ? curveControl(a, b, bend) : atEnd ? a : b;
   const at = atEnd ? b : a;
   return { at, angle: Math.atan2(at.y - from.y, at.x - from.x) };
 }

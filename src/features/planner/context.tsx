@@ -14,6 +14,8 @@ export type PlannerContextValue = {
   commitTitle: (id: string, title: string) => void;
   /** Edge label edited on the canvas (double-click an edge). */
   commitEdgeLabel?: (id: string, label: string) => void;
+  /** Dragging a drawn connection's middle handle: curves it through that point (`null` = straighten). */
+  bendEdge?: (id: string, bend: number | null) => void;
   toggleCollapsed: (id: string) => void;
   childCount: (id: string) => number;
   /** Only node selected (shows the size badge). */

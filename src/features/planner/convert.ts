@@ -2,10 +2,10 @@
  * "Converter em…": turns blocks, notes, texts and drawn shapes into one another, keeping the
  * title, description, links and color. Pure: works on plan documents.
  */
-import type { NodeData, PlanDocument, PlanNode, Shape } from "@/domain/plan";
+import type { NodeData, OutlineType, PlanDocument, PlanNode, Shape } from "@/domain/plan";
 import { DEFAULT_STYLE, measureText } from "./shape-geometry";
 
-export type ConvertTarget = "block" | "note" | "rect" | "ellipse" | "diamond" | "text";
+export type ConvertTarget = "block" | "note" | "text" | OutlineType;
 
 export const CONVERT_TARGETS: { id: ConvertTarget; label: string }[] = [
   { id: "block", label: "Bloco" },
@@ -13,6 +13,14 @@ export const CONVERT_TARGETS: { id: ConvertTarget; label: string }[] = [
   { id: "rect", label: "Retângulo" },
   { id: "ellipse", label: "Elipse" },
   { id: "diamond", label: "Losango" },
+  { id: "hexagon", label: "Hexágono" },
+  { id: "parallelogram", label: "Paralelogramo" },
+  { id: "cylinder", label: "Cilindro" },
+  { id: "document", label: "Documento" },
+  { id: "cloud", label: "Nuvem" },
+  { id: "speech", label: "Balão de fala" },
+  { id: "triangle", label: "Triângulo" },
+  { id: "star", label: "Estrela" },
   { id: "text", label: "Texto" },
 ];
 

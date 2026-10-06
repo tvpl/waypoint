@@ -1,6 +1,6 @@
 "use client";
 import { ContextMenu as CM } from "radix-ui";
-import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Group, Layers, Link2, ListOrdered, ListX, MessageSquarePlus, Paintbrush, Pencil, Replace, SendToBack, SlidersHorizontal, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
+import { ArrowLeftRight, BringToFront, Check, ClipboardPaste, Copy, CopyPlus, Eye, EyeOff, Group, Lock, LockOpen, Layers, Link2, ListOrdered, ListX, MessageSquarePlus, Paintbrush, Pencil, Replace, SendToBack, SlidersHorizontal, SquareMousePointer, Trash2, Ungroup, Workflow } from "lucide-react";
 import { BASE_LAYER_ID } from "@/domain/layers";
 import { EDGE_KINDS, NODE_KINDS, type NodeKind } from "@/domain/plan";
 import { EDGE_APPEARANCE } from "@/domain/canvas-adapter";
@@ -37,6 +37,9 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
   const kindsList = sel.map((n) => convertKind({ kind: n.type as NodeKind, data: n.data }));
   const convertible = sel.length > 0 && kindsList.every(Boolean);
   const kinds = new Set(kindsList);
+  const allLocked = sel.length > 0 && sel.every((n) => n.data.locked);
+  const lockedCount = ed.nodes.filter((n) => n.data.locked).length;
+  const hiddenCount = ed.nodes.filter((n) => n.data.hidden).length;
   // "Mover para camada" (nodes with what is inside them, and selected connections)
   const current = new Set([...ed.selectedNodes.map((n) => n.data._layer ?? BASE_LAYER_ID), ...ed.selectedEdges.map((e) => e.data?.layer ?? BASE_LAYER_ID)]);
   const toLayer =
@@ -154,6 +157,12 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
             )}
             {canArrangeSel && arrange(multi ? "Organizar seleção" : "Organizar interior")}
             {toLayer}
+            <ContextMenuItem onSelect={() => ed.setLocked(!allLocked, sel.map((n) => n.id))} shortcut="⇧⌘L">
+              {allLocked ? <LockOpen /> : <Lock />} {allLocked ? "Destravar" : "Travar"}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => ed.setHidden(true, sel.map((n) => n.id))} shortcut="⇧⌘H">
+              <EyeOff /> Ocultar
+            </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={() => ed.panels.setInspectorOpen(true)} shortcut="I">
               <SlidersHorizontal /> Propriedades
@@ -193,7 +202,7 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
         {target?.type === "pane" && (
           <>
             <CM.Label className={label}>Adicionar aqui</CM.Label>
-            {NODE_KINDS.filter((k) => k !== "ink").map((k) => {
+            {NODE_KINDS.filter((k) => k !== "ink" && k !== "annotation" && k !== "component").map((k) => {
               const Icon = KIND_ICON[k];
               return (
                 <ContextMenuItem key={k} onSelect={() => ed.addNode(k, { at: target.at })}>
@@ -209,6 +218,17 @@ export function CanvasContextMenu({ target, children }: { target: MenuTarget; ch
               <SquareMousePointer /> Selecionar tudo
             </ContextMenuItem>
             {ed.nodes.length > 1 && arrange("Organizar automaticamente", true)}
+            {(lockedCount > 0 || hiddenCount > 0) && <ContextMenuSeparator />}
+            {lockedCount > 0 && (
+              <ContextMenuItem onSelect={() => ed.setLocked(false, null)}>
+                <LockOpen /> Destravar tudo ({lockedCount})
+              </ContextMenuItem>
+            )}
+            {hiddenCount > 0 && (
+              <ContextMenuItem onSelect={() => ed.setHidden(false, null)}>
+                <Eye /> Mostrar ocultos ({hiddenCount})
+              </ContextMenuItem>
+            )}
           </>
         )}
       </ContextMenuContent>

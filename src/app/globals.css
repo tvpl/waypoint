@@ -454,7 +454,7 @@
 /* ------------------------------------------------------------------
    Desktop app (desktop/): the window has no OS title bar, so the page draws one
    (components/shell/title-bar.tsx) and everything else sits below it.
-   Full-height screens use h-app / min-h-app instead of h-app / min-h-app.
+   Full-height screens use h-app / min-h-app instead of h-dvh / min-h-dvh.
 ------------------------------------------------------------------ */
 @utility h-app {
   height: calc(100dvh - var(--titlebar-h, 0px));
@@ -482,8 +482,10 @@
 .wp-desktop.wp-fullscreen .wp-titlebar {
   display: none;
 }
+/* !important: open menus and dialogs lock scrolling by zeroing the body's padding
+   (react-remove-scroll-bar), which would slide the whole page under the title bar. */
 .wp-desktop body {
-  padding-top: var(--titlebar-h);
+  padding-top: var(--titlebar-h) !important;
 }
 /* Full-screen overlays (sheets, presentation) start below the title bar so it stays usable. */
 .wp-desktop .fixed.inset-0 {

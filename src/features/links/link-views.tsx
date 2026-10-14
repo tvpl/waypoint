@@ -1,8 +1,7 @@
 "use client";
 import * as React from "react";
-import { ViewTransition } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { COLUMN_LABEL, groupLinks, type LinkColumn } from "./display";
 import {
   Archive,
   ArchiveRestore,
@@ -10,6 +9,7 @@ import {
   Copy,
   ExternalLink,
   FolderInput,
+  Hash,
   MoreHorizontal,
   PanelRight,
   Pencil,
@@ -20,7 +20,18 @@ import {
   Trash2,
   Waypoints,
 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/menu";
 import { SiteIcon } from "@/components/ui/misc";
 import { cn, timeAgo } from "@/lib/utils";
 import { recordOpen, useLinkOpener } from "./link-opener";
@@ -28,7 +39,7 @@ import { useLibrary, useSelected, useSelectionMode } from "./library-context";
 import { Cover } from "./cover";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { HealthDot, shortUrl } from "./health";
-import type { LinkItem, SortMode, ViewMode } from "./types";
+import type { LinkItem, ViewMode } from "./types";
 import { normalizeText } from "@/domain/link-query";
 import { useFlip } from "@/lib/use-flip";
 import { tagTint } from "./collection-style";
@@ -87,7 +98,7 @@ function useLinkHandlers(link: LinkItem) {
   const lib = useLibrary();
   const opener = useLinkOpener();
   const onClick = (e: React.MouseEvent) => {
-    if (lib.canEdit && (lib.selection.get().size > 0 || e.shiftKey)) {
+    if (lib.canEdit && e.shiftKey) {
       e.preventDefault();
       lib.toggleSelect(link.id, { range: e.shiftKey });
       return;
@@ -213,7 +224,8 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
     },
     onDragOver: (e: React.DragEvent) => {
       const d = getDrag();
-      if (!lib.reorderable || d?.kind !== "links" || d.ids.length !== 1 || d.ids[0] === link.id) return;
+      if (!lib.reorderable || d?.kind !== "links" || d.ids.includes(link.id))
+        return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       setPos(dropPosition(e, axis, false) as "before" | "after");
@@ -222,9 +234,14 @@ function useLinkDnd(link: LinkItem, axis: "x" | "y") {
     onDrop: (e: React.DragEvent) => {
       const d = getDrag();
       setPos(null);
-      if (!lib.reorderable || d?.kind !== "links" || d.ids.length !== 1) return;
+      if (!lib.reorderable || d?.kind !== "links" || d.ids.includes(link.id))
+        return;
       e.preventDefault();
-      lib.dropOnLink(d.ids, link.id, dropPosition(e, axis, false) as "before" | "after");
+      lib.dropOnLink(
+        d.ids,
+        link.id,
+        dropPosition(e, axis, false) as "before" | "after",
+      );
     },
   };
   return { props, pos, dragging };
@@ -255,80 +272,171 @@ function Checkbox({ link, className }: { link: LinkItem; className?: string }) {
   );
 }
 
-export function LinkMenu({ link, trigger, align = "end" }: { link: LinkItem; trigger: React.ReactNode; align?: "start" | "end" }) {
+function LinkActions({
+  link,
+  Item,
+  Separator,
+}: {
+  link: LinkItem;
+  Item: typeof DropdownMenuItem | typeof ContextMenuItem;
+  Separator: typeof DropdownMenuSeparator | typeof ContextMenuSeparator;
+}) {
   const lib = useLibrary();
   const opener = useLinkOpener();
+  const selection = React.useSyncExternalStore(
+    lib.selection.subscribe,
+    lib.selection.get,
+    lib.selection.get,
+  );
+  const ids = selection.has(link.id) ? [...selection] : [link.id];
+  const multiple = ids.length > 1;
+  const label = (single: string, plural: string) =>
+    multiple ? `${plural} ${ids.length} links` : single;
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align={align}>
-        <DropdownMenuItem onSelect={() => opener.openInApp(link)}>
-          <PanelRight />
-          Abrir no app
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => opener.openNewTab(link)}>
-          <ExternalLink />
-          Abrir em nova aba
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={async () => {
-            try {
-              await navigator.clipboard.writeText(link.url);
-              toast.success("URL copiada");
-            } catch {
-              toast.error("Não foi possível copiar.");
-            }
-          }}
-        >
-          <Copy />
-          Copiar URL
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => lib.star(link)}>
-          <Star />
-          {link.starred ? "Remover estrela" : "Marcar com estrela"}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => lib.pin(link)}>
+    <>
+      {multiple && (
+        <div className="px-2.5 py-1.5 text-caption font-semibold text-muted">
+          {ids.length} links selecionados
+        </div>
+      )}
+      {!multiple && (
+        <>
+          <Item shortcut="O" onSelect={() => opener.openNewTab(link)}>
+            <ExternalLink />
+            Abrir no navegador
+          </Item>
+          <Item onSelect={() => lib.inspect(link)}>
+            <PanelRight />
+            Detalhes e prévia
+          </Item>
+        </>
+      )}
+      <Item onSelect={() => lib.copyUrls(ids)}>
+        <Copy />
+        {label("Copiar URL", "Copiar URLs de")}
+      </Item>
+      <Separator />
+      <Item
+        shortcut="S"
+        onSelect={() => (multiple ? lib.bulkStar(ids, true) : lib.star(link))}
+      >
+        <Star />
+        {multiple
+          ? "Marcar selecionados com estrela"
+          : link.starred
+            ? "Remover estrela"
+            : "Marcar com estrela"}
+      </Item>
+      {!multiple && (
+        <Item shortcut="P" onSelect={() => lib.pin(link)}>
           {link.pinned ? <PinOff /> : <Pin />}
           {link.pinned ? "Tirar do acesso rápido" : "Fixar no acesso rápido"}
-        </DropdownMenuItem>
-        {lib.canEdit && (
-          <>
-            <DropdownMenuSeparator />
-            {link.healthStatus === "redirect" && link.healthFinalUrl && (
-              <DropdownMenuItem onSelect={() => lib.applyRedirect(link)} title={link.healthFinalUrl}>
-                <Waypoints />
-                <span className="flex min-w-0 flex-col">
-                  <span>Atualizar para a nova URL</span>
-                  <span className="max-w-[220px] truncate font-mono text-caption text-muted">{shortUrl(link.healthFinalUrl, 40)}</span>
-                </span>
-              </DropdownMenuItem>
-            )}
-            {!link.archived && (
-              <DropdownMenuItem onSelect={() => lib.checkLinks([link.id])}>
-                <ShieldCheck />
-                Verificar link
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onSelect={() => lib.edit(link)}>
+        </Item>
+      )}
+      {lib.canEdit && (
+        <>
+          <Separator />
+          {!multiple && (
+            <Item shortcut="E" onSelect={() => lib.edit(link)}>
               <Pencil />
-              Editar
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => lib.move([link.id])}>
-              <FolderInput />
-              Mover para…
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => lib.archive([link.id], !link.archived)}>
-              {link.archived ? <ArchiveRestore /> : <Archive />}
-              {link.archived ? "Restaurar" : "Arquivar"}
-            </DropdownMenuItem>
-            <DropdownMenuItem danger onSelect={() => lib.remove([link.id])}>
-              <Trash2 />
-              Excluir
-            </DropdownMenuItem>
-          </>
-        )}
+              Editar detalhes
+            </Item>
+          )}
+          <Item shortcut="M" onSelect={() => lib.move(ids)}>
+            <FolderInput />
+            {label("Mover para…", "Mover")}
+          </Item>
+          <Item onSelect={() => lib.addTags(ids)}>
+            <Hash />
+            {label("Organizar tags…", "Organizar tags de")}
+          </Item>
+          {!multiple &&
+            link.healthStatus === "redirect" &&
+            link.healthFinalUrl && (
+              <Item onSelect={() => lib.applyRedirect(link)}>
+                <Waypoints />
+                Atualizar para a nova URL
+              </Item>
+            )}
+          {!link.archived && (
+            <Item onSelect={() => lib.checkLinks(ids)}>
+              <ShieldCheck />
+              {label("Verificar link", "Verificar")}
+            </Item>
+          )}
+          <Separator />
+          <Item
+            shortcut="Delete"
+            onSelect={() => lib.archive(ids, !lib.archivedScope)}
+          >
+            {lib.archivedScope ? <ArchiveRestore /> : <Archive />}
+            {label(
+              lib.archivedScope ? "Restaurar" : "Arquivar",
+              lib.archivedScope ? "Restaurar" : "Arquivar",
+            )}
+          </Item>
+          <Item danger onSelect={() => lib.remove(ids)}>
+            <Trash2 />
+            {label("Excluir", "Excluir")}
+          </Item>
+        </>
+      )}
+    </>
+  );
+}
+function selectMenuTarget(lib: ReturnType<typeof useLibrary>, link: LinkItem) {
+  if (lib.canEdit && !lib.selection.get().has(link.id))
+    lib.selection.set(new Set([link.id]));
+}
+export function LinkMenu({
+  link,
+  trigger,
+  align = "end",
+}: {
+  link: LinkItem;
+  trigger: React.ReactNode;
+  align?: "start" | "end";
+}) {
+  const lib = useLibrary();
+  return (
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(open) => open && selectMenuTarget(lib, link)}
+    >
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent align={align}>
+        <LinkActions
+          link={link}
+          Item={DropdownMenuItem}
+          Separator={DropdownMenuSeparator}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+function LinkContext({
+  link,
+  children,
+}: {
+  link: LinkItem;
+  children: React.ReactNode;
+}) {
+  const lib = useLibrary();
+  return (
+    <ContextMenu onOpenChange={(open) => open && selectMenuTarget(lib, link)}>
+      <ContextMenuTrigger asChild>
+        <div className="contents" onContextMenu={(e) => e.stopPropagation()}>
+          {children}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <LinkActions
+          link={link}
+          Item={ContextMenuItem}
+          Separator={ContextMenuSeparator}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -406,13 +514,38 @@ function LinkCard({ link }: { link: LinkItem }) {
         dnd.dragging && "opacity-50",
       )}
     >
-      {dnd.pos && <span aria-hidden className={cn("absolute bottom-2 top-2 z-20 w-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-left-[10px]" : "-right-[10px]")} />}
-      <div className="relative h-[112px] overflow-hidden rounded-t-[13px]">
-        <Cover link={link} />
-      </div>
-      <div className="flex flex-col gap-2 px-4 pb-4 pt-3.5">
+      {dnd.pos && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute bottom-2 top-2 z-20 w-[3px] rounded-full bg-accent",
+            dnd.pos === "before" ? "-left-[10px]" : "-right-[10px]",
+          )}
+        />
+      )}
+      {lib.display.covers && link.coverImage && (
+        <div
+          className={cn(
+            "relative overflow-hidden rounded-t-[13px]",
+            lib.display.density === "dense" ? "h-20" : "h-[112px]",
+          )}
+        >
+          <Cover link={link} />
+        </div>
+      )}
+      <div
+        className={cn(
+          "flex flex-col gap-2",
+          lib.display.density === "dense" ? "p-3" : "p-4",
+          (!lib.display.covers || !link.coverImage) && "pt-12",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2">
-          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={18} />
+          <SiteIcon
+            src={link.icon || link.favicon}
+            label={link.domain || link.title}
+            size={18}
+          />
           <a
             href={link.url}
             target="_blank"
@@ -421,16 +554,21 @@ function LinkCard({ link }: { link: LinkItem }) {
             onClick={onClick}
             onAuxClick={onAuxClick}
             data-link-primary={link.id}
-            className="min-w-0 truncate text-lead font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
+            className="min-w-0 line-clamp-2 text-lead font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
           >
             <Highlight text={link.title} terms={lib.highlight} />
           </a>
         </div>
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
+          <span className="truncate font-mono text-xs text-muted">
+            {link.domain}
+          </span>
           <HealthDot link={link} />
         </span>
-        <Summary link={link} className="line-clamp-2 text-body leading-[19px] text-ink-2" />
+        <Summary
+          link={link}
+          className="line-clamp-2 text-body leading-[19px] text-ink-2"
+        />
         {link.tags.length > 0 && (
           <div className="mt-0.5 flex flex-wrap gap-1.5">
             <Tags link={link} max={4} />
@@ -442,11 +580,20 @@ function LinkCard({ link }: { link: LinkItem }) {
       </div>
       {link.starred && (
         <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex pointer-coarse:hidden h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface/95 shadow-thumb transition-opacity group-focus-within:opacity-0 group-hover:opacity-0">
-          <Star className="size-[15px] fill-amber-ink text-amber-ink" aria-label="Favorito" />
+          <Star
+            className="size-[15px] fill-amber-ink text-amber-ink"
+            aria-label="Favorito"
+          />
         </span>
       )}
       <div className="absolute right-2.5 top-2.5 z-10 flex gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
-        <button type="button" aria-label="Abrir no app" title="Abrir no app" className={cn(floatBtn, "pointer-coarse:hidden")} onClick={() => opener.openInApp(link)}>
+        <button
+          type="button"
+          aria-label="Abrir no app"
+          title="Abrir no app"
+          className={cn(floatBtn, "pointer-coarse:hidden")}
+          onClick={() => opener.openInApp(link)}
+        >
           <PanelRight />
         </button>
         <a
@@ -491,16 +638,35 @@ function CompactRow({ link }: { link: LinkItem }) {
       {...dnd.props}
       {...touch.props}
       className={cn(
-        "group relative flex items-center gap-3 rounded-control border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2",
-        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]", touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
+        "group relative flex items-center gap-3 rounded-control border bg-surface px-3 transition-colors hover:bg-surface-2",
+        lib.display.density === "dense" ? "py-1.5" : "py-3",
+        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]",
+        touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
         selected ? "border-accent ring-2 ring-accent/25" : "border-line",
         dnd.dragging && "opacity-50",
       )}
     >
       <SwipeUnderlay dx={touch.dx} link={link} canArchive={lib.canEdit} />
-      {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[6px]" : "-bottom-[6px]")} />}
+      {dnd.pos && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent",
+            dnd.pos === "before" ? "-top-[6px]" : "-bottom-[6px]",
+          )}
+        />
+      )}
       <span className="relative inline-flex">
-        <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={32} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
+        <SiteIcon
+          src={link.icon || link.favicon}
+          label={link.domain || link.title}
+          size={32}
+          className={cn(
+            "transition-opacity",
+            (selected || selectionMode) && "opacity-0",
+            lib.canEdit && "group-hover:opacity-30",
+          )}
+        />
         <span className="absolute inset-0 flex items-center justify-center">
           <Checkbox link={link} />
         </span>
@@ -522,7 +688,9 @@ function CompactRow({ link }: { link: LinkItem }) {
           <HealthDot link={link} />
         </span>
         <Summary link={link} className="truncate text-xs text-muted" />
-        {lib.summaryFor(link) === "hidden" || !link.description ? <span className="truncate font-mono text-caption text-muted">{link.domain}</span> : null}
+        <span className="truncate font-mono text-caption text-muted">
+          {link.domain}
+        </span>
       </div>
       <div className="hidden shrink-0 gap-1.5 xl:flex">
         <Tags link={link} max={2} />
@@ -530,12 +698,23 @@ function CompactRow({ link }: { link: LinkItem }) {
       <div className="relative z-10 flex shrink-0 items-center">
         <StarButton
           link={link}
-          className={cn(rowIconBtn, !link.starred && "opacity-0 focus-visible:opacity-100 group-hover:opacity-100")}
+          className={cn(
+            rowIconBtn,
+            !link.starred &&
+              "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+          )}
         />
         <LinkMenu
           link={link}
           trigger={
-            <button type="button" aria-label="Mais ações" className={cn(rowIconBtn, "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100")}>
+            <button
+              type="button"
+              aria-label="Mais ações"
+              className={cn(
+                rowIconBtn,
+                "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100",
+              )}
+            >
               <MoreHorizontal />
             </button>
           }
@@ -558,17 +737,11 @@ function CompactRow({ link }: { link: LinkItem }) {
 
 // ------------------------------------------------------------------ list
 
-/** Sorts based on this user's opens show "last opened" in the date column instead of "added". */
-const byOpen = (s: SortMode) => s === "visited" || s === "opened" || s === "foryou";
-
-const listCols = "grid grid-cols-[minmax(0,1fr)_108px] gap-3 md:grid-cols-[minmax(0,2.4fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_130px] md:gap-4";
-
 function ListRow({ link }: { link: LinkItem }) {
   const { onClick, onAuxClick, lib } = useLinkHandlers(link);
   const dnd = useLinkDnd(link, "y");
   const touch = useTouchGestures(link, { swipe: true });
   const selected = useSelected(link.id);
-  const selectionMode = useSelectionMode();
   return (
     <div
       role="row"
@@ -576,141 +749,285 @@ function ListRow({ link }: { link: LinkItem }) {
       {...dnd.props}
       {...touch.props}
       className={cn(
-        listCols,
-        "group relative min-h-[52px] items-center border-b border-line px-3 py-1.5 text-body last:border-b-0 hover:bg-surface-2 md:px-4",
-        "[&>*:not([data-underlay])]:[translate:var(--swipe,0px)_0] [-webkit-touch-callout:none]", touch.dx === 0 && "[&>*]:transition-[translate] [&>*]:duration-200",
-        selected && "bg-accent-soft/60 hover:bg-accent-soft/80",
+        "group relative grid grid-cols-subgrid items-center gap-3 border-b border-line px-3 text-body last:border-0 hover:bg-surface-2",
+        lib.display.density === "dense" ? "min-h-10 py-1" : "min-h-14 py-2",
+        selected && "bg-accent-soft",
         dnd.dragging && "opacity-50",
       )}
+      style={{ gridColumn: "1 / -1" }}
     >
-      <SwipeUnderlay dx={touch.dx} link={link} canArchive={lib.canEdit} />
-      {dnd.pos && <span aria-hidden className={cn("absolute left-2 right-2 z-20 h-[3px] rounded-full bg-accent", dnd.pos === "before" ? "-top-[2px]" : "-bottom-[2px]")} />}
-      <span role="cell" className="flex min-w-0 items-center gap-3">
-        <span className="relative inline-flex">
-          <SiteIcon src={link.icon || link.favicon} label={link.domain || link.title} size={26} className={cn("transition-opacity", (selected || selectionMode) && "opacity-0", lib.canEdit && "group-hover:opacity-30")} />
-          <span className="absolute inset-0 flex items-center justify-center">
-            <Checkbox link={link} />
-          </span>
+      {dnd.pos && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute inset-x-2 h-[3px] bg-accent",
+            dnd.pos === "before" ? "top-0" : "bottom-0",
+          )}
+        />
+      )}
+      <span role="cell" className="flex min-w-0 items-center gap-2">
+        <Checkbox link={link} />
+        <SiteIcon
+          src={link.icon || link.favicon}
+          label={link.domain || link.title}
+          size={24}
+        />
+        <span className="min-w-0 flex-1">
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            draggable={false}
+            onClick={onClick}
+            onAuxClick={onAuxClick}
+            data-link-primary={link.id}
+            className="block truncate font-medium outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Highlight text={link.title} terms={lib.highlight} />
+          </a>
+          {lib.display.density !== "dense" && (
+            <Summary link={link} className="truncate text-caption text-muted" />
+          )}
         </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="flex min-w-0 items-baseline gap-2">
-            <a
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              draggable={false}
-              onClick={onClick}
-              onAuxClick={onAuxClick}
-              data-link-primary={link.id}
-              className="truncate font-medium text-ink outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-accent"
-            >
-              <Highlight text={link.title} terms={lib.highlight} />
-            </a>
-            <span className="hidden shrink truncate font-mono text-xs text-muted lg:inline">{link.domain}</span>
-            <HealthDot link={link} className="self-center" />
-            {link.starred && <Star className="size-3 shrink-0 fill-amber-ink text-amber-ink" aria-label="Favorito" />}
-          </span>
-          <Summary link={link} className="truncate text-xs text-muted" />
-        </span>
-      </span>
-      <span role="cell" className="min-w-0 truncate text-ink-2 max-md:hidden">
-        {link.collectionId ? (
-          <Link href={`/links?c=${link.collectionId}`} className="relative z-10 hover:text-accent-ink hover:underline">
-            {link.collectionName}
-          </Link>
-        ) : (
-          <span className="text-muted">—</span>
+        <HealthDot link={link} />
+        {link.starred && (
+          <Star
+            className="size-3 shrink-0 fill-amber-ink text-amber-ink"
+            aria-label="Favorito"
+          />
         )}
       </span>
-      <span role="cell" className="flex min-w-0 gap-1.5 overflow-hidden max-md:hidden">
-        <Tags link={link} max={3} />
-      </span>
-      <span role="cell" className="flex items-center justify-between gap-2 text-muted">
-        <span suppressHydrationWarning className="whitespace-nowrap">
-          {byOpen(lib.sort) ? (link.myLastOpenedAt ? timeAgo(link.myLastOpenedAt) : "nunca") : timeAgo(link.createdAt)}
+      {lib.display.columns.map((column) => (
+        <span
+          key={column}
+          role="cell"
+          className="min-w-0 truncate text-body text-muted"
+        >
+          {column === "domain" ? (
+            link.domain
+          ) : column === "collection" ? (
+            link.collectionId ? (
+              <Link
+                href={`/links?c=${link.collectionId}`}
+                className="hover:text-accent-ink"
+              >
+                {link.collectionName}
+              </Link>
+            ) : (
+              "Sem coleção"
+            )
+          ) : column === "tags" ? (
+            <span className="flex gap-1 overflow-hidden">
+              <Tags link={link} max={3} />
+            </span>
+          ) : (
+            <span suppressHydrationWarning>
+              {column === "visited"
+                ? link.myLastOpenedAt
+                  ? timeAgo(link.myLastOpenedAt)
+                  : "Nunca"
+                : timeAgo(link.createdAt)}
+            </span>
+          )}
         </span>
-        <span className="relative z-10 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100">
-          <LinkMenu
-            link={link}
-            trigger={
-              <button type="button" aria-label="Mais ações" className={rowIconBtn}>
-                <MoreHorizontal />
-              </button>
-            }
-          />
-        </span>
+      ))}
+      <span role="cell">
+        <LinkMenu
+          link={link}
+          trigger={
+            <button
+              type="button"
+              aria-label="Mais ações"
+              className={rowIconBtn}
+            >
+              <MoreHorizontal />
+            </button>
+          }
+        />
       </span>
     </div>
   );
 }
-
 function ListView({ links }: { links: LinkItem[] }) {
   const lib = useLibrary();
-  const head = (label: string, sort?: "title" | "recent" | "visited") =>
-    sort ? (
-      <button
-        type="button"
-        onClick={() => lib.sortBy(sort)}
-        className={cn("inline-flex items-center gap-1 text-left hover:text-ink", lib.sort === sort && "text-ink")}
-        aria-label={`Ordenar por ${label}`}
-      >
-        {label}
-        <ArrowDownUp className={cn("size-3", lib.sort === sort ? "opacity-100" : "opacity-40")} aria-hidden />
-      </button>
-    ) : (
-      label
-    );
+  const columns = ["title", ...lib.display.columns] as const;
+  const resize = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    column: (typeof columns)[number],
+  ) => {
+    const el = event.currentTarget;
+    const start = event.clientX;
+    const width = el.parentElement?.getBoundingClientRect().width ?? 180;
+    el.setPointerCapture(event.pointerId);
+    const move = (e: PointerEvent) =>
+      lib.updateDisplay({
+        widths: {
+          ...lib.display.widths,
+          [column]: Math.max(90, Math.min(600, width + e.clientX - start)),
+        },
+      });
+    const end = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", end);
+      el.removeEventListener("pointercancel", end);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  };
   return (
-    <div role="table" aria-label="Links" className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface">
-      <div role="row" className={cn(listCols, "h-[38px] items-center border-b border-line bg-surface-2 px-3 text-xs font-medium text-muted md:px-4")}>
-        <span role="columnheader">{head("Nome", "title")}</span>
-        <span role="columnheader" className="max-md:hidden">Coleção</span>
-        <span role="columnheader" className="max-md:hidden">Tags</span>
-        <span role="columnheader">{byOpen(lib.sort) ? head("Aberto", "visited") : head("Adicionado", "recent")}</span>
+    <div className="scrollbar-thin overflow-x-auto rounded-xl border border-line bg-surface">
+      <div
+        role="table"
+        aria-label="Links"
+        className="grid gap-x-3"
+        style={{
+          gridTemplateColumns:
+            columns
+              .map((c) =>
+                lib.display.widths[c]
+                  ? `${lib.display.widths[c]}px`
+                  : c === "title"
+                    ? "minmax(260px, 2fr)"
+                    : "minmax(120px, 1fr)",
+              )
+              .join(" ") + " 36px",
+          minWidth: 300 + lib.display.columns.length * 132,
+        }}
+      >
+        <div
+          role="row"
+          className="sticky top-0 z-10 grid grid-cols-subgrid items-center border-b border-line bg-surface-2 px-3 text-caption font-medium text-muted"
+          style={{ gridColumn: "1 / -1" }}
+        >
+          {columns.map((column) => (
+            <span
+              key={column}
+              role="columnheader"
+              className="relative flex h-10 min-w-0 items-center pr-3"
+            >
+              <button
+                type="button"
+                className="truncate text-left hover:text-ink"
+                disabled={
+                  column !== "title" &&
+                  column !== "created" &&
+                  column !== "visited"
+                }
+                onClick={() =>
+                  lib.sortBy(
+                    column === "title"
+                      ? "title"
+                      : column === "visited"
+                        ? "visited"
+                        : "recent",
+                  )
+                }
+              >
+                {column === "title" ? "Título" : COLUMN_LABEL[column]}
+              </button>
+              <button
+                type="button"
+                aria-label={`Ajustar largura de ${column === "title" ? "Título" : COLUMN_LABEL[column]}`}
+                className="absolute -right-1 inset-y-2 w-2 cursor-col-resize touch-none border-r border-line-2 hover:border-accent"
+                onPointerDown={(e) => resize(e, column)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    e.preventDefault();
+                    lib.updateDisplay({
+                      widths: {
+                        ...lib.display.widths,
+                        [column]: Math.max(
+                          90,
+                          Math.min(
+                            600,
+                            (lib.display.widths[column] ?? e.currentTarget.parentElement?.getBoundingClientRect().width ?? 180) +
+                              (e.key === "ArrowRight" ? 20 : -20),
+                          ),
+                        ),
+                      },
+                    });
+                  }
+                }}
+              />
+            </span>
+          ))}
+          <span role="columnheader" className="sr-only">
+            Ações
+          </span>
+        </div>
+        {links.map((link) => (
+          <LinkContext key={link.id} link={link}>
+            <ListRow link={link} />
+          </LinkContext>
+        ))}
       </div>
-      {links.map((l) => (
-        <ListRow key={l.id} link={l} />
-      ))}
     </div>
   );
 }
 
-export function LinkViews({ links, view }: { links: LinkItem[]; view: ViewMode }) {
+export function LinkViews({
+  links,
+  view,
+}: {
+  links: LinkItem[];
+  view: ViewMode;
+}) {
+  const lib = useLibrary();
   const ref = React.useRef<HTMLDivElement>(null);
   useFlip(ref, links, view);
-  return (
-    // Switching views crossfades (the toggle navigates inside a transition).
-    <ViewTransition key={view} enter="wp-vt-fade" exit="wp-vt-fade" default="none">
-      <div ref={ref}>
-        {view === "list" ? (
-          <ListView links={links} />
-        ) : view === "compact" ? (
-          <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
-            {links.map((l, i) => (
-              <Stagger key={l.id} i={i}>
-                <CompactRow link={l} />
-              </Stagger>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(232px,1fr))]">
-            {links.map((l, i) => (
-              <Stagger key={l.id} i={i}>
-                <LinkCard link={l} />
-              </Stagger>
-            ))}
-          </div>
-        )}
-      </div>
-    </ViewTransition>
+  const groups = React.useMemo(
+    () => groupLinks(links, lib.display.group),
+    [links, lib.display.group],
   );
-}
-
-/** Items rise in, a beat apart, the first time they mount (first rows only). */
-function Stagger({ i, children }: { i: number; children: React.ReactElement<{ className?: string }> }) {
   return (
-    <div className="flex animate-stagger flex-col [&>*]:flex-1" style={{ animationDelay: `${Math.min(i, 14) * 22}ms` }}>
-      {children}
+    <div
+      ref={ref}
+      className={cn(
+        "flex flex-col gap-5",
+        lib.display.density === "dense" && "wp-links-dense",
+      )}
+    >
+      {groups.map((group) => (
+        <section
+          key={group.key}
+          className="flex flex-col gap-3"
+          aria-label={group.label || undefined}
+        >
+          {group.label && (
+            <h2 className="flex items-center gap-2 text-body font-semibold">
+              {group.label}
+              <span className="rounded-full bg-subtle px-2 py-0.5 text-caption text-muted">
+                {group.links.length}
+              </span>
+            </h2>
+          )}
+          {view === "list" ? (
+            <ListView links={group.links} />
+          ) : (
+            <div
+              className={cn(
+                "grid",
+                view === "compact"
+                  ? "grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2"
+                  : lib.display.density === "dense"
+                    ? "grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]"
+                    : "grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]",
+              )}
+            >
+              {group.links.map((link) => (
+                <LinkContext key={link.id} link={link}>
+                  {view === "compact" ? (
+                    <CompactRow link={link} />
+                  ) : (
+                    <LinkCard link={link} />
+                  )}
+                </LinkContext>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }

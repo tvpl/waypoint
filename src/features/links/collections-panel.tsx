@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   FolderMinus,
+  FolderInput,
   FolderPlus,
   Inbox,
   LayoutGrid,
@@ -55,6 +56,7 @@ export type PanelHandlers = {
   togglePin: (node: TreeNode) => void;
   archive: (node: TreeNode) => void;
   remove: (node: TreeNode) => void;
+  chooseCollectionDestination: (node: TreeNode) => void;
   moveCollection: (id: string, parentId: string | null, index?: number) => void;
   moveLinks: (ids: string[], collectionId: string | null) => void;
   tagHref: (tag: string) => string;
@@ -411,14 +413,35 @@ type RowProps = {
 };
 
 function TreeRow(props: RowProps) {
-  const { node, depth, siblings, tree, currentId, expanded, toggle, renaming, setRenaming, pinned, canEdit, handlers } = props;
+  const {
+    node,
+    depth,
+    siblings,
+    tree,
+    currentId,
+    expanded,
+    toggle,
+    renaming,
+    setRenaming,
+    pinned,
+    canEdit,
+    handlers,
+  } = props;
   const on = node.id === currentId;
   const open = expanded.has(node.id);
   const hasChildren = node.children.length > 0;
-  const [drop, setDrop] = React.useState<"before" | "after" | "inside" | null>(null);
+  const [drop, setDrop] = React.useState<"before" | "after" | "inside" | null>(
+    null,
+  );
   const [dragging, setDragging] = React.useState(false);
   const hoverTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  React.useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
   const clearHover = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = null;
@@ -437,7 +460,8 @@ function TreeRow(props: RowProps) {
       e.dataTransfer.dropEffect = "move";
       setDrop("inside");
     }
-    if (hasChildren && !open && !hoverTimer.current) hoverTimer.current = setTimeout(() => toggle(node.id, true), 650);
+    if (hasChildren && !open && !hoverTimer.current)
+      hoverTimer.current = setTimeout(() => toggle(node.id, true), 650);
   };
   const onDrop = (e: React.DragEvent) => {
     const d = getDrag();
@@ -454,10 +478,17 @@ function TreeRow(props: RowProps) {
     }
     const rest = siblings.filter((s) => s.id !== d.id);
     const idx = rest.findIndex((s) => s.id === node.id);
-    handlers.moveCollection(d.id, node.parentId, pos === "before" ? idx : idx + 1);
+    handlers.moveCollection(
+      d.id,
+      node.parentId,
+      pos === "before" ? idx : idx + 1,
+    );
   };
 
-  const items = (Item: typeof ContextMenuItem | typeof DropdownMenuItem, Sep: () => React.ReactNode) => (
+  const items = (
+    Item: typeof ContextMenuItem | typeof DropdownMenuItem,
+    Sep: () => React.ReactNode,
+  ) => (
     <>
       {canEdit && (
         <>
@@ -468,6 +499,10 @@ function TreeRow(props: RowProps) {
           <Item onSelect={() => setTimeout(() => setRenaming(node.id), 0)}>
             <Type />
             Renomear
+          </Item>
+          <Item onSelect={() => handlers.chooseCollectionDestination(node)}>
+            <FolderInput />
+            Mover para…
           </Item>
           <Item onSelect={() => handlers.edit(node)}>
             <Pencil />
@@ -504,14 +539,24 @@ function TreeRow(props: RowProps) {
   );
 
   return (
-    <li role="treeitem" aria-expanded={hasChildren ? open : undefined} aria-selected={on} aria-level={depth + 1} className="relative">
+    <li
+      role="treeitem"
+      aria-expanded={hasChildren ? open : undefined}
+      aria-selected={on}
+      aria-level={depth + 1}
+      className="relative"
+    >
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
             draggable={canEdit && renaming !== node.id}
             onDragStart={(e) => {
               e.stopPropagation();
-              startDrag(e, { kind: "collection", id: node.id }, { label: node.name });
+              startDrag(
+                e,
+                { kind: "collection", id: node.id },
+                { label: node.name },
+              );
               setDragging(true);
             }}
             onDragEnd={() => {
@@ -527,21 +572,50 @@ function TreeRow(props: RowProps) {
             style={{ paddingLeft: 6 + depth * 16 }}
             className={cn(
               rowBase,
-              on ? "bg-accent-soft font-semibold text-accent-ink" : "text-ink hover:bg-hover",
+              on
+                ? "bg-accent-soft font-semibold text-accent-ink"
+                : "text-ink hover:bg-hover",
               drop === "inside" && "bg-accent-soft ring-2 ring-accent",
               dragging && "opacity-50",
             )}
           >
-            {drop === "before" && <span aria-hidden className="absolute -top-px left-2 right-2 h-[2px] rounded bg-accent" />}
-            {drop === "after" && <span aria-hidden className="absolute -bottom-px left-2 right-2 h-[2px] rounded bg-accent" />}
+            {drop === "inside" && getDrag()?.kind === "links" && (
+              <span
+                role="status"
+                className="pointer-events-none absolute left-full z-30 ml-2 whitespace-nowrap rounded-control border border-accent-line bg-accent-soft px-3 py-2 text-caption text-accent-ink"
+              >
+                Mover{" "}
+                {(getDrag() as { kind: "links"; ids: string[] }).ids.length}{" "}
+                links para {node.name}
+              </span>
+            )}
+            {drop === "before" && (
+              <span
+                aria-hidden
+                className="absolute -top-px left-2 right-2 h-[2px] rounded bg-accent"
+              />
+            )}
+            {drop === "after" && (
+              <span
+                aria-hidden
+                className="absolute -bottom-px left-2 right-2 h-[2px] rounded bg-accent"
+              />
+            )}
             {hasChildren ? (
               <button
                 type="button"
-                aria-label={open ? `Recolher ${node.name}` : `Expandir ${node.name}`}
+                aria-label={
+                  open ? `Recolher ${node.name}` : `Expandir ${node.name}`
+                }
                 onClick={() => toggle(node.id)}
                 className="relative z-10 -ml-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-subtle hover:text-ink"
               >
-                <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+                <ChevronRight
+                  className={cn(
+                    "size-3.5 transition-transform",
+                    open && "rotate-90",
+                  )}
+                />
               </button>
             ) : (
               <span className="w-[18px] shrink-0" />
@@ -562,7 +636,9 @@ function TreeRow(props: RowProps) {
                 aria-current={on ? "page" : undefined}
                 data-tree-id={node.id}
                 data-tree-parent={node.parentId ?? ""}
-                data-tree-state={hasChildren ? (open ? "open" : "closed") : "leaf"}
+                data-tree-state={
+                  hasChildren ? (open ? "open" : "closed") : "leaf"
+                }
                 className="min-w-0 flex-1 truncate outline-none after:absolute after:inset-0 after:rounded-chip after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-accent"
                 onDoubleClick={(e) => {
                   if (!canEdit) return;
@@ -573,9 +649,21 @@ function TreeRow(props: RowProps) {
                 {node.name}
               </Link>
             )}
-            {node.visibility === "private" && <Lock className="size-3 shrink-0 text-muted" aria-label="Privada" />}
-            {(node.visibility === "link" || node.visibility === "public") && <Link2 className="size-3 shrink-0 text-muted" aria-label="Compartilhada" />}
-            <span className="shrink-0 text-xs font-normal text-muted group-hover:hidden group-has-[[data-state=open]]:hidden">{node.totalCount || ""}</span>
+            {node.visibility === "private" && (
+              <Lock
+                className="size-3 shrink-0 text-muted"
+                aria-label="Privada"
+              />
+            )}
+            {(node.visibility === "link" || node.visibility === "public") && (
+              <Link2
+                className="size-3 shrink-0 text-muted"
+                aria-label="Compartilhada"
+              />
+            )}
+            <span className="shrink-0 text-xs font-normal text-muted group-hover:hidden group-has-[[data-state=open]]:hidden">
+              {node.totalCount || ""}
+            </span>
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <button
@@ -586,16 +674,26 @@ function TreeRow(props: RowProps) {
                   <MoreHorizontal className="size-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">{items(DropdownMenuItem, DropdownMenuSeparator)}</DropdownMenuContent>
+              <DropdownMenuContent align="start">
+                {items(DropdownMenuItem, DropdownMenuSeparator)}
+              </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>{items(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
+        <ContextMenuContent>
+          {items(ContextMenuItem, ContextMenuSeparator)}
+        </ContextMenuContent>
       </ContextMenu>
       {hasChildren && open && (
         <ul role="group" className="flex flex-col gap-px pt-px">
           {node.children.map((c) => (
-            <TreeRow key={c.id} {...props} node={c} depth={depth + 1} siblings={node.children} />
+            <TreeRow
+              key={c.id}
+              {...props}
+              node={c}
+              depth={depth + 1}
+              siblings={node.children}
+            />
           ))}
         </ul>
       )}

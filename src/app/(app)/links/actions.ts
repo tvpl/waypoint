@@ -15,6 +15,7 @@ import {
   getFavorite,
   moveCollection,
   moveFavorite,
+  moveFavorites,
   normalizeUrl,
   reorderPinnedLinks,
   setMarks,
@@ -27,11 +28,14 @@ import { createSavedSearch, deleteSavedSearch, updateSavedSearch } from "@/serve
 import { tagsForFavorites } from "@/server/services/tags";
 import { markHealthy } from "@/server/services/link-health";
 import { ensureShareLink, revokeShareLink } from "@/server/services/plans";
-import { favoritesInWorkspace, findByUrl, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
+import { favoritesInWorkspace, findByUrl, findByUrls, loadLibraryPage, resolveLibraryParams, visibleTree } from "@/features/links/server-data";
 import { fetchLinkMetadata } from "@/server/services/metadata";
 import type { ActionResult, LinkItem } from "@/features/links/types";
 import { findDuplicateGroups, mergeLinks, type DuplicateGroup } from "@/server/services/link-dedupe";
 import { markTriaged, suggestCollections, type CollectionSuggestion } from "@/server/services/link-triage";
+import { getDb } from "@/server/db";
+import { canonicalUrl } from "@/lib/url";
+import { MAX_BATCH_LINKS } from "@/features/links/batch-urls";
 
 // ------------------------------------------------------------------ helpers
 
@@ -96,6 +100,87 @@ const linkInput = z.object({
   tags: z.array(z.string().max(48)).max(40).optional(),
 });
 export type LinkInput = z.input<typeof linkInput>;
+
+// ------------------------------------------------------------------ links
+
+const batchInput = z.object({
+  urls: z.array(z.string().min(1).max(4096)).min(1).max(MAX_BATCH_LINKS),
+  collectionId: id.nullable(),
+  tags: z.array(z.string().trim().min(1).max(48)).max(40),
+});
+export type BatchReview = {
+  url: string;
+  existingId: string | null;
+  title: string | null;
+  archived: boolean;
+};
+
+/** Review and creation both re-check workspace access; review is never an authorization token. */
+export async function reviewLinksAction(
+  urls: string[],
+): Promise<ActionResult<BatchReview[]>> {
+  try {
+    const ctx = await editor();
+    const list = batchInput.shape.urls.parse(urls).map(normalizeUrl);
+    const duplicates = findByUrls(ctx.workspace.id, ctx.user.id, list);
+    return {
+      ok: true,
+      data: list.map((raw) => {
+        const url = normalizeUrl(raw);
+        const existing = duplicates.get(canonicalUrl(url));
+        return {
+          url,
+          existingId: existing?.id ?? null,
+          title: existing?.title ?? null,
+          archived: !!existing?.archivedAt,
+        };
+      }),
+    };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Saves immediately; optional metadata enrichment runs separately, without holding up the batch. */
+export async function createLinksBatchAction(
+  input: z.input<typeof batchInput>,
+): Promise<ActionResult<{ ids: string[]; skipped: number }>> {
+  try {
+    const ctx = await editor();
+    const data = batchInput.parse(input);
+    assertCollection(ctx, data.collectionId);
+    const urls = [
+      ...new Map(
+        data.urls.map((raw) => {
+          const url = normalizeUrl(raw);
+          return [canonicalUrl(url), url];
+        }),
+      ).values(),
+    ];
+    const ids: string[] = [];
+    let skipped = data.urls.length - urls.length;
+    getDb().transaction(() => {
+      const duplicates = findByUrls(ctx.workspace.id, ctx.user.id, urls);
+      for (const url of urls) {
+        if (duplicates.has(canonicalUrl(url))) {
+          skipped++;
+          continue;
+        }
+        ids.push(
+          createFavorite(ctx.workspace.id, ctx.user.id, {
+            url,
+            collectionId: data.collectionId,
+            tags: data.tags,
+          }),
+        );
+      }
+    });
+    done();
+    return { ok: true, data: { ids, skipped } };
+  } catch (e) {
+    return fail(e);
+  }
+}
 
 // ------------------------------------------------------------------ links
 
@@ -186,13 +271,20 @@ export async function toggleStarAction(linkId: string): Promise<ActionResult<{ s
 const moveInput = z.object({ ids: z.array(id).min(1).max(1000), collectionId: id.nullable(), index: z.number().int().min(0).optional() });
 
 /** Moves links to a collection (null = "Sem coleção"); with one id and an index it reorders. */
-export async function moveLinksAction(input: z.input<typeof moveInput>): Promise<ActionResult> {
+export async function moveLinksAction(
+  input: z.input<typeof moveInput>,
+): Promise<ActionResult> {
   try {
     const ctx = await editor();
     const { ids, collectionId, index } = moveInput.parse(input);
     assertCollection(ctx, collectionId);
     const allowed = favoritesInWorkspace(ctx.workspace.id, ctx.user.id, ids);
-    allowed.forEach((fid, i) => moveFavorite(fid, collectionId, index == null ? undefined : index + i));
+    const allowedSet = new Set(allowed);
+    moveFavorites(
+      ids.filter((fid) => allowedSet.has(fid)),
+      collectionId,
+      index,
+    );
     done();
     return { ok: true };
   } catch (e) {
@@ -201,15 +293,27 @@ export async function moveLinksAction(input: z.input<typeof moveInput>): Promise
 }
 
 const bulkInput = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("archive"), ids: z.array(id).min(1).max(1000), archived: z.boolean() }),
+  z.object({ op: z.literal("archive"), ids: z.array(id).min(1).max(1000), archived: z.boolean(),
+  }),
   z.object({ op: z.literal("delete"), ids: z.array(id).min(1).max(1000) }),
-  z.object({ op: z.literal("addTag"), ids: z.array(id).min(1).max(1000), tag: z.string().trim().min(1).max(48) }),
-  z.object({ op: z.literal("removeTag"), ids: z.array(id).min(1).max(1000), tag: z.string().trim().min(1).max(48) }),
-  z.object({ op: z.literal("star"), ids: z.array(id).min(1).max(1000), on: z.boolean() }),
-  z.object({ op: z.literal("openBehavior"), ids: z.array(id).min(1).max(1000), value: z.enum(OPEN_BEHAVIORS) }),
+  z.object({
+    op: z.literal("tags"),
+    ids: z.array(id).min(1).max(1000),
+    add: z.array(z.string().trim().min(1).max(48)).max(40),
+    remove: z.array(z.string().trim().min(1).max(48)).max(40),
+  }),
+  z.object({ op: z.literal("addTag"), ids: z.array(id).min(1).max(1000), tag: z.string().trim().min(1).max(48),
+  }),
+  z.object({ op: z.literal("removeTag"), ids: z.array(id).min(1).max(1000), tag: z.string().trim().min(1).max(48),
+  }),
+  z.object({ op: z.literal("star"), ids: z.array(id).min(1).max(1000), on: z.boolean(),
+  }),
+  z.object({ op: z.literal("openBehavior"), ids: z.array(id).min(1).max(1000), value: z.enum(OPEN_BEHAVIORS),
+  }),
 ]);
 
-export async function bulkLinksAction(input: z.input<typeof bulkInput>): Promise<ActionResult<{ count: number }>> {
+export async function bulkLinksAction(input: z.input<typeof bulkInput>,
+): Promise<ActionResult<{ count: number }>> {
   try {
     const ctx = await editor();
     const data = bulkInput.parse(input);
@@ -223,6 +327,23 @@ export async function bulkLinksAction(input: z.input<typeof bulkInput>): Promise
         if (data.op === "addTag") updateFavorite(fid, { tags: [...list, data.tag] });
         else if (list.includes(data.tag)) updateFavorite(fid, { tags: list.filter((t) => t !== data.tag) });
       });
+    }
+    if (data.op === "tags") {
+      const current = tagsForFavorites(ids);
+      getDb().transaction(() =>
+        ids.forEach((fid) =>
+          updateFavorite(fid, {
+            tags: [
+              ...new Set([
+                ...(current.get(fid) ?? []).filter(
+                  (t) => !data.remove.includes(t),
+                ),
+                ...data.add,
+              ]),
+            ],
+          }),
+        ),
+      );
     }
     if (data.op === "star") setMarks(ctx.user.id, "favorite", ids, "star", data.on);
     if (data.op === "openBehavior") ids.forEach((fid) => updateFavorite(fid, { openBehavior: data.value }));

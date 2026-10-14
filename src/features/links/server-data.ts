@@ -215,6 +215,21 @@ export function findByUrl(workspaceId: string, userId: string, url: string) {
     .find((f) => canonicalUrl(f.url) === key);
 }
 
+/** One scoped lookup for a whole batch, rather than re-reading a domain for every pasted URL. */
+export function findByUrls(workspaceId: string, userId: string, urls: string[]) {
+  const domains = [...new Set(urls.map(domainOf))];
+  const found = new Map<string, { id: string; title: string; archivedAt: Date | null }>();
+  if (!domains.length) return found;
+  const wanted = new Set(urls.map(canonicalUrl));
+  const rows = getDb().select({ id: schema.favorites.id, url: schema.favorites.url, title: schema.favorites.title, archivedAt: schema.favorites.archivedAt })
+    .from(schema.favorites).where(and(eq(schema.favorites.workspaceId, workspaceId), inArray(schema.favorites.domain, domains), favoriteVisibleTo(workspaceId, userId))).all();
+  for (const row of rows) {
+    const key = canonicalUrl(row.url);
+    if (wanted.has(key) && !found.has(key)) found.set(key, row);
+  }
+  return found;
+}
+
 /** Ids of favorites in the workspace that the user can see (permission check for bulk operations). */
 export function favoritesInWorkspace(workspaceId: string, userId: string, ids: string[]) {
   if (!ids.length) return [];

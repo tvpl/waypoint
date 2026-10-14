@@ -1,8 +1,15 @@
 "use client";
 import * as React from "react";
+import type { DisplaySettings } from "./display";
 import type { LinkItem, SortMode, SummaryBehavior } from "./types";
 
 export type LibraryApi = {
+  display: DisplaySettings;
+  updateDisplay: (patch: Partial<DisplaySettings>) => void;
+  addTags: (ids: string[]) => void;
+  bulkStar: (ids: string[], on: boolean) => void;
+  copyUrls: (ids: string[]) => void;
+  inspect: (link: LinkItem) => void;
   canEdit: boolean;
   archivedScope: boolean;
   /** Selected link ids — read it through useSelected / useSelectionMode so only affected items re-render. */
@@ -11,7 +18,8 @@ export type LibraryApi = {
   summaryFor: (link: LinkItem) => SummaryBehavior;
   /** Manual reordering is possible (manual sort, no filters, single container). */
   reorderable: boolean;
-  dropOnLink: (dragIds: string[], targetId: string, pos: "before" | "after") => void;
+  dropOnLink: (dragIds: string[], targetId: string, pos: "before" | "after",
+  ) => void;
   star: (link: LinkItem) => Promise<boolean | null>;
   /** Pins/unpins to the user's quick access. */
   pin: (link: LinkItem) => void;

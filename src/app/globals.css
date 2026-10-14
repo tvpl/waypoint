@@ -584,3 +584,13 @@
   font-display: swap;
   unicode-range: U+300-301,U+303;
 }
+
+/* Keep operation feedback above the library's selection controls. */
+:root:has(.wp-links-selection-bar) [data-sonner-toaster][data-y-position="bottom"] {
+  bottom: 96px !important;
+}
+@media (max-width: 639px) {
+  :root:has(.wp-links-selection-bar) [data-sonner-toaster][data-y-position="bottom"] {
+    bottom: calc(144px + env(safe-area-inset-bottom)) !important;
+  }
+}

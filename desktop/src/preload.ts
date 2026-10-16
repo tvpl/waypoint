@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
  * detects the desktop app by its presence; see src/lib/desktop.ts for the typed client side.
  */
 contextBridge.exposeInMainWorld("waypointDesktop", {
+  notifications: (action: "test" | "refresh") => ipcRenderer.invoke("wp:notifications", action),
   platform: process.platform,
   info: () => ipcRenderer.invoke("wp:info"),
   menu: () => ipcRenderer.invoke("wp:menu"),

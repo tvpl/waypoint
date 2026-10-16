@@ -375,6 +375,68 @@ export function moveFavorite(id: string, collectionId: string | null, index?: nu
   });
 }
 
+/** Removes the whole selection before calculating the insertion point. */
+export function moveFavorites(
+  ids: string[],
+  collectionId: string | null,
+  index?: number,
+) {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return;
+  const source = unique.map((id) => getFavorite(id));
+  const workspaceId = source[0]?.workspaceId;
+  if (!workspaceId || source.some((f) => !f || f.workspaceId !== workspaceId))
+    throw new UserError("Links inválidos.");
+  if (collectionId) {
+    const collection = getCollection(collectionId);
+    if (!collection || collection.workspaceId !== workspaceId)
+      throw new UserError("Coleção inválida.");
+  }
+  const moving = new Set(unique);
+  getDb().transaction((tx) => {
+    const siblings = tx
+      .select({ id: schema.favorites.id })
+      .from(schema.favorites)
+      .where(
+        and(
+          eq(schema.favorites.workspaceId, workspaceId),
+          collectionId
+            ? eq(schema.favorites.collectionId, collectionId)
+            : isNull(schema.favorites.collectionId),
+          isNull(schema.favorites.archivedAt),
+        ),
+      )
+      .orderBy(
+        asc(schema.favorites.sortOrder),
+        desc(schema.favorites.createdAt),
+      )
+      .all()
+      .map((r) => r.id)
+      .filter((id) => !moving.has(id));
+    const at =
+      index == null
+        ? siblings.length
+        : Math.max(0, Math.min(index, siblings.length));
+    siblings.splice(at, 0, ...unique);
+    siblings.forEach((id, sortOrder) =>
+      tx
+        .update(schema.favorites)
+        .set(
+          moving.has(id)
+            ? {
+                collectionId,
+                sortOrder,
+                updatedAt: new Date(),
+                ...(collectionId ? { inboxAt: null } : {}),
+              }
+            : { sortOrder },
+        )
+        .where(eq(schema.favorites.id, id))
+        .run(),
+    );
+  });
+}
+
 export function archiveFavorite(id: string, archived: boolean) {
   getDb()
     .update(schema.favorites)

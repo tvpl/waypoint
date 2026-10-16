@@ -231,20 +231,27 @@ function DisplayOptions({
           <button
             type="button"
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink data-[state=open]:bg-surface-2 data-[state=open]:text-ink"
-            aria-label={`Exibição: ordenar por ${SORT_LABEL[sort]}`}
+            aria-label={`Ordenar por ${SORT_LABEL[sort]}`}
           >
             <Settings2 className="size-3.5" aria-hidden />
-            <span className="max-sm:hidden">Exibição</span>
+            <span className="max-sm:hidden">Ordenar</span>
             <span className="text-muted max-sm:hidden">·</span>
             <span className="text-muted">{SORT_LABEL[sort]}</span>
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="flex w-[340px] max-w-[calc(100vw-24px)] flex-col gap-4 p-3.5">
+        <PopoverContent
+          align="end"
+          className="flex w-[340px] max-w-[calc(100vw-24px)] flex-col gap-4 p-3.5"
+        >
           <div className="flex flex-col gap-1.5">
             <SectionLabel className="flex items-center gap-1.5">
               <ArrowDownUp className="size-3" aria-hidden /> Ordenar por
             </SectionLabel>
-            <div role="radiogroup" aria-label="Ordenar por" className="flex flex-col gap-px">
+            <div
+              role="radiogroup"
+              aria-label="Ordenar por"
+              className="flex flex-col gap-px"
+            >
               {sortOptions.map((s) => (
                 <button
                   key={s}
@@ -254,32 +261,25 @@ function DisplayOptions({
                   onClick={() => onSort(s)}
                   className={cn(
                     "flex min-h-8 items-center gap-2 rounded-md px-2 py-1 text-left text-body",
-                    s === sort ? "bg-accent-soft text-accent-ink" : "text-ink-2 hover:bg-hover hover:text-ink",
+                    s === sort
+                      ? "bg-accent-soft text-accent-ink"
+                      : "text-ink-2 hover:bg-hover hover:text-ink",
                   )}
                 >
                   <span className="flex flex-1 flex-col">
-                    <span className={cn(s === sort && "font-medium")}>{SORT_LABEL[s]}</span>
-                    {SORT_HINT[s] && <span className="text-caption text-muted">{SORT_HINT[s]}</span>}
+                    <span className={cn(s === sort && "font-medium")}>
+                      {SORT_LABEL[s]}
+                    </span>
+                    {SORT_HINT[s] && (
+                      <span className="text-caption text-muted">
+                        {SORT_HINT[s]}
+                      </span>
+                    )}
                   </span>
                   {s === sort && <Check className="size-3.5" aria-hidden />}
                 </button>
               ))}
             </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <SectionLabel>Resumo dos links</SectionLabel>
-            <Segmented<SummaryMode>
-              label="Exibir resumo"
-              size="sm"
-              value={summary}
-              onChange={onSummary}
-              options={[
-                { value: "default", label: "Padrão", icon: <SlidersHorizontal />, title: "Usa a configuração de cada link" },
-                { value: "always", label: "Sempre", icon: <Eye />, title: "Sempre mostrar o resumo" },
-                { value: "hover", label: "Hover", icon: <MousePointer2 />, title: "Mostrar o resumo ao passar o mouse" },
-                { value: "hidden", label: "Oculto", icon: <Minus />, title: "Ocultar resumos" },
-              ]}
-            />
           </div>
         </PopoverContent>
       </Popover>

@@ -443,3 +443,87 @@ export const libraryItems = sqliteTable(
   },
   (t) => [index("library_items_workspace_idx").on(t.workspaceId, t.createdAt)],
 );
+
+// ---------------------------------------------------------------- tasks
+
+export const taskProjects = sqliteTable("task_projects", {
+  id: id(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("lavender"),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("task_projects_ws_name").on(t.workspaceId, t.name)]);
+
+export const taskBoards = sqliteTable("task_boards", {
+  id: id(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => taskProjects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  columnsJson: text("columns_json").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  version: integer("version").notNull().default(1),
+  createdAt: createdAt(),
+}, (t) => [index("task_boards_workspace_idx").on(t.workspaceId, t.projectId)]);
+
+export const taskTemplates = sqliteTable("task_templates", {
+  id: id(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("lavender"),
+  boardsJson: text("boards_json").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("task_templates_ws_name").on(t.workspaceId, t.name)]);
+
+export const tasks = sqliteTable("tasks", {
+  id: id(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => taskProjects.id, { onDelete: "set null" }),
+  blockId: text("block_id").references(() => taskBoards.id, { onDelete: "set null" }),
+  columnId: text("column_id"),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  pendingNote: text("pending_note").notNull().default(""),
+  pendingKind: text("pending_kind").notNull().default("note"),
+  status: text("status", { enum: ["todo", "doing", "waiting", "done"] }).notNull().default("todo"),
+  priority: text("priority", { enum: ["none", "low", "medium", "high"] }).notNull().default("none"),
+  color: text("color").notNull().default("neutral"),
+  dueDate: text("due_date"),
+  followUpDate: text("follow_up_date"),
+  dependsOnJson: text("depends_on_json").notNull().default("[]"),
+  tagsJson: text("tags_json").notNull().default("[]"),
+  peopleJson: text("people_json").notNull().default("[]"),
+  subtasksJson: text("subtasks_json").notNull().default("[]"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  version: integer("version").notNull().default(1),
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [index("tasks_workspace_order_idx").on(t.workspaceId, t.status, t.sortOrder), index("tasks_project_idx").on(t.projectId)]);
+
+/** Personal reminders. Delivery leases survive renderer reloads and app restarts. */
+export const taskReminders = sqliteTable("task_reminders", {
+  id: id(),
+  taskId: text("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["start", "finish", "followup"] }).notNull(),
+  deadlineAt: integer("deadline_at").notNull(),
+  dateOnly: integer("date_only", { mode: "boolean" }).notNull().default(false),
+  timeZone: text("time_zone").notNull(),
+  leadMinutes: integer("lead_minutes").notNull().default(0),
+  channel: text("channel", { enum: ["sound", "silent", "inbox"] }).notNull().default("sound"),
+  snoozeMinutes: integer("snooze_minutes").notNull().default(15),
+  nextAt: integer("next_at").notNull(),
+  state: text("state", { enum: ["scheduled", "delivered", "dismissed"] }).notNull().default("scheduled"),
+  deliveredAt: integer("delivered_at"),
+  snoozed: integer("snoozed", { mode: "boolean" }).notNull().default(false),
+  leaseUntil: integer("lease_until"),
+  claimToken: text("claim_token"),
+  lastError: text("last_error"),
+  version: integer("version").notNull().default(1),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("task_reminders_person_kind").on(t.userId, t.taskId, t.kind), index("task_reminders_due_idx").on(t.userId, t.state, t.nextAt)]);

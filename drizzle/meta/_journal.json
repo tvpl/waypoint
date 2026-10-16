@@ -64,6 +64,34 @@
       "when": 1791290405334,
       "tag": "0008_library_items",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792107736246,
+      "tag": "0009_modern_kang",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792112197636,
+      "tag": "0010_serious_skrulls",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792139008103,
+      "tag": "0011_busy_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792158339139,
+      "tag": "0012_thin_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

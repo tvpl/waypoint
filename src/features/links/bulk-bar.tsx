@@ -1,6 +1,9 @@
 "use client";
 import * as React from "react";
-import { Archive, ArchiveRestore, FolderInput, Hash, ShieldCheck, Trash2, X, MoreHorizontal, Star, StarOff, ExternalLink, PanelRight, Sparkles } from "lucide-react";
+import {
+  Copy,
+  Archive, ArchiveRestore, FolderInput, Hash, ShieldCheck, Trash2, X, MoreHorizontal, Star, StarOff, ExternalLink, PanelRight, Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -40,6 +43,7 @@ export function MoveDialog({
 }
 
 export function BulkBar({
+  onCopy,
   count,
   archivedScope,
   tags,
@@ -56,6 +60,7 @@ export function BulkBar({
   onStar,
   onOpenBehavior,
 }: {
+  onCopy: () => void;
   count: number;
   archivedScope: boolean;
   tags: TagCount[];
@@ -83,31 +88,64 @@ export function BulkBar({
     setTag("");
     setTagOpen(false);
   };
-  const sugg = tags.filter((t) => !tag || t.name.includes(normalizeTag(tag))).slice(0, 6);
+  const sugg = tags
+    .filter((t) => !tag || t.name.includes(normalizeTag(tag)))
+    .slice(0, 6);
   return (
     <div
       role="toolbar"
       aria-label="Ações em lote"
-      className="fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 items-center gap-1 rounded-2xl border border-line bg-surface p-1.5 pl-4 text-ink shadow-pop animate-in max-sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-sm:gap-0 max-sm:pl-3"
+      className="wp-links-selection-bar fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 items-center gap-1 rounded-2xl border border-line bg-surface p-1.5 pl-4 text-ink shadow-pop animate-in max-sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-sm:gap-0 max-sm:pl-3"
     >
-      <span className="mr-2 whitespace-nowrap text-body font-medium" aria-live="polite">
+      <span
+        className="mr-2 whitespace-nowrap text-body font-medium"
+        aria-live="polite"
+      >
         {count}
-        <span className="max-sm:sr-only"> {count === 1 ? "selecionado" : "selecionados"}</span>
+        <span className="max-sm:sr-only">
+          {" "}
+          {count === 1 ? "selecionado" : "selecionados"}
+        </span>
       </span>
       {!allSelected && (
-        <Button size="sm" variant="ghost" onClick={onSelectAll} className="max-sm:px-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onSelectAll}
+          className="max-sm:px-2"
+        >
           <span className="max-sm:hidden">Selecionar todos</span>
           <span className="sm:hidden">Todos</span>
         </Button>
       )}
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onCopy}
+        aria-label="Copiar URLs"
+      >
+        <Copy />
+        <span className="max-sm:hidden">Copiar URLs</span>
+      </Button>
       <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-      <Button size="sm" variant="ghost" onClick={onMove} aria-label="Mover" className="max-sm:px-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onMove}
+        aria-label="Mover"
+        className="max-sm:px-2"
+      >
         <FolderInput />
         <span className="max-sm:hidden">Mover</span>
       </Button>
       <Popover open={tagOpen} onOpenChange={setTagOpen}>
         <PopoverTrigger asChild>
-          <Button size="sm" variant="ghost" aria-label="Adicionar tag" className="max-sm:px-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Adicionar tag"
+            className="max-sm:px-2"
+          >
             <Hash />
             <span className="max-sm:hidden">Adicionar tag</span>
           </Button>
@@ -132,7 +170,11 @@ export function BulkBar({
             <ul className="mt-1.5 flex flex-col">
               {sugg.map((t) => (
                 <li key={t.name}>
-                  <button type="button" onClick={() => submitTag(t.name)} className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body hover:bg-hover">
+                  <button
+                    type="button"
+                    onClick={() => submitTag(t.name)}
+                    className="flex h-7 w-full items-center justify-between rounded-md px-2 text-body hover:bg-hover"
+                  >
                     #{t.name}
                     <span className="text-xs text-muted">{t.count}</span>
                   </button>
@@ -143,18 +185,37 @@ export function BulkBar({
         </PopoverContent>
       </Popover>
       {onCheck && !archivedScope && (
-        <Button size="sm" variant="ghost" onClick={onCheck} aria-label="Verificar links selecionados" className="max-sm:px-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onCheck}
+          aria-label="Verificar links selecionados"
+          className="max-sm:px-2"
+        >
           <ShieldCheck />
           <span className="max-sm:hidden">Verificar</span>
         </Button>
       )}
-      <Button size="sm" variant="ghost" onClick={onArchive} aria-label={archivedScope ? "Restaurar" : "Arquivar"} className="max-sm:px-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onArchive}
+        aria-label={archivedScope ? "Restaurar" : "Arquivar"}
+        className="max-sm:px-2"
+      >
         {archivedScope ? <ArchiveRestore /> : <Archive />}
-        <span className="max-sm:hidden">{archivedScope ? "Restaurar" : "Arquivar"}</span>
+        <span className="max-sm:hidden">
+          {archivedScope ? "Restaurar" : "Arquivar"}
+        </span>
       </Button>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost" aria-label="Mais ações em lote" className="max-sm:px-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Mais ações em lote"
+            className="max-sm:px-2"
+          >
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
@@ -192,12 +253,23 @@ export function BulkBar({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Button size="sm" variant="ghost" onClick={onDelete} aria-label="Excluir" className="text-danger hover:bg-danger-soft hover:text-danger max-sm:px-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onDelete}
+        aria-label="Excluir"
+        className="text-danger hover:bg-danger-soft hover:text-danger max-sm:px-2"
+      >
         <Trash2 />
         <span className="max-sm:hidden">Excluir</span>
       </Button>
       <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-      <Button size="icon" variant="ghost" aria-label="Limpar seleção" onClick={onClear}>
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label="Limpar seleção"
+        onClick={onClear}
+      >
         <X />
       </Button>
     </div>

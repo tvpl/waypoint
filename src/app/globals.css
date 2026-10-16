@@ -584,3 +584,80 @@
   font-display: swap;
   unicode-range: U+300-301,U+303;
 }
+
+/* Keep operation feedback above the library's selection controls. */
+:root:has(.wp-links-selection-bar) [data-sonner-toaster][data-y-position="bottom"] {
+  bottom: 96px !important;
+}
+@media (max-width: 639px) {
+  :root:has(.wp-links-selection-bar) [data-sonner-toaster][data-y-position="bottom"] {
+    bottom: calc(144px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Task colors are shared semantic pairs; project identity can be inherited by a card. */
+:root {
+  --task-lavender: #e6dafe; --task-lavender-ink: #604096;
+  --task-mint: #cdf0df; --task-mint-ink: #256847;
+  --task-peach: #ffdfc2; --task-peach-ink: #8c481b;
+  --task-sky: #d5e9ff; --task-sky-ink: #2c5d95;
+  --task-rose: #ffdce6; --task-rose-ink: #943955;
+  --task-sand: #f8edbb; --task-sand-ink: #79601d;
+}
+.dark {
+  --task-lavender: #413159; --task-lavender-ink: #dfc6ff;
+  --task-mint: #214638; --task-mint-ink: #9fe6be;
+  --task-peach: #513b29; --task-peach-ink: #ffcc9a;
+  --task-sky: #263f5d; --task-sky-ink: #afd4ff;
+  --task-rose: #512c3c; --task-rose-ink: #ffb3cc;
+  --task-sand: #494021; --task-sand-ink: #f4df91;
+}
+.wp-task-card, .wp-task-color, .wp-task-sheet { --task-fill: var(--surface); --task-ink: var(--ink-2); }
+[data-color="lavender"] { --task-fill: var(--task-lavender); --task-ink: var(--task-lavender-ink); }
+[data-color="mint"] { --task-fill: var(--task-mint); --task-ink: var(--task-mint-ink); }
+[data-color="peach"] { --task-fill: var(--task-peach); --task-ink: var(--task-peach-ink); }
+[data-color="sky"] { --task-fill: var(--task-sky); --task-ink: var(--task-sky-ink); }
+[data-color="rose"] { --task-fill: var(--task-rose); --task-ink: var(--task-rose-ink); }
+[data-color="sand"] { --task-fill: var(--task-sand); --task-ink: var(--task-sand-ink); }
+.wp-task-color { background: var(--task-fill); color: var(--task-ink); border-color: color-mix(in oklab, var(--task-ink) 25%, var(--line)); }
+.wp-task-project { display: inline-flex; min-height: 30px; max-width: 100%; align-items: center; gap: 6px; border-radius: 7px; padding: 4px 9px; color: var(--muted); font-size: 12px; }
+.wp-task-project:hover { background: var(--hover); color: var(--ink); }
+.wp-task-project.is-active { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-rest); color: var(--ink); }
+.wp-tasks { background: var(--bg); }
+.wp-task-card { min-width: 0; background: var(--task-fill); color: var(--task-ink); border-color: color-mix(in oklab, var(--task-ink) 12%, var(--line)); border-left: 3px solid var(--task-ink); border-radius: 9px; }
+.wp-task-board-card { padding: 8px 9px; }
+.wp-task-board-card .wp-task-card-meta > button:not(.text-danger):not(.text-accent-ink) { color: inherit; }
+.wp-task-status-todo { background: var(--muted); }
+.wp-task-status-doing { background: var(--accent); }
+.wp-task-status-waiting { background: var(--task-sand-ink); }
+.wp-task-status-done { background: var(--success-ink); }
+.wp-task-stage { --stage-ink: var(--muted); --stage-bg: var(--subtle); background: var(--stage-bg); color: var(--stage-ink); }
+.wp-task-stage[data-stage="doing"] { --stage-ink: var(--accent-ink); --stage-bg: var(--accent-soft); }
+.wp-task-stage[data-stage="waiting"] { --stage-ink: var(--amber-ink); --stage-bg: var(--amber-bg); }
+.wp-task-stage[data-stage="done"] { --stage-ink: var(--success-ink); --stage-bg: var(--success-bg); }
+.wp-task-board-scroll { overscroll-behavior-x: contain; padding-top: 4px; }
+.wp-task-board-row { width: 100%; }
+.wp-task-lane { min-width: 0; flex-basis: max(200px, calc((100% - (var(--task-visible, 4) - 1) * 10px) / var(--task-visible, 4))); background: var(--subtle); transition: background 150ms ease; }
+.wp-task-lane-collapsed { flex-basis: 44px !important; }
+.wp-task-lane-target { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.wp-task-drop-before::after { content: ""; position: absolute; top: -6px; left: 0; right: 0; height: 3px; border-radius: 3px; background: var(--accent); pointer-events: none; }
+.wp-task-sheet { border-top: 3px solid var(--task-ink); }
+@media (max-width: 479px) {
+  .wp-task-lane { flex-basis: min(290px, calc(100% - 20px)); }
+  .wp-tasks footer span:last-child { display: none; }
+}
+@media (pointer: coarse) {
+  .wp-task-project { min-height: 44px; }
+  .wp-task-menu { position: relative; min-width: 28px; min-height: 28px; }
+  .wp-task-menu::after { content: ""; position: absolute; inset: -8px; }
+  .wp-task-card .wp-task-title { min-height: 44px; }
+  .wp-task-complete { position: relative; margin-right: 6px; }
+  .wp-task-complete::after { content: ""; position: absolute; inset: -12px -8px; }
+  .wp-task-card-meta > button { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wp-task-card, .wp-task-lane { transition: none; }
+}
+.wp-task-lane[data-over-limit="true"] { box-shadow: inset 0 2px 0 var(--amber-ink); }
+.wp-task-board-card .wp-task-card-meta > button { padding-left: 3px; padding-right: 3px; gap: 3px; }
+.wp-task-board-card .wp-task-card-meta svg { width: 12px; height: 12px; }

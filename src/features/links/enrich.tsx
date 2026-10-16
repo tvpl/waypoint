@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 type Summary = { processed: number; enriched: number; remaining: number };
-type Target = { collectionId?: string | null; name?: string };
+type Target = { ids?: string[]; collectionId?: string | null; name?: string };
 
 const BATCH = 12;
 let running = false;
@@ -13,7 +13,7 @@ async function call(target: Target, extra: { dryRun?: boolean } = {}): Promise<S
   const res = await fetch("/api/links/enrich", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ collectionId: target.collectionId ?? undefined, limit: BATCH, ...extra }),
+    body: JSON.stringify({ ids: target.ids, collectionId: target.collectionId ?? undefined, limit: BATCH, ...extra }),
   });
   const json = await res.json().catch(() => null);
   if (!res.ok) throw new Error(json?.error ?? "Não foi possível completar os metadados.");
@@ -33,7 +33,7 @@ export function useEnrichRun() {
   const router = useRouter();
   return React.useCallback(
     async (target: Target = {}, opts: { quietWhenNothing?: boolean } = {}) => {
-      if (running) return;
+      if (running || target.ids?.length === 0) return;
       running = true;
       const id = `enrich-${Date.now()}`;
       let cancelled = false;
@@ -42,20 +42,24 @@ export function useEnrichRun() {
       let total: number | null = null;
       const where = target.name ? ` em “${target.name}”` : "";
       try {
-        while (!cancelled) {
-          const s = await call(target);
-          done += s.processed;
-          enriched += s.enriched;
-          total = Math.max(total ?? 0, done + s.remaining);
-          if (total === 0) break;
-          toast.loading(`Buscando ícones e capas${where}… ${done} de ${total}`, {
-            id,
-            description: "Você pode continuar usando o Waypoint.",
-            duration: Infinity,
-            action: { label: "Parar", onClick: () => (cancelled = true) },
-          });
-          if (done % 36 < BATCH) router.refresh();
-          if (s.remaining === 0 || s.processed === 0) break;
+        const chunks = target.ids ? Array.from({ length: Math.ceil(target.ids.length / BATCH) }, (_, i) => target.ids!.slice(i * BATCH, (i + 1) * BATCH)) : [undefined];
+        for (const ids of chunks) {
+          if (cancelled) break;
+          while (!cancelled) {
+            const s = await call({ ...target, ids });
+            done += s.processed;
+            enriched += s.enriched;
+            total = target.ids?.length ?? Math.max(total ?? 0, done + s.remaining);
+            if (total === 0) break;
+            toast.loading(`Buscando ícones e capas${where}… ${done} de ${total}`, {
+              id,
+              description: "Você pode continuar usando o Waypoint.",
+              duration: Infinity,
+              action: { label: "Parar", onClick: () => (cancelled = true) },
+            });
+            if (done % 36 < BATCH) router.refresh();
+            if (s.remaining === 0 || s.processed === 0) break;
+          }
         }
       } catch (e) {
         toast.error((e as Error).message, { id, duration: 6000, action: undefined, description: undefined });

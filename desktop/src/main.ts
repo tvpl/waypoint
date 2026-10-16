@@ -6,6 +6,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  Notification,
   nativeImage,
   nativeTheme,
   powerMonitor,
@@ -22,6 +23,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { Backups, KEEP_OPTIONS, type BackupFrequency } from "./backups";
+import { TaskNotifications } from "./reminders";
 import { buildNativeMenu, menuModel, renderModel, type MenuState } from "./menu";
 import { resolveDataLocation, SettingsStore } from "./paths";
 import { DEFAULT_PORT, pickPort, startServer, type ServerHandle } from "./server";
@@ -614,10 +616,22 @@ ipcMain.on("wp:theme", (e, pref: unknown, dark: unknown) => {
 // ---------------------------------------------------------------------------------------------
 // Lifecycle
 
+const taskNotifications = new TaskNotifications(() => server, (urlPath) => {
+  const win = showMain();
+  if (server) void win.loadURL(`${server.origin}${urlPath}`);
+}, { supported: () => Notification.isSupported(), create: (options) => new Notification(options), cookies: (origin) => session.defaultSession.cookies.get({ url: origin, name: "wp_session" }) });
+ipcMain.handle("wp:notifications", async (event, action: unknown) => {
+  if (!fromApp(event)) throw new Error("Origem inválida.");
+  if (action === "test") return taskNotifications.test();
+  if (action === "refresh") { void taskNotifications.poll(); return { sent: false }; }
+  throw new Error("Ação inválida.");
+});
+
 async function boot() {
   const port = await pickPort(settings.get("port") ?? DEFAULT_PORT);
   if (port !== settings.get("port")) settings.set("port", port);
   server = await startServer({ port, dataDir: location.dir, dev });
+  taskNotifications.start();
   await session.defaultSession.cookies.set({ url: server.origin, name: "wp_desktop", value: server.secret, httpOnly: true, sameSite: "strict" });
   server.onExit(async (code) => {
     if (quitting) return;
@@ -679,9 +693,15 @@ if (!app.requestSingleInstanceLock()) {
       BrowserWindow.getAllWindows().forEach((w) => w !== quickWindow && !w.isDestroyed() && w.webContents.send("wp:command", "app:system-lock"));
     powerMonitor.on("lock-screen", systemLock);
     powerMonitor.on("suspend", systemLock);
+    let screenLocked = false, suspended = false;
+    powerMonitor.on("lock-screen", () => { screenLocked = true; taskNotifications.pause(); });
+    powerMonitor.on("suspend", () => { suspended = true; taskNotifications.pause(); });
+    powerMonitor.on("unlock-screen", () => { screenLocked = false; if (!suspended) taskNotifications.resume(); });
+    powerMonitor.on("resume", () => { suspended = false; if (!screenLocked) taskNotifications.resume(); });
     // Scheduled backups for an app that stays open for days.
     setInterval(() => void scheduledBackup(), 60 * 60_000);
     lockDownSession();
+    session.defaultSession.cookies.on("changed", (_event, cookie) => { if (cookie.name === "wp_session") taskNotifications.sessionChanged(); });
     refreshMenu();
     createWindow("/", { main: true });
     createTray();
@@ -702,6 +722,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!mac) app.quit();
   });
   app.on("will-quit", () => {
+    taskNotifications.stop();
     globalShortcut.unregisterAll();
     server?.stop();
   });

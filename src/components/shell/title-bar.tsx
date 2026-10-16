@@ -22,6 +22,7 @@ import {
   Info,
   Keyboard,
   Link2,
+  ListTodo,
   Lock,
   Maximize2,
   Minus,
@@ -91,6 +92,7 @@ const ICONS: Record<string, LucideIcon> = {
   "app:go-plans": Workflow,
   "app:go-links": Link2,
   "app:go-tags": Tag,
+  "app:go-tasks": ListTodo,
   "app:toggle-rail": PanelLeft,
   theme: SunMoon,
   "zoom-in": ZoomIn,
@@ -339,7 +341,7 @@ export function TitleBar({ platform, security, bare }: { platform: string; secur
               className="no-drag absolute left-1/2 hidden h-7 w-[clamp(220px,30vw,440px)] -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 text-body text-muted shadow-rest transition-colors hover:border-line-2 hover:text-ink-2 lg:flex"
             >
               <Search className="size-[14px] shrink-0" strokeWidth={1.9} />
-              <span className="flex-1 truncate text-left">Buscar plans, links, coleções…</span>
+              <span className="flex-1 truncate text-left">Buscar tarefas, plans, links…</span>
               <Kbd className="!py-0 text-[10px]">⌘K</Kbd>
             </button>
 

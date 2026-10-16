@@ -26,6 +26,7 @@ const GROUPS: Group[] = [
       ["Ir para Planner", "g p"],
       ["Ir para Links", "g l"],
       ["Ir para Tags", "g t"],
+      ["Ir para Tarefas", "g d"],
       ["Ir para Configurações", "g s"],
       ["Mostrar / ocultar a barra lateral", "["],
     ],
@@ -52,6 +53,11 @@ const GROUPS: Group[] = [
       ["Limpar seleção", "esc"],
       ["Navegar nas coleções (barra lateral)", "↑ ↓ ← →"],
     ],
+  },
+  {
+    title: "Tarefas",
+    scope: /^\/tasks/,
+    items: [["Nova tarefa", "n"], ["Buscar tarefas, pessoas e marcadores", "/"]],
   },
   {
     title: "Planner",
@@ -83,7 +89,7 @@ const GROUPS: Group[] = [
   },
 ];
 
-const GO: Record<string, string> = { h: "/", p: "/plans", l: "/links", t: "/tags", s: "/settings" };
+const GO: Record<string, string> = { h: "/", p: "/plans", l: "/links", t: "/tags", d: "/tasks", s: "/settings" };
 
 const isTyping = (t: EventTarget | null) => {
   const el = t as HTMLElement | null;

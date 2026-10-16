@@ -1,0 +1,486 @@
+{
+  "date": "2026-10-13",
+  "method": "Installed ARM64 app; temporary database snapshot and browser profile; events recorded in renderer; DOM loading marker removed after click; no source/runtime patches",
+  "baseline": [
+    {
+      "href": "/plans",
+      "events": [
+        {
+          "name": "click",
+          "t": 30.399999999906868
+        },
+        {
+          "name": "vt-start",
+          "t": 38.10000000009313
+        },
+        {
+          "name": "url",
+          "t": 45.799999999813735
+        },
+        {
+          "name": "Plans · Waypoint|true",
+          "t": 48.39999999990687
+        },
+        {
+          "name": "vt-ready",
+          "t": 49.200000000186265
+        },
+        {
+          "name": "vt-finished",
+          "t": 360.20000000018626
+        },
+        {
+          "name": "Plans · Waypoint|false",
+          "t": 361.89999999990687
+        }
+      ],
+      "resources": [
+        {
+          "path": "/plans",
+          "start": 31.600000000093132,
+          "ttfb": 3.3000000002793968,
+          "duration": 4.399999999906868
+        },
+        {
+          "path": "/api/rail",
+          "start": 153.29999999981374,
+          "ttfb": 27.299999999813735,
+          "duration": 27.700000000186265
+        }
+      ]
+    },
+    {
+      "href": "/links",
+      "events": [
+        {
+          "name": "click",
+          "t": 19.600000000093132
+        },
+        {
+          "name": "vt-start",
+          "t": 25.899999999906868
+        },
+        {
+          "name": "url",
+          "t": 33
+        },
+        {
+          "name": "Links · Waypoint|true",
+          "t": 36.10000000009313
+        },
+        {
+          "name": "vt-ready",
+          "t": 36.8000000002794
+        },
+        {
+          "name": "vt-finished",
+          "t": 347.70000000018626
+        },
+        {
+          "name": "Links · Waypoint|false",
+          "t": 356
+        }
+      ],
+      "resources": [
+        {
+          "path": "/links",
+          "start": 20.100000000093132,
+          "ttfb": 5,
+          "duration": 6.399999999906868
+        },
+        {
+          "path": "/links/import",
+          "start": 150.3000000002794,
+          "ttfb": 2.1999999997206032,
+          "duration": 3
+        },
+        {
+          "path": "/links/import",
+          "start": 153.8000000002794,
+          "ttfb": 1.6000000000931323,
+          "duration": 2.3999999999068677
+        }
+      ]
+    },
+    {
+      "href": "/tags",
+      "events": [
+        {
+          "name": "click",
+          "t": 25.100000000093132
+        },
+        {
+          "name": "vt-start",
+          "t": 29.899999999906868
+        },
+        {
+          "name": "url",
+          "t": 38
+        },
+        {
+          "name": "Tags · Waypoint|true",
+          "t": 40.299999999813735
+        },
+        {
+          "name": "vt-ready",
+          "t": 41.10000000009313
+        },
+        {
+          "name": "vt-finished",
+          "t": 343
+        },
+        {
+          "name": "Tags · Waypoint|false",
+          "t": 345.5
+        }
+      ],
+      "resources": [
+        {
+          "path": "/tags",
+          "start": 25.700000000186265,
+          "ttfb": 4.2000000001862645,
+          "duration": 5.7999999998137355
+        }
+      ]
+    },
+    {
+      "href": "/settings",
+      "events": [
+        {
+          "name": "click",
+          "t": 28.199999999720603
+        },
+        {
+          "name": "vt-start",
+          "t": 33.299999999813735
+        },
+        {
+          "name": "url",
+          "t": 39.1999999997206
+        },
+        {
+          "name": "Configurações · Waypoint|true",
+          "t": 40.6999999997206
+        },
+        {
+          "name": "vt-ready",
+          "t": 41.5
+        },
+        {
+          "name": "vt-finished",
+          "t": 346.79999999981374
+        },
+        {
+          "name": "Configurações · Waypoint|false",
+          "t": 354.5
+        }
+      ],
+      "resources": [
+        {
+          "path": "/settings",
+          "start": 28.799999999813735,
+          "ttfb": 5.599999999627471,
+          "duration": 7.800000000279397
+        }
+      ]
+    },
+    {
+      "href": "/",
+      "events": [
+        {
+          "name": "click",
+          "t": 12.399999999906868
+        },
+        {
+          "name": "vt-start",
+          "t": 19.899999999906868
+        },
+        {
+          "name": "url",
+          "t": 27.799999999813735
+        },
+        {
+          "name": "Início · Waypoint|true",
+          "t": 29.399999999906868
+        },
+        {
+          "name": "vt-ready",
+          "t": 30.09999999962747
+        },
+        {
+          "name": "vt-finished",
+          "t": 340
+        },
+        {
+          "name": "Início · Waypoint|false",
+          "t": 341.1999999997206
+        }
+      ],
+      "resources": [
+        {
+          "path": "/",
+          "start": 12.899999999906868,
+          "ttfb": 8,
+          "duration": 9.799999999813735
+        }
+      ]
+    }
+  ],
+  "withoutViewTransitionAnimation": [
+    {
+      "href": "/plans",
+      "events": [
+        {
+          "name": "click",
+          "t": 29.600000000093132
+        },
+        {
+          "name": "vt-start",
+          "t": 38.60000000009313
+        },
+        {
+          "name": "url",
+          "t": 45.5
+        },
+        {
+          "name": "Plans · Waypoint|true",
+          "t": 48
+        },
+        {
+          "name": "vt-ready",
+          "t": 48.60000000009313
+        },
+        {
+          "name": "vt-finished",
+          "t": 60
+        },
+        {
+          "name": "Plans · Waypoint|false",
+          "t": 61
+        }
+      ],
+      "resources": [
+        {
+          "path": "/plans",
+          "start": 30.600000000093132,
+          "ttfb": 3.1000000000931323,
+          "duration": 4
+        },
+        {
+          "path": "/api/rail",
+          "start": 152.39999999990687,
+          "ttfb": 27.100000000093132,
+          "duration": 27.700000000186265
+        }
+      ]
+    },
+    {
+      "href": "/links",
+      "events": [
+        {
+          "name": "click",
+          "t": 17.600000000093132
+        },
+        {
+          "name": "vt-start",
+          "t": 25.200000000186265
+        },
+        {
+          "name": "url",
+          "t": 30.700000000186265
+        },
+        {
+          "name": "Links · Waypoint|true",
+          "t": 33.60000000009313
+        },
+        {
+          "name": "vt-ready",
+          "t": 34.3000000002794
+        },
+        {
+          "name": "vt-finished",
+          "t": 46.60000000009313
+        },
+        {
+          "name": "Links · Waypoint|false",
+          "t": 52.60000000009313
+        }
+      ],
+      "resources": [
+        {
+          "path": "/links",
+          "start": 18.100000000093132,
+          "ttfb": 4.7000000001862645,
+          "duration": 6
+        },
+        {
+          "path": "/links/import",
+          "start": 55.200000000186265,
+          "ttfb": 2.2999999998137355,
+          "duration": 2.8999999999068677
+        },
+        {
+          "path": "/links/import",
+          "start": 58.60000000009313,
+          "ttfb": 1.2999999998137355,
+          "duration": 1.7000000001862645
+        }
+      ]
+    },
+    {
+      "href": "/tags",
+      "events": [
+        {
+          "name": "click",
+          "t": 22.399999999906868
+        },
+        {
+          "name": "vt-start",
+          "t": 27.799999999813735
+        },
+        {
+          "name": "url",
+          "t": 35.1999999997206
+        },
+        {
+          "name": "Tags · Waypoint|true",
+          "t": 36.89999999990687
+        },
+        {
+          "name": "vt-ready",
+          "t": 37.5
+        },
+        {
+          "name": "vt-finished",
+          "t": 49
+        },
+        {
+          "name": "Tags · Waypoint|false",
+          "t": 50.60000000009313
+        }
+      ],
+      "resources": [
+        {
+          "path": "/tags",
+          "start": 23.100000000093132,
+          "ttfb": 4.199999999720603,
+          "duration": 5.899999999906868
+        }
+      ]
+    },
+    {
+      "href": "/settings",
+      "events": [
+        {
+          "name": "click",
+          "t": 13.299999999813735
+        },
+        {
+          "name": "vt-start",
+          "t": 19.699999999720603
+        },
+        {
+          "name": "url",
+          "t": 26.799999999813735
+        },
+        {
+          "name": "Configurações · Waypoint|true",
+          "t": 28.199999999720603
+        },
+        {
+          "name": "vt-ready",
+          "t": 28.59999999962747
+        },
+        {
+          "name": "vt-finished",
+          "t": 42
+        },
+        {
+          "name": "Configurações · Waypoint|false",
+          "t": 47.1999999997206
+        }
+      ],
+      "resources": [
+        {
+          "path": "/settings",
+          "start": 13.699999999720603,
+          "ttfb": 3.8000000002793968,
+          "duration": 5.399999999906868
+        }
+      ]
+    },
+    {
+      "href": "/",
+      "events": [
+        {
+          "name": "click",
+          "t": 17.5
+        },
+        {
+          "name": "vt-start",
+          "t": 22.899999999906868
+        },
+        {
+          "name": "url",
+          "t": 32.5
+        },
+        {
+          "name": "Início · Waypoint|true",
+          "t": 34.5
+        },
+        {
+          "name": "vt-ready",
+          "t": 35.10000000009313
+        },
+        {
+          "name": "vt-finished",
+          "t": 44.60000000009313
+        },
+        {
+          "name": "Início · Waypoint|false",
+          "t": 45.39999999990687
+        }
+      ],
+      "resources": [
+        {
+          "path": "/",
+          "start": 18.100000000093132,
+          "ttfb": 7.2000000001862645,
+          "duration": 8.899999999906868
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "route": "/plans",
+      "normal": 331.5,
+      "without": 31.4,
+      "server": 4.4
+    },
+    {
+      "route": "/links",
+      "normal": 336.4,
+      "without": 35,
+      "server": 6.4
+    },
+    {
+      "route": "/tags",
+      "normal": 320.4,
+      "without": 28.2,
+      "server": 5.8
+    },
+    {
+      "route": "/settings",
+      "normal": 326.3,
+      "without": 33.9,
+      "server": 7.8
+    },
+    {
+      "route": "/",
+      "normal": 328.8,
+      "without": 27.9,
+      "server": 9.8
+    }
+  ]
+}

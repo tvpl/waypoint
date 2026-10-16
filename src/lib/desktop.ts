@@ -45,6 +45,7 @@ export type BackupAction = "state" | "create" | "restore" | "remove" | "reveal" 
 
 /** What the desktop shell's preload exposes (desktop/src/preload.ts). */
 export type DesktopBridge = {
+  notifications(action: "test" | "refresh"): Promise<{ supported?: boolean; sent: boolean }>;
   platform: string;
   info(): Promise<DesktopInfo | null>;
   menu(): Promise<DesktopMenu[]>;

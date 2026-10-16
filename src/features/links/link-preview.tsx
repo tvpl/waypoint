@@ -15,7 +15,8 @@ import { alwaysNewTab, getPref, PREF_PREVIEW_MODE, setAlwaysNewTab, setPref } fr
 import { recordOpen } from "./link-opener";
 import { checkedAgo, checkLinksNow, healthText, HealthMark, toHealthPatch } from "./health";
 import { applyRedirectAction } from "@/app/(app)/links/actions";
-import type { LinkDetail, LinkItem } from "./types";
+import { DetailEditor } from "./detail-editor";
+import type { TagCount, TreeNode, LinkDetail, LinkItem } from "./types";
 import { isTypingTarget } from "@/lib/dom";
 
 type Embed = { state: "checking" } | { state: "ok" } | { state: "blocked"; reason?: string };
@@ -27,6 +28,8 @@ const dateFmt = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short
 export type PreviewNav = { prev: string | null; next: string | null; index: number; total: number; go: (id: string) => void };
 
 export function LinkPreview({
+  tree,
+  tags,
   linkId,
   initial,
   onClose,
@@ -34,6 +37,8 @@ export function LinkPreview({
   onToggleStar,
   nav,
 }: {
+  tree: TreeNode[];
+  tags: TagCount[];
   linkId: string | null;
   initial?: LinkItem;
   onClose: () => void;
@@ -41,10 +46,13 @@ export function LinkPreview({
   onToggleStar: (link: LinkItem) => Promise<boolean | null>;
   nav?: PreviewNav;
 }) {
-  const [mode, setMode] = React.useState<"modal" | "side">("modal");
-  React.useEffect(() => setMode(getPref(PREF_PREVIEW_MODE, ["modal", "side"] as const, "modal")), []);
+  const [mode, setMode] = React.useState<"modal" | "side">("side");
+  React.useEffect(() => setMode(getPref(PREF_PREVIEW_MODE, ["modal", "side"] as const, "side")),
+    [],
+  );
   // Keep the last link on screen while the panel animates out after linkId turns null.
-  const [shown, setShown] = React.useState<{ id: string; initial?: LinkItem } | null>(linkId ? { id: linkId, initial } : null);
+  const [shown, setShown] = React.useState<{ id: string; initial?: LinkItem;
+  } | null>(linkId ? { id: linkId, initial } : null);
   if (linkId && linkId !== shown?.id) setShown({ id: linkId, initial });
   const toggleMode = () =>
     setMode((m) => {
@@ -54,11 +62,23 @@ export function LinkPreview({
     });
 
   return (
-    <D.Root open={!!linkId} onOpenChange={(o) => !o && onClose()}>
+    <D.Root
+      modal={mode === "modal"}
+      open={!!linkId} onOpenChange={(o) => !o && onClose()}>
       <D.Portal>
-        <D.Overlay className={cn("fixed inset-0 z-50 data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out", mode === "modal" ? "bg-scrim" : "bg-scrim/30")} />
+        {mode === "modal" && (
+          <D.Overlay
+            className={cn(
+              "fixed inset-0 z-50 data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out",
+              mode === "modal" ? "bg-scrim" : "bg-scrim/30",
+            )}
+          />
+        )}
         <D.Content
           aria-describedby={undefined}
+          onInteractOutside={(e) => {
+            if (mode === "side") e.preventDefault();
+          }}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             (e.currentTarget as HTMLElement).focus();
@@ -67,11 +87,13 @@ export function LinkPreview({
             "fixed z-50 flex flex-col overflow-hidden bg-surface text-ink shadow-pop outline-none",
             mode === "modal"
               ? "left-1/2 top-[3vh] h-[94vh] w-[calc(100vw-32px)] max-w-[1160px] -translate-x-1/2 rounded-panel max-md:inset-0 max-md:h-full max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:rounded-none data-[state=open]:animate-in data-[state=closed]:animate-out"
-              : "bottom-0 right-0 top-0 w-[min(720px,100vw)] border-l border-line data-[state=open]:animate-panel-in data-[state=closed]:animate-panel-out",
+              : "bottom-0 right-0 top-[var(--titlebar-h,0px)] w-[min(720px,100vw)] border-l border-line data-[state=open]:animate-panel-in data-[state=closed]:animate-panel-out",
           )}
         >
           {shown && (
             <PreviewBody
+              tree={tree}
+              tags={tags}
               key={shown.id}
               linkId={shown.id}
               initial={shown.initial}
@@ -90,6 +112,8 @@ export function LinkPreview({
 }
 
 function PreviewBody({
+  tree,
+  tags,
   linkId,
   initial,
   mode,
@@ -99,6 +123,8 @@ function PreviewBody({
   onToggleStar,
   nav,
 }: {
+  tree: TreeNode[];
+  tags: TagCount[];
   linkId: string;
   initial?: LinkItem;
   mode: "modal" | "side";
@@ -108,6 +134,7 @@ function PreviewBody({
   onToggleStar: (link: LinkItem) => Promise<boolean | null>;
   nav?: PreviewNav;
 }) {
+  const [tab, setTab] = React.useState<"details" | "preview">("details");
   const [detail, setDetail] = React.useState<LinkDetail | null>(null);
   const [missing, setMissing] = React.useState(false);
   const [embed, setEmbed] = React.useState<Embed>({ state: "checking" });
@@ -147,17 +174,29 @@ function PreviewBody({
 
   const url = link?.url;
   React.useEffect(() => {
-    if (!url) return;
+    if (!url || tab !== "preview") return;
     const ctrl = new AbortController();
     setEmbed({ state: "checking" });
-    fetch(`/api/embed-check?url=${encodeURIComponent(url)}`, { signal: ctrl.signal })
+    fetch(`/api/embed-check?url=${encodeURIComponent(url)}`, {
+      signal: ctrl.signal,
+    })
       .then((r) => r.json())
-      .then((d: { embeddable: boolean; reason?: string }) => setEmbed(d.embeddable ? { state: "ok" } : { state: "blocked", reason: d.reason }))
+      .then((d: { embeddable: boolean; reason?: string }) =>
+        setEmbed(
+          d.embeddable
+            ? { state: "ok" }
+            : { state: "blocked", reason: d.reason },
+        ),
+      )
       .catch((e) => {
-        if ((e as Error).name !== "AbortError") setEmbed({ state: "blocked", reason: "Não foi possível verificar o site." });
+        if ((e as Error).name !== "AbortError")
+          setEmbed({
+            state: "blocked",
+            reason: "Não foi possível verificar o site.",
+          });
       });
     return () => ctrl.abort();
-  }, [url]);
+  }, [url, tab]);
 
   React.useEffect(() => {
     if (embed.state !== "ok" || loaded) return;
@@ -169,7 +208,9 @@ function PreviewBody({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
         <D.Title className="text-lg font-semibold">Link não encontrado</D.Title>
-        <p className="text-sm text-muted">Ele pode ter sido excluído ou você não tem acesso.</p>
+        <p className="text-sm text-muted">
+          Ele pode ter sido excluído ou você não tem acesso.
+        </p>
         <Button onClick={onClose}>Fechar</Button>
       </div>
     );
@@ -178,7 +219,10 @@ function PreviewBody({
     return (
       <div className="flex flex-1 items-center justify-center">
         <D.Title className="sr-only">Carregando link</D.Title>
-        <span className="h-5 w-5 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Carregando" />
+        <span
+          className="h-5 w-5 animate-spin rounded-full border-2 border-line-2 border-t-accent"
+          aria-label="Carregando"
+        />
       </div>
     );
   }
@@ -193,10 +237,17 @@ function PreviewBody({
     <InfoPanel
       link={link}
       detail={detail}
-      onEdit={detail?.canEdit ? () => onEdit(detail.link) : undefined}
-      onHealthPatch={(patch) => setDetail((d) => (d ? { ...d, link: { ...d.link, ...patch } } : d))}
+      showContent={!detail?.canEdit}
+      onEdit={undefined}
+      onHealthPatch={(patch) =>
+        setDetail((d) => (d ? { ...d, link: { ...d.link, ...patch } } : d))
+      }
       onReload={() => setRev((r) => r + 1)}
-      className={mode === "modal" ? "w-[280px] shrink-0 border-l border-line max-md:w-full max-md:border-l-0 max-md:border-t" : "border-t border-line"}
+      className={
+        mode === "modal"
+          ? "w-[280px] shrink-0 border-l border-line max-md:w-full max-md:border-l-0 max-md:border-t"
+          : "border-t border-line"
+      }
     />
   );
 
@@ -205,22 +256,41 @@ function PreviewBody({
       <header className="flex h-[60px] shrink-0 items-center gap-2 border-b border-line pl-4 pr-2 sm:gap-3 sm:pl-5 sm:pr-3.5">
         <SiteIcon src={iconSrc} label={link.domain || link.title} size={30} />
         <div className="flex min-w-0 flex-col">
-          <D.Title className="truncate text-lead font-semibold">{link.title}</D.Title>
-          <span className="truncate font-mono text-xs text-muted">{link.domain}</span>
+          <D.Title className="truncate text-lead font-semibold">
+            {link.title}
+          </D.Title>
+          <span className="truncate font-mono text-xs text-muted">
+            {link.domain}
+          </span>
         </div>
         <div className="flex-1" />
         {nav && nav.total > 1 && (
           <div className="flex items-center gap-0.5 max-sm:hidden">
             <Tooltip content="Link anterior · ←">
-              <Button size="icon" variant="ghost" aria-label="Link anterior" disabled={!nav.prev} onClick={() => nav.prev && nav.go(nav.prev)}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Link anterior"
+                disabled={!nav.prev}
+                onClick={() => nav.prev && nav.go(nav.prev)}
+              >
                 <ChevronLeft />
               </Button>
             </Tooltip>
-            <span className="min-w-[52px] text-center font-mono text-caption text-muted" aria-live="polite">
+            <span
+              className="min-w-[52px] text-center font-mono text-caption text-muted"
+              aria-live="polite"
+            >
               {nav.index + 1} / {nav.total}
             </span>
             <Tooltip content="Próximo link · →">
-              <Button size="icon" variant="ghost" aria-label="Próximo link" disabled={!nav.next} onClick={() => nav.next && nav.go(nav.next)}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Próximo link"
+                disabled={!nav.next}
+                onClick={() => nav.next && nav.go(nav.next)}
+              >
                 <ChevronRight />
               </Button>
             </Tooltip>
@@ -238,7 +308,9 @@ function PreviewBody({
               if (res === null) setStarred(isStarred);
             }}
           >
-            <Star className={cn(isStarred && "fill-amber-ink text-amber-ink")} />
+            <Star
+              className={cn(isStarred && "fill-amber-ink text-amber-ink")}
+            />
           </Button>
         </Tooltip>
         <Tooltip content={copied ? "Copiado" : "Copiar URL"}>
@@ -259,13 +331,29 @@ function PreviewBody({
             {copied ? <Check /> : <Copy />}
           </Button>
         </Tooltip>
-        <Tooltip content={mode === "modal" ? "Abrir como painel lateral" : "Abrir como modal"}>
-          <Button size="icon" variant="ghost" aria-label="Alternar modal e painel lateral" onClick={onToggleMode} className="max-md:hidden">
+        <Tooltip
+          content={
+            mode === "modal" ? "Abrir como painel lateral" : "Abrir como modal"
+          }
+        >
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Alternar modal e painel lateral"
+            onClick={onToggleMode}
+            className="max-md:hidden"
+          >
             {mode === "modal" ? <PanelRight /> : <Maximize2 />}
           </Button>
         </Tooltip>
         <Button asChild size="sm" variant="secondary" className="h-[34px]">
-          <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={openTab} aria-label="Abrir em nova aba">
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={openTab}
+            aria-label="Abrir em nova aba"
+          >
             <ExternalLink />
             <span className="max-sm:hidden">Nova aba</span>
           </a>
@@ -276,57 +364,155 @@ function PreviewBody({
           </Button>
         </D.Close>
       </header>
-      <div className={cn("flex min-h-0 flex-1", mode === "side" ? "flex-col overflow-y-auto" : "max-md:flex-col max-md:overflow-y-auto")}>
-        <div className={cn("flex min-w-0 flex-1 flex-col gap-2.5 bg-surface-2 p-4 max-md:p-3", mode === "side" ? "min-h-[60vh]" : "max-md:min-h-[62vh]")}>
-          {embed.state === "checking" && (
-            <div className="flex flex-1 items-center justify-center rounded-control border border-line bg-surface">
-              <span className="inline-flex items-center gap-2 text-body text-muted">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-hidden />
-                Verificando se o site pode ser exibido aqui…
-              </span>
-            </div>
-          )}
-          {embed.state === "ok" && (
-            <>
-              <div className="flex items-center gap-2 text-xs text-muted">
-                <Shield className="size-3.5" aria-hidden />
-                <span>Exibido em iframe isolado (sandbox) · sem acesso à sua sessão do Waypoint</span>
-              </div>
-              <div className="relative flex flex-1 overflow-hidden rounded-control border border-line bg-white">
-                <iframe
-                  title={`Preview de ${link.title}`}
-                  src={link.url}
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                  referrerPolicy="no-referrer"
-                  onLoad={() => {
-                    setLoaded(true);
-                    setSlow(false);
-                  }}
-                  className="h-full w-full flex-1 border-0"
-                />
-                {!loaded && !slow && (
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface">
-                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Carregando página" />
-                  </div>
-                )}
-                {slow && !loaded && (
-                  <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-pop">
-                    <Timer className="size-4 shrink-0 text-amber-ink" aria-hidden />
-                    <span className="flex-1 text-body text-ink-2">A página está demorando para carregar. Talvez ela não permita ser exibida aqui.</span>
-                    <Button asChild size="sm" variant="primary">
-                      <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={openTab}>
-                        Abrir em nova aba
-                      </a>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-          {embed.state === "blocked" && <Blocked link={link} reason={embed.reason} />}
-        </div>
-        {info}
+      <div
+        role="tablist"
+        aria-label="Detalhes do link"
+        className="flex shrink-0 gap-1 border-b border-line px-4 py-2"
+      >
+        {(
+          [
+            ["details", "Detalhes"],
+            ["preview", "Prévia do site"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            id={`link-tab-${value}`}
+            role="tab"
+            aria-selected={tab === value}
+            aria-controls={`link-panel-${value}`}
+            onClick={() => setTab(value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                e.preventDefault();
+                const next = value === "details" ? "preview" : "details";
+                setTab(next);
+                document.getElementById(`link-tab-${next}`)?.focus();
+              }
+            }}
+            tabIndex={tab === value ? 0 : -1}
+            className={cn(
+              "rounded-control px-3 py-2 text-body font-medium",
+              tab === value
+                ? "bg-accent-soft text-accent-ink"
+                : "text-muted hover:bg-hover",
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+      {tab === "details" ? (
+        <div
+          role="tabpanel"
+          id="link-panel-details"
+          aria-labelledby="link-tab-details"
+          className="scrollbar-thin min-h-0 flex-1 overflow-y-auto"
+        >
+          {detail?.canEdit && (
+            <DetailEditor
+              key={link.id}
+              link={link}
+              tree={tree}
+              tags={tags}
+              onAdvanced={() => onEdit(link)}
+              onSaved={(patch) => {
+                setDetail((d) =>
+                  d ? { ...d, link: { ...d.link, ...patch } } : d,
+                );
+                setRev((r) => r + 1);
+              }}
+            />
+          )}
+          {info}
+        </div>
+      ) : (
+        <div
+          role="tabpanel"
+          id="link-panel-preview"
+          aria-labelledby="link-tab-preview"
+          className={cn(
+            "flex min-h-0 flex-1",
+            mode === "side"
+              ? "flex-col overflow-y-auto"
+              : "max-md:flex-col max-md:overflow-y-auto",
+          )}
+        >
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-col gap-2.5 bg-surface-2 p-4 max-md:p-3",
+              mode === "side" ? "min-h-[60vh]" : "max-md:min-h-[62vh]",
+            )}
+          >
+            {embed.state === "checking" && (
+              <div className="flex flex-1 items-center justify-center rounded-control border border-line bg-surface">
+                <span className="inline-flex items-center gap-2 text-body text-muted">
+                  <span
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-line-2 border-t-accent"
+                    aria-hidden
+                  />
+                  Verificando se o site pode ser exibido aqui…
+                </span>
+              </div>
+            )}
+            {embed.state === "ok" && (
+              <>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Shield className="size-3.5" aria-hidden />
+                  <span>Prévia do site</span>
+                </div>
+                <div className="relative flex flex-1 overflow-hidden rounded-control border border-line bg-white">
+                  <iframe
+                    title={`Preview de ${link.title}`}
+                    src={link.url}
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                    referrerPolicy="no-referrer"
+                    onLoad={() => {
+                      setLoaded(true);
+                      setSlow(false);
+                    }}
+                    className="h-full w-full flex-1 border-0"
+                  />
+                  {!loaded && !slow && (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface">
+                      <span
+                        className="h-5 w-5 animate-spin rounded-full border-2 border-line-2 border-t-accent"
+                        aria-label="Carregando página"
+                      />
+                    </div>
+                  )}
+                  {slow && !loaded && (
+                    <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-pop">
+                      <Timer
+                        className="size-4 shrink-0 text-amber-ink"
+                        aria-hidden
+                      />
+                      <span className="flex-1 text-body text-ink-2">
+                        A página está demorando para carregar. Talvez ela não
+                        permita ser exibida aqui.
+                      </span>
+                      <Button asChild size="sm" variant="primary">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={openTab}
+                        >
+                          Abrir em nova aba
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {embed.state === "blocked" && (
+              <Blocked link={link} reason={embed.reason} />
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -463,6 +649,7 @@ function InfoPanel({
   link,
   detail,
   onEdit,
+  showContent = true,
   onHealthPatch,
   onReload,
   className,
@@ -470,59 +657,96 @@ function InfoPanel({
   link: LinkItem;
   detail: LinkDetail | null;
   onEdit?: () => void;
+  showContent?: boolean;
   onHealthPatch: (patch: Partial<LinkItem>) => void;
   onReload: () => void;
   className?: string;
 }) {
   const path = detail?.path ?? [];
-  const parent = path.slice(0, -1).map((p) => p.name).join(" / ");
+  const parent = path
+    .slice(0, -1)
+    .map((p) => p.name)
+    .join(" / ");
   return (
-    <aside className={cn("scrollbar-thin flex flex-col gap-5 overflow-y-auto p-5", className)} aria-label="Detalhes do link">
-      {link.notes && (
+    <aside
+      className={cn(
+        "scrollbar-thin flex flex-col gap-5 overflow-y-auto p-5",
+        className,
+      )}
+      aria-label="Detalhes do link"
+    >
+      {showContent && link.notes && (
         <section className="flex flex-col gap-2">
           <SectionLabel>Notas</SectionLabel>
-          <p className="whitespace-pre-wrap rounded-control border border-amber-line/60 bg-amber-bg/50 px-3 py-2.5 text-body leading-5 text-amber-ink">{link.notes}</p>
+          <p className="whitespace-pre-wrap rounded-control border border-amber-line/60 bg-amber-bg/50 px-3 py-2.5 text-body leading-5 text-amber-ink">
+            {link.notes}
+          </p>
         </section>
       )}
-      {link.description && (
+      {showContent && link.description && (
         <section className="flex flex-col gap-2">
           <SectionLabel>Resumo</SectionLabel>
           <p className="text-body leading-5 text-ink-2">{link.description}</p>
         </section>
       )}
-      {link.tags.length > 0 && (
+      {showContent && link.tags.length > 0 && (
         <section className="flex flex-col gap-2">
           <SectionLabel>Tags</SectionLabel>
           <div className="flex flex-wrap gap-1.5">
             {link.tags.map((t) => (
-              <TagChip key={t} name={t} href={`/links?tag=${encodeURIComponent(t)}`} className="hover:bg-hover" />
+              <TagChip
+                key={t}
+                name={t}
+                href={`/links?tag=${encodeURIComponent(t)}`}
+                className="hover:bg-hover"
+              />
             ))}
           </div>
         </section>
       )}
-      <section className="flex flex-col gap-2">
-        <SectionLabel>Coleção</SectionLabel>
-        {link.collectionId ? (
-          <Link href={`/links?c=${link.collectionId}`} className="flex items-center gap-2 rounded-md text-body hover:text-accent-ink">
-            <CollectionGlyph />
-            <span className="min-w-0 truncate">
-              {parent && <span className="text-muted">{parent} / </span>}
-              {path.at(-1)?.name ?? link.collectionName}
-            </span>
-          </Link>
-        ) : (
-          <Link href="/links?scope=unsorted" className="text-body text-muted hover:text-ink">
-            Sem coleção
-          </Link>
-        )}
-      </section>
-      {detail && <HealthSection link={detail.link} canEdit={detail.canEdit} onPatch={onHealthPatch} onReload={onReload} />}
+      {showContent && (
+        <section className="flex flex-col gap-2">
+          <SectionLabel>Coleção</SectionLabel>
+          {link.collectionId ? (
+            <Link
+              href={`/links?c=${link.collectionId}`}
+              className="flex items-center gap-2 rounded-md text-body hover:text-accent-ink"
+            >
+              <CollectionGlyph />
+              <span className="min-w-0 truncate">
+                {parent && <span className="text-muted">{parent} / </span>}
+                {path.at(-1)?.name ?? link.collectionName}
+              </span>
+            </Link>
+          ) : (
+            <Link
+              href="/links?scope=unsorted"
+              className="text-body text-muted hover:text-ink"
+            >
+              Sem coleção
+            </Link>
+          )}
+        </section>
+      )}
+      {detail && (
+        <HealthSection
+          link={detail.link}
+          canEdit={detail.canEdit}
+          onPatch={onHealthPatch}
+          onReload={onReload}
+        />
+      )}
       <section className="flex flex-col gap-1.5">
         <SectionLabel>Usado em</SectionLabel>
         {!detail ? (
-          <span className="h-4 w-32 animate-pulse rounded bg-subtle" aria-label="Carregando" />
+          <span
+            className="h-4 w-32 animate-pulse rounded bg-subtle"
+            aria-label="Carregando"
+          />
         ) : detail.backlinks.length === 0 ? (
-          <p className="text-body text-muted">Ainda não aparece em nenhum plan.</p>
+          <p className="text-body text-muted">
+            Ainda não aparece em nenhum plan.
+          </p>
         ) : (
           detail.backlinks.map((b) => (
             <Link
@@ -534,8 +758,12 @@ function InfoPanel({
                 <Workflow className="size-3.5" aria-hidden />
               </span>
               <span className="flex min-w-0 flex-col">
-                <span className="truncate text-body font-medium">{b.planTitle}</span>
-                <span className="truncate text-xs text-muted">Plan{b.nodeTitle ? ` · bloco “${b.nodeTitle}”` : ""}</span>
+                <span className="truncate text-body font-medium">
+                  {b.planTitle}
+                </span>
+                <span className="truncate text-xs text-muted">
+                  Plan{b.nodeTitle ? ` · bloco “${b.nodeTitle}”` : ""}
+                </span>
               </span>
             </Link>
           ))
@@ -544,13 +772,19 @@ function InfoPanel({
       <div className="flex-1" />
       <div className="flex flex-col gap-3">
         {onEdit && (
-          <Button variant="secondary" size="sm" onClick={onEdit} className="self-start">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onEdit}
+            className="self-start"
+          >
             <Pencil />
             Editar link
           </Button>
         )}
         <span className="text-xs text-muted">
-          Adicionado em {dateFmt.format(link.createdAt)} · aberto {link.openCount} {link.openCount === 1 ? "vez" : "vezes"}
+          Adicionado em {dateFmt.format(link.createdAt)} · aberto{" "}
+          {link.openCount} {link.openCount === 1 ? "vez" : "vezes"}
         </span>
       </div>
     </aside>

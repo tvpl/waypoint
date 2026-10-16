@@ -5,6 +5,7 @@ import { Command } from "cmdk";
 import { Dialog as D } from "radix-ui";
 import {
   Search,
+  ListTodo,
   Workflow,
   Link2,
   Folder,
@@ -34,12 +35,13 @@ import { openShortcuts } from "./shortcuts";
 import { createPlanAction } from "@/app/(app)/plans/actions";
 import { switchWorkspaceAction } from "./actions";
 
-type Scope = "all" | "plans" | "links" | "collections" | "tags";
+type Scope = "all" | "plans" | "links" | "collections" | "tags" | "tasks";
 const SCOPES: { value: Scope; label: string }[] = [
   { value: "all", label: "Tudo" },
   { value: "plans", label: "Plans" },
   { value: "links", label: "Links" },
   { value: "collections", label: "Coleções" },
+  { value: "tasks", label: "Tarefas" },
   { value: "tags", label: "Tags" },
 ];
 
@@ -201,6 +203,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
     { id: "go-plans", label: "Ir para Planner", icon: <Workflow />, run: () => go("/plans") },
     { id: "go-templates", label: "Ver templates", icon: <Boxes />, run: () => go("/plans?f=templates") },
     { id: "go-links", label: "Ir para Links", icon: <Link2 />, run: () => go("/links") },
+    { id: "go-tasks", label: "Ir para Tarefas", icon: <ListTodo />, run: () => go("/tasks") },
     { id: "go-tags", label: "Ir para Tags", icon: <Tag />, run: () => go("/tags") },
     { id: "theme", label: "Alternar tema", icon: <Moon />, run: () => cycleTheme() },
     { id: "settings", label: "Configurações", icon: <Settings />, run: () => go("/settings") },
@@ -216,7 +219,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
   ].filter((a) => !q || a.label.toLowerCase().includes(q.toLowerCase()));
 
   const total =
-    (data ? data.plans.length + data.nodes.length + data.links.length + data.collections.length + data.tags.length : 0) + actions.length;
+    (data ? data.tasks.length + data.plans.length + data.nodes.length + data.links.length + data.collections.length + data.tags.length : 0) + actions.length;
 
   return (
     <D.Root open={open} onOpenChange={setOpen}>
@@ -237,7 +240,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
                 autoFocus
                 value={query}
                 onValueChange={setQuery}
-                placeholder="Buscar plans, blocos, links, coleções, tags… ou > para comandos"
+                placeholder="Buscar tarefas, plans, blocos, links, coleções, tags… ou > para comandos"
                 className="h-full flex-1 bg-transparent text-title outline-none"
               />
               {loading && <span className="h-3 w-3 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Buscando" />}
@@ -263,6 +266,16 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
             <Command.List className="scrollbar-thin max-h-[min(60vh,520px)] overflow-y-auto px-2 pb-2.5 pt-1.5">
               {q && !commandMode && !loading && total === 0 && (
                 <Command.Empty className="px-3 py-10 text-center text-sm text-muted">Nada encontrado para “{q}”.</Command.Empty>
+              )}
+              {data && show("tasks") && data.tasks.length > 0 && (
+                <Command.Group heading="Tarefas" className={groupCls}>
+                  {data.tasks.map((task) => (
+                    <Command.Item key={`task-${task.id}`} value={`task-${task.id}`} onSelect={() => go(`/tasks?open=${task.id}`)} className={itemCls}>
+                      <IconTile><ListTodo /></IconTile>
+                      <span className="flex min-w-0 flex-1 flex-col"><span className="truncate"><Highlight text={task.title} query={q} /></span>{task.snippet && <span className="truncate text-xs text-muted"><Snippet text={task.snippet} /></span>}</span>
+                    </Command.Item>
+                  ))}
+                </Command.Group>
               )}
               {data && show("plans") && (data.plans.length > 0 || data.nodes.length > 0) && (
                 <Command.Group heading="Plans" className={groupCls}>

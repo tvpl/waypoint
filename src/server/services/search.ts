@@ -1,7 +1,7 @@
 import "server-only";
 import { getDb } from "../db";
 
-export type SearchEntityType = "plan" | "node" | "collection" | "favorite";
+export type SearchEntityType = "plan" | "node" | "collection" | "favorite" | "task";
 
 type Conn = { $client: import("better-sqlite3").Database };
 

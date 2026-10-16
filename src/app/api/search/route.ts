@@ -9,6 +9,7 @@ import { favoriteVisibleTo, hiddenCollectionIds } from "@/server/services/links"
 import { normalizeTag } from "@/lib/utils";
 
 export type SearchResponse = {
+  tasks: { id: string; title: string; snippet: string }[];
   plans: { id: string; title: string; snippet: string }[];
   nodes: { planId: string; planTitle: string; nodeId: string; title: string; snippet: string }[];
   links: { id: string; title: string; url: string; domain: string; favicon: string | null; collectionName: string | null; openBehavior: string }[];
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   const ctx = await getWorkspaceContext();
   if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 200);
-  const empty: SearchResponse = { plans: [], nodes: [], links: [], collections: [], tags: [] };
+  const empty: SearchResponse = { tasks: [], plans: [], nodes: [], links: [], collections: [], tags: [] };
   if (!q) return NextResponse.json(empty);
 
   const hits = searchIndex(ctx.workspace.id, q, 80);
@@ -44,8 +45,12 @@ export async function GET(req: NextRequest) {
   const favMap = new Map(favs.map((r) => [r.f.id, r]));
   const hiddenCols = hits.some((h) => h.type === "collection") ? hiddenCollectionIds(ctx.workspace.id, ctx.user.id) : new Set<string>();
 
+  const taskIds = hits.filter((h) => h.type === "task").map((h) => h.id);
+  const visibleTasks = new Set(taskIds.length ? db.select({ id: schema.tasks.id }).from(schema.tasks).where(and(inArray(schema.tasks.id, taskIds), eq(schema.tasks.workspaceId, ctx.workspace.id), isNull(schema.tasks.archivedAt))).all().map((t) => t.id) : []);
+
   const res: SearchResponse = { ...empty };
   for (const h of hits) {
+    if (h.type === "task" && visibleTasks.has(h.id)) res.tasks.push({ id: h.id, title: h.title, snippet: h.snippet });
     if (h.type === "plan" && visible.has(h.id)) res.plans.push({ id: h.id, title: h.title, snippet: h.snippet });
     if (h.type === "node" && h.parentId && visible.has(h.parentId)) {
       res.nodes.push({ planId: h.parentId, planTitle: visible.get(h.parentId)!.title, nodeId: h.id.split(":")[1], title: h.title, snippet: h.snippet });
@@ -56,6 +61,7 @@ export async function GET(req: NextRequest) {
     }
     if (h.type === "collection" && !hiddenCols.has(h.id)) res.collections.push({ id: h.id, name: h.title, snippet: h.snippet });
   }
+  res.tasks = res.tasks.slice(0, 10);
   res.nodes = res.nodes.slice(0, 8);
   res.links = res.links.slice(0, 10);
   const tagQ = normalizeTag(q);

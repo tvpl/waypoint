@@ -109,6 +109,7 @@ export function menuModel(s: MenuState): TopMenu[] {
         { id: "app:go-plans", label: "Planner", accelerator: "CmdOrCtrl+2" },
         { id: "app:go-links", label: "Links", accelerator: "CmdOrCtrl+3" },
         { id: "app:go-tags", label: "Tags", accelerator: "CmdOrCtrl+4" },
+        { id: "app:go-tasks", label: "Tarefas", accelerator: "CmdOrCtrl+5" },
         sep,
         { id: "app:toggle-rail", label: "Mostrar ou ocultar a barra lateral", accelerator: "CmdOrCtrl+B" },
         {

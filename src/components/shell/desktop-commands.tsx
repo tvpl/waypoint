@@ -15,6 +15,7 @@ const GO: Record<string, string> = {
   "app:go-plans": "/plans",
   "app:go-links": "/links",
   "app:go-tags": "/tags",
+  "app:go-tasks": "/tasks",
   "app:go-settings": "/settings",
   "app:add-link": "/links?add=1",
   "app:new-collection": "/links?newCollection=1",

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowRight,
   Check,
+  ListTodo,
   Download,
   FolderInput,
   Home,
@@ -49,6 +50,7 @@ const NAV = [
   { href: "/", label: "Início", icon: Home, match: (p: string) => p === "/" },
   { href: "/plans", label: "Planner", icon: Workflow, match: (p: string) => p.startsWith("/plans") },
   { href: "/links", label: "Links", icon: Link2, match: (p: string) => p.startsWith("/links") },
+  { href: "/tasks", label: "Tarefas", icon: ListTodo, match: (p: string) => p.startsWith("/tasks") },
   { href: "/tags", label: "Tags", icon: Tag, match: (p: string) => p.startsWith("/tags") },
 ];
 
@@ -221,7 +223,9 @@ export function AppRail({
         </CardFoot>
       </RailCard>
 
-      <RailCard {...card("tags")} trigger={<RailLink href="/tags" label="Tags" icon={Tag} on={NAV[3].match(pathname)} />}>
+      <RailLink href="/tasks" label="Tarefas" icon={ListTodo} on={pathname.startsWith("/tasks")} />
+
+      <RailCard {...card("tags")} trigger={<RailLink href="/tags" label="Tags" icon={Tag} on={NAV[4].match(pathname)} />}>
         <CardHead icon={Tag} title="Tags" text="Temas compartilhados entre plans e links." />
         <CardSection label="Mais usadas">
           {data ? (
@@ -528,7 +532,7 @@ export function MobileTabBar({ user }: { user: { name: string; email: string } }
       aria-label="Navegação principal"
       className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
     >
-      {NAV.slice(0, 3).map(({ href, label, icon: Icon, match }) => {
+      {NAV.slice(0, 4).map(({ href, label, icon: Icon, match }) => {
         const on = match(pathname);
         return (
           <Link key={href} href={href} aria-current={on ? "page" : undefined} className={cn(tab, on && "text-accent-ink")}>

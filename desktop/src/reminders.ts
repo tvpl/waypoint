@@ -1,5 +1,23 @@
-import type { Notification, NotificationConstructorOptions } from "electron";
-import type { ServerHandle } from "./server";
+/** Minimal shell contracts keep the scheduler testable without installing Electron. */
+export type NativeTaskNotification = {
+  once(event: "show" | "failed", listener: () => void): NativeTaskNotification;
+  on(event: "click", listener: () => void): NativeTaskNotification;
+  on(
+    event: "action",
+    listener: (details: { actionIndex: number }) => void,
+  ): NativeTaskNotification;
+  show(): void;
+  close(): void;
+};
+type TaskNotificationOptions = {
+  title: string;
+  subtitle?: string;
+  body: string;
+  silent?: boolean;
+  groupId?: string;
+  actions?: { type: "button"; text: string }[];
+};
+type NotificationServer = { origin: string; secret: string };
 
 type Delivery = {
   id: string;
@@ -21,7 +39,7 @@ const labels = {
 };
 export type NotificationEnvironment = {
   supported(): boolean;
-  create(options: NotificationConstructorOptions): Notification;
+  create(options: TaskNotificationOptions): NativeTaskNotification;
   cookies(origin: string): Promise<{ value: string }[]>;
 };
 
@@ -30,9 +48,9 @@ export class TaskNotifications {
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
   private paused = false;
-  private shown = new Map<Notification, Delivery[]>();
+  private shown = new Map<NativeTaskNotification, Delivery[]>();
   constructor(
-    private server: () => ServerHandle | null,
+    private server: () => NotificationServer | null,
     private open: (path: string) => void,
     private environment: NotificationEnvironment,
   ) {}

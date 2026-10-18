@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const WEEKDAYS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const monthFmt = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
 const dayFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const at = (iso: string) => new Date(`${iso}T12:00:00`);
 const addDays = (iso: string, n: number) => {
   const d = at(iso);
@@ -98,7 +99,7 @@ export function TaskCalendar({
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start">
       <section className="min-w-0 flex-1 overflow-hidden rounded-card border border-line bg-surface shadow-rest" aria-label="Calendário de tarefas">
         <header className="flex items-center gap-2 border-b border-line px-3 py-2">
-          <h2 className="text-body font-semibold capitalize">{monthFmt.format(first)}</h2>
+          <h2 className="text-body font-semibold">{capitalize(monthFmt.format(first))}</h2>
           <div className="ml-auto flex items-center gap-1">
             <Button size="sm" variant="ghost" onClick={() => setMonth(today.slice(0, 7))}>
               Hoje
@@ -196,7 +197,8 @@ export function TaskAgenda({ tasks, today, renderCard }: { tasks: Task[]; today:
     if (g) g.tasks.push(task);
     else groups.push({ key, title, tone, tasks: [task] });
   };
-  const sorted = [...tasks].sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.sortOrder - b.sortOrder);
+  // Done tasks without a date have no place in a timeline.
+  const sorted = [...tasks].filter((t) => t.dueDate || t.status !== "done").sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.sortOrder - b.sortOrder);
   for (const t of sorted) {
     const d = t.dueDate;
     if (!d) push("none", "Sem data", t);

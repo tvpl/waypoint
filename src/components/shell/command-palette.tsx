@@ -5,9 +5,11 @@ import { Command } from "cmdk";
 import { Dialog as D } from "radix-ui";
 import { helpModuleFor } from "@/features/help/guides";
 import { startTour } from "@/features/help/events";
+import { QuickTaskItem, quickTaskText } from "@/features/tasks/quick-task-item";
 import {
   Search,
   CircleHelp,
+  Trash2,
   PlayCircle,
   ShieldCheck,
   FileBarChart2,
@@ -146,7 +148,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
 
   useEffect(() => {
     const q = query.trim();
-    if (!q || q.startsWith(">")) {
+    if (!q || q.startsWith(">") || q.startsWith("+")) {
       setData(null);
       setLoading(false);
       return;
@@ -186,6 +188,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
   );
 
   const commandMode = query.trimStart().startsWith(">");
+  const taskText = quickTaskText(query);
   const q = commandMode ? query.trimStart().slice(1).trim() : query.trim();
   const show = (s: Scope) => !commandMode && (scope === "all" || scope === s);
   // Actions that only make sense where the user is.
@@ -202,6 +205,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
   const actions = [
     ...contextual,
     { id: "new-plan", label: "Novo plan", icon: <Plus />, run: () => start(async () => { const id = await createPlanAction({}); go(`/plans/${id}/edit`); }) },
+    { id: "new-task", label: "Nova tarefa (dica: digite + e o título aqui)", icon: <ListTodo />, run: () => go("/tasks?new=1") },
     { id: "add-link", label: "Adicionar link", icon: <Link2 />, run: () => go("/links?add=1") },
     { id: "new-col", label: "Nova coleção", icon: <FolderPlus />, run: () => go("/links?newCollection=1") },
     { id: "import", label: "Importar favoritos do navegador", icon: <Upload />, run: () => go("/links/import") },
@@ -219,6 +223,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
       ? [{ id: "tour", label: `Fazer o tour desta página (${helpModuleFor(pathname)!.title})`, icon: <PlayCircle />, run: () => (setOpen(false), startTour(helpModuleFor(pathname)!.id)) }]
       : []),
     { id: "backup", label: "Backup e dados", icon: <ShieldCheck />, run: () => go("/settings?tab=backup") },
+    { id: "trash", label: "Lixeira", icon: <Trash2 />, run: () => go("/trash") },
     { id: "task-report", label: "Relatório de tarefas concluídas", icon: <FileBarChart2 />, run: () => go("/tasks?report=1") },
     ...workspaces
       .filter((w) => w.id !== currentWorkspaceId)
@@ -252,7 +257,7 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
                 autoFocus
                 value={query}
                 onValueChange={setQuery}
-                placeholder="Buscar tarefas, plans, blocos, links, coleções, tags… ou > para comandos"
+                placeholder="Buscar tarefas, plans, blocos, links, coleções, tags… > comandos · + nova tarefa"
                 className="h-full flex-1 bg-transparent text-title outline-none"
               />
               {loading && <span className="h-3 w-3 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Buscando" />}
@@ -276,7 +281,12 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
               </div>
             )}
             <Command.List className="scrollbar-thin max-h-[min(60vh,520px)] overflow-y-auto px-2 pb-2.5 pt-1.5">
-              {q && !commandMode && !loading && total === 0 && (
+              {taskText && (
+                <Command.Group heading="Criar" className={groupCls}>
+                  <QuickTaskItem text={taskText} className={itemCls} onDone={() => setOpen(false)} />
+                </Command.Group>
+              )}
+              {q && !commandMode && !taskText && !loading && total === 0 && (
                 <Command.Empty className="px-3 py-10 text-center text-sm text-muted">Nada encontrado para “{q}”.</Command.Empty>
               )}
               {data && show("tasks") && data.tasks.length > 0 && (

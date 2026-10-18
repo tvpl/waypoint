@@ -44,6 +44,12 @@ import {
 } from "@/domain/task-board";
 import { TaskMarkdown } from "./markdown";
 import { TaskHistory } from "./task-history";
+import { TaskReferences } from "./task-references";
+import {
+  RECURRENCES,
+  RECURRENCE_LABELS,
+  type Recurrence,
+} from "@/domain/task-recurrence";
 
 export function ColorPicker({
   value,
@@ -201,7 +207,12 @@ export function TaskEditor({
   onToggleStar,
   meId = "",
   isOwner = false,
+  onLinksChange,
+  tagSuggestions = [],
 }: {
+  /** Workspace tags (shared with plans and links) plus markers already used. */
+  tagSuggestions?: string[];
+  onLinksChange?: (count: number) => void;
   starred?: boolean;
   onToggleStar?: () => void;
   meId?: string;
@@ -335,7 +346,7 @@ export function TaskEditor({
                   className="h-14 rounded-xl border-transparent bg-transparent px-0 text-[22px] font-semibold tracking-tight focus:border-transparent focus:ring-0"
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-4 rounded-2xl border border-line bg-surface-2/70 p-4 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-4 rounded-2xl border border-line bg-surface-2/70 p-4 sm:grid-cols-2">
                 <Field label="Etapa" htmlFor="task-status">
                   <select
                     id="task-status"
@@ -398,6 +409,22 @@ export function TaskEditor({
                     value={draft.dueDate ?? ""}
                     onChange={(e) => set("dueDate", e.target.value || null)}
                   />
+                </Field>
+                <Field label="Repetir" htmlFor="task-recurrence">
+                  <select
+                    id="task-recurrence"
+                    className={selectClass}
+                    value={draft.recurrence}
+                    onChange={(e) =>
+                      set("recurrence", e.target.value as Recurrence)
+                    }
+                  >
+                    {RECURRENCES.map((r) => (
+                      <option key={r} value={r}>
+                        {RECURRENCE_LABELS[r]}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </div>
               <Field label="Bloco e coluna" htmlFor="task-location">
@@ -820,6 +847,7 @@ export function TaskEditor({
                   label="Marcadores"
                   values={draft.tags}
                   onChange={(v) => set("tags", v)}
+                  suggestions={tagSuggestions}
                   placeholder="Ex.: cliente, revisão, financeiro"
                 />
                 <Field label="Prioridade" htmlFor="task-priority">
@@ -850,6 +878,13 @@ export function TaskEditor({
                 </Field>
               </Extra>
             </fieldset>
+            {task && (
+              <TaskReferences
+                taskId={task.id}
+                canEdit={canEdit}
+                onCount={onLinksChange}
+              />
+            )}
             {task && (
               <TaskHistory
                 key={`${task.id}:${task.version}`}

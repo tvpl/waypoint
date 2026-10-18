@@ -82,3 +82,19 @@ describe("task history", () => {
     expect(m.toggleImportant(viewer, "task", task.id)).toBe(false);
   });
 });
+
+describe("recurring tasks", () => {
+  it("creates the next occurrence once per completion", () => {
+    const task = t.createTask(owner, { title: "Fechar caixa", recurrence: "weekly", dueDate: "2030-01-07", subtasks: [{ id: "a", title: "Conferir", done: true }] });
+    const done = t.updateTask(owner, task.id, task.version, { status: "done" });
+    const next = t.listTasks(owner).filter((x) => x.title === "Fechar caixa" && x.status === "todo");
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ dueDate: "2030-01-14", recurrence: "weekly" });
+    expect(next[0].subtasks[0].done).toBe(false);
+    expect(h.listTaskHistory(owner, next[0].id)[0].body).toMatch(/^recurrence:/);
+    // Reopen and complete again: no duplicate.
+    const reopened = t.updateTask(owner, task.id, done.version, { status: "todo" });
+    t.updateTask(owner, task.id, reopened.version, { status: "done" });
+    expect(t.listTasks(owner).filter((x) => x.title === "Fechar caixa" && x.status === "todo")).toHaveLength(1);
+  });
+});

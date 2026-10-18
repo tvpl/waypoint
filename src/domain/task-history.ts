@@ -39,6 +39,7 @@ const FIELD_LABELS: [keyof TaskInput, string][] = [
   ["subtasks", "subtarefas"],
   ["dependsOn", "dependências"],
   ["color", "cor"],
+  ["recurrence", "repetição"],
 ];
 
 /** Labels of the fields that differ between two versions of a task (status is reported apart). */
@@ -58,6 +59,7 @@ export function completedSubtasks(before: TaskInput, after: TaskInput): string[]
 export function eventSummary(e: Pick<TaskEvent, "kind" | "fromStatus" | "toStatus" | "body">): string {
   switch (e.kind) {
     case "created":
+      if (e.body.startsWith("recurrence:")) return "Criada pela repetição";
       return e.toStatus && e.toStatus !== "todo" ? `Criada · ${STATUS_LABELS[e.toStatus]}` : "Criada";
     case "imported":
       return "Importada via Markdown";

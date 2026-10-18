@@ -53,6 +53,18 @@ export const HELP_MODULES: HelpModule[] = [
         title: "Acesso rápido e coleções fixadas",
         text: "Os links fixados abrem com as teclas 1 a 9. As coleções fixadas ficam logo abaixo, a um clique.",
       },
+      {
+        title: "Sua semana",
+        text: "A revisão semanal mostra quantas tarefas você concluiu por dia, a comparação com a semana passada e os projetos que mais andaram, com atalho para o relatório da semana.",
+      },
+      {
+        title: "Painéis por linha",
+        text: "Em Personalizar, escolha 2 ou 3 painéis lado a lado em telas grandes.",
+      },
+      {
+        title: "Notificações",
+        text: "O sino da barra lateral reúne lembretes, tarefas atrasadas, retornos do dia, conversas em que você foi citado e links quebrados.",
+      },
     ],
     tips: [
       "Fixe um link no acesso rápido com a tecla p na biblioteca de links.",
@@ -462,6 +474,30 @@ export const HELP_MODULES: HelpModule[] = [
         title: "Markdown, lote e IAs",
         text: "Importe checklists, exporte a visão e atualize tarefas a partir de um Markdown editado por uma IA. A seleção em lote muda etapa, projeto ou data de até 200 tarefas.",
       },
+      {
+        title: "Calendário e agenda",
+        text: "Além de Quadro e Lista, veja as tarefas num calendário do mês (arraste para mudar o prazo; arraste da lista Sem data) ou numa agenda: atrasadas, hoje, amanhã, próximos dias e depois.",
+      },
+      {
+        title: "Tarefas recorrentes",
+        text: "Em Repetir, escolha todo dia, dias úteis, toda semana ou todo mês. Ao concluir, a próxima ocorrência é criada com o novo prazo e as subtarefas desmarcadas. Na captura rápida, use ~diaria, ~uteis, ~semanal ou ~mensal.",
+      },
+      {
+        title: "Referências",
+        text: "Nos detalhes, vincule a tarefa a plans, links e coleções. Eles mostram a tarefa de volta em Tarefas ligadas.",
+      },
+      {
+        title: "Criar de qualquer lugar",
+        text: "Na busca (⌘K) ou na captura rápida do aplicativo, digite + e o título, com a mesma sintaxe do quadro (#marcador, @pessoa, amanhã, !alta…).",
+      },
+      {
+        title: "Preferências em todo lugar",
+        text: "Exibição, regras de ocultar, visões salvas e o formato (quadro, lista, calendário, agenda) acompanham você em qualquer dispositivo.",
+      },
+      {
+        title: "Marcadores são tags",
+        text: "Os marcadores das tarefas aparecem na página de Tags e em cada #tag, junto com plans e links. Renomear ou excluir uma tag lá também atualiza as tarefas.",
+      },
     ],
     tips: [
       "Pressione n para criar e / para buscar; #tag e @pessoa na busca restringem ao campo certo.",
@@ -556,6 +592,10 @@ export const HELP_MODULES: HelpModule[] = [
         title: "Renomear e excluir",
         text: "Renomear atualiza a tag em todos os itens. Excluir só tira a tag dos links e plans, sem apagar nada.",
       },
+      {
+        title: "Tarefas nas tags",
+        text: "Cada tag mostra também as tarefas com o mesmo marcador, e o contador inclui tarefas.",
+      },
     ],
     tips: [
       "Na biblioteca de links, tag:nome na busca filtra pelos links com aquela tag.",
@@ -636,6 +676,10 @@ export const HELP_MODULES: HelpModule[] = [
         title: "Trocar de workspace",
         text: "Os outros workspaces de que você participa aparecem como comandos.",
       },
+      {
+        title: "Criar tarefa pela busca",
+        text: "Comece com + para criar uma tarefa: “+ Enviar proposta amanhã #cliente !alta”. Enter cria e um aviso oferece abrir.",
+      },
     ],
     tips: [
       "Pressione ? em qualquer tela para ver todos os atalhos de teclado.",
@@ -694,6 +738,22 @@ export const HELP_MODULES: HelpModule[] = [
       {
         title: "Aplicativo",
         text: "Só no aplicativo de desktop: bloqueio com senha, backups completos do app e ajustes da janela.",
+      },
+      {
+        title: "Lixeira",
+        text: "Plans, coleções e links excluídos ficam 30 dias na Lixeira, com Restaurar e Excluir definitivamente. Toda exclusão também oferece Desfazer na hora.",
+      },
+      {
+        title: "Backup protegido por senha",
+        text: "Baixe um ponto de restauração criptografado (AES-256). Para enviá-lo de volta, o Waypoint pede a mesma senha.",
+      },
+      {
+        title: "Cópia fora do banco",
+        text: "Quando o servidor define WAYPOINT_BACKUP_DIR, cada ponto de restauração também é gravado nessa pasta.",
+      },
+      {
+        title: "Busca nas configurações",
+        text: "O campo acima das abas encontra a seção certa por palavras como senha, backup, tema ou token.",
       },
     ],
     tips: [

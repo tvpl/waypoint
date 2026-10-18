@@ -8,12 +8,16 @@ import { pinnedPlans } from "@/server/services/home";
 import type { RailPin } from "@/components/shell/app-rail";
 import { after } from "next/server";
 import { TourHost } from "@/features/help/tour";
+import { TourInvite } from "@/features/help/tour-invite";
 import { maybeAutoBackup } from "@/server/services/backups";
+import { purgeTrash } from "@/server/services/trash";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireWorkspace();
   // The scheduled restore point is taken after the response, at most once per period.
   after(() => maybeAutoBackup(ctx.workspace.id));
+  // Items trashed more than 30 days ago are deleted for good.
+  after(() => purgeTrash(ctx.workspace.id));
   const pins: RailPin[] = [
     ...pinnedCollections(ctx.user.id, ctx.workspace.id).map((c) => ({ kind: "collection" as const, id: c.id, name: c.name, icon: c.icon, color: c.color })),
     ...pinnedPlans(ctx.user.id, ctx.workspace.id).map((p) => ({ kind: "plan" as const, id: p.id, name: p.title })),
@@ -27,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MobileTabBar user={{ name: ctx.user.name, email: ctx.user.email }} />
       <Shortcuts />
       <TourHost />
+      <TourInvite />
       <CommandPalette workspaces={ctx.workspaces.map((w) => ({ id: w.id, name: w.name }))} currentWorkspaceId={ctx.workspace.id} />
     </TooltipProvider>
   );

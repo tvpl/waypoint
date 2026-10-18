@@ -13,10 +13,12 @@ export async function POST(req: Request) {
   const body = Buffer.from(await req.arrayBuffer());
   if (body.length > MAX_BYTES) return NextResponse.json({ error: "Arquivo grande demais (máx. 80 MB)." }, { status: 413 });
   try {
-    const backup = importBackupFile({ workspaceId: ctx.workspace.id, userId: ctx.user.id }, body);
+    const header = req.headers.get("x-backup-password");
+    const password = header ? decodeURIComponent(header) : null;
+    const backup = importBackupFile({ workspaceId: ctx.workspace.id, userId: ctx.user.id }, body, password);
     return NextResponse.json({ backup });
   } catch (e) {
-    if (e instanceof UserError) return NextResponse.json({ error: e.message }, { status: 400 });
+    if (e instanceof UserError) return NextResponse.json({ error: e.message, needsPassword: /protegido por senha/.test(e.message) }, { status: 400 });
     console.error("[backups] upload failed", e);
     return NextResponse.json({ error: "Não foi possível ler o backup." }, { status: 500 });
   }

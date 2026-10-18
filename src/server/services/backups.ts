@@ -1,5 +1,8 @@
 import "server-only";
 import zlib from "node:zlib";
+import fs from "node:fs";
+import path from "node:path";
+import { decryptBackup, isEncryptedBackup } from "../lib/backup-crypto";
 import type { Statement } from "better-sqlite3";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -91,6 +94,7 @@ const SPECS: Spec[] = [
     json: ["depends_on_json"],
   },
   { table: "task_events", where: "workspace_id = @ws", ws: true, refs: { task_id: { table: "tasks", required: true } }, users: { user_id: "nullable" } },
+  { table: "task_links", where: "workspace_id = @ws", ws: true, refs: { task_id: { table: "tasks", required: true } } },
   { table: "task_reminders", where: "workspace_id = @ws", ws: true, refs: { task_id: { table: "tasks", required: true } }, users: { user_id: "member" } },
   { table: "saved_searches", where: "workspace_id = @ws", ws: true, users: { user_id: "member" } },
   { table: "home_shortcuts", where: "workspace_id = @ws", ws: true, users: { user_id: "member" } },
@@ -188,7 +192,46 @@ function store(workspaceId: string, file: BackupFile, kind: BackupKind, userId: 
       createdAt: new Date(),
     })
     .run();
+  if (kind !== "upload") mirrorToFolder(workspaceId, id, file, kind, data);
   return id;
+}
+
+// ---------------------------------------------------------------- copy outside the database
+
+/** `WAYPOINT_BACKUP_DIR`: a folder (ideally synced or on another disk) that receives each restore point. */
+export function backupFolder(): string | null {
+  const dir = process.env.WAYPOINT_BACKUP_DIR?.trim();
+  return dir && path.isAbsolute(dir) ? dir : null;
+}
+const folderFor = (root: string, workspaceId: string) => path.join(root, `workspace-${workspaceId}`);
+
+function mirrorToFolder(workspaceId: string, id: string, file: BackupFile, kind: BackupKind, gz: Buffer) {
+  const root = backupFolder();
+  if (!root) return;
+  try {
+    const dir = folderFor(root, workspaceId);
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date(file.createdAt).toISOString().replace(/[:.]/g, "-");
+    fs.writeFileSync(path.join(dir, `${stamp}-${kind}-${id}.json.gz`), gz);
+  } catch (e) {
+    console.error("[backups] could not copy to WAYPOINT_BACKUP_DIR", e);
+  }
+}
+
+/** Files of restore points that no longer exist are removed with them. */
+function pruneFolder(workspaceId: string, keepIds: Set<string>) {
+  const root = backupFolder();
+  if (!root) return;
+  try {
+    const dir = folderFor(root, workspaceId);
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      const m = /-([0-9a-z]{16})\.json\.gz$/.exec(name);
+      if (m && !keepIds.has(m[1])) fs.rmSync(path.join(dir, name), { force: true });
+    }
+  } catch (e) {
+    console.error("[backups] could not prune WAYPOINT_BACKUP_DIR", e);
+  }
 }
 
 /** Drops the oldest automatic restore points beyond the setting, and old safety copies and uploads. */
@@ -208,6 +251,13 @@ function prune(workspaceId: string) {
       .all();
     for (const r of rows.slice(limit)) db.delete(schema.workspaceBackups).where(eq(schema.workspaceBackups.id, r.id)).run();
   }
+  syncFolder(workspaceId);
+}
+
+function syncFolder(workspaceId: string) {
+  if (!backupFolder()) return;
+  const ids = getDb().select({ id: schema.workspaceBackups.id }).from(schema.workspaceBackups).where(eq(schema.workspaceBackups.workspaceId, workspaceId)).all();
+  pruneFolder(workspaceId, new Set(ids.map((r) => r.id)));
 }
 
 export function createBackup(actor: Actor, note?: string) {
@@ -285,6 +335,7 @@ export function deleteBackup(actor: Actor, id: string) {
     .where(and(eq(schema.workspaceBackups.id, z.string().max(64).parse(id)), eq(schema.workspaceBackups.workspaceId, actor.workspaceId)))
     .run();
   if (!res.changes) throw new UserError("Backup não encontrado.");
+  syncFolder(actor.workspaceId);
 }
 
 function loadBackup(actor: Actor, id: string): { file: BackupFile; takenAt: number } {
@@ -344,8 +395,16 @@ export function downloadBackup(actor: Actor, id: string): { file: BackupFile; fi
 }
 
 /** Stores an uploaded file as a restore point of this workspace. */
-export function importBackupFile(actor: Actor, raw: Buffer): BackupSummary {
+export function importBackupFile(actor: Actor, raw: Buffer, password?: string | null): BackupSummary {
   requireOwner(actor);
+  if (isEncryptedBackup(raw)) {
+    if (!password) throw new UserError("Este backup está protegido por senha. Informe a senha para enviar.");
+    try {
+      raw = decryptBackup(raw, password);
+    } catch (e) {
+      throw new UserError(e instanceof Error && !(e instanceof z.ZodError) ? e.message : "Arquivo criptografado inválido.");
+    }
+  }
   let parsed: unknown;
   try {
     const text = raw[0] === 0x1f && raw[1] === 0x8b ? zlib.gunzipSync(raw).toString("utf8") : raw.toString("utf8");
@@ -439,7 +498,7 @@ function prepare(file: BackupFile, o: PrepareOptions, c: Client): Prepared {
         if (!table || !valid.get(table)?.has(id) || o.keep?.get(table)?.has(id)) drop = true;
         else row.entity_id = id;
       }
-      if (spec.table === "resource_refs" && typeof row.target_id === "string") {
+      if ((spec.table === "resource_refs" || spec.table === "task_links") && typeof row.target_id === "string") {
         const table = MARKED[row.target_type as keyof typeof MARKED];
         if (table) row.target_id = mapped(table, row.target_id);
       }
@@ -640,7 +699,7 @@ export function listRecoverable(actor: Actor, backupId: string): { items: Recove
   for (const p of file.tables.plans ?? []) {
     if (hidden.plans.has(String(p.id))) continue;
     const now = plans.get(String(p.id));
-    if (!now) add("plan", p.id, p.title, p.archived_at ? "Excluído (estava arquivado)" : "Excluído", "deleted");
+    if (!now || now.deleted_at) add("plan", p.id, p.title, now ? "Na lixeira" : p.archived_at ? "Excluído (estava arquivado)" : "Excluído", "deleted");
     else {
       const before = snapDocs.get(String(p.id));
       const after = docs.get(String(p.id));
@@ -651,13 +710,13 @@ export function listRecoverable(actor: Actor, backupId: string): { items: Recove
   const collections = currentRows(c, "collections", ws);
   const snapCollections = new Map((file.tables.collections ?? []).map((r) => [String(r.id), r]));
   for (const r of file.tables.collections ?? [])
-    if (!hidden.collections.has(String(r.id)) && !collections.has(String(r.id))) {
+    if (!hidden.collections.has(String(r.id)) && (!collections.has(String(r.id)) || collections.get(String(r.id))!.deleted_at)) {
       const links = (file.tables.favorites ?? []).filter((f) => f.collection_id === r.id).length;
       add("collection", r.id, r.name, `Excluída${links ? ` · ${links} ${links === 1 ? "link" : "links"}` : ""}`, "deleted");
     }
   const favorites = currentRows(c, "favorites", ws);
   for (const r of file.tables.favorites ?? [])
-    if (!hidden.favorites.has(String(r.id)) && !favorites.has(String(r.id))) {
+    if (!hidden.favorites.has(String(r.id)) && (!favorites.has(String(r.id)) || favorites.get(String(r.id))!.deleted_at)) {
       const col = r.collection_id ? snapCollections.get(String(r.collection_id))?.name : null;
       add("favorite", r.id, r.title, `${r.domain ?? ""}${col ? ` · em ${col}` : ""}`, "deleted");
     }
@@ -705,6 +764,9 @@ export function recoverItems(actor: Actor, backupId: string, rawKeys: unknown) {
   friendly(() =>
     getDb().transaction(() => {
       c.pragma("defer_foreign_keys = ON");
+      // Items still in the trash just come out of it (same row, nothing to insert).
+      const untrash = (table: string, id: string) =>
+        c.prepare(`update ${table} set deleted_at = null where id = ? and workspace_id = ? and deleted_at is not null`).run(id, ws).changes > 0;
       // Collections, parents first; their missing links come along.
       const snapCols = byId("collections");
       const colIds = new Set(ids("collection"));
@@ -713,6 +775,10 @@ export function recoverItems(actor: Actor, backupId: string, rawKeys: unknown) {
         return p && snapCols.has(String(p)) ? 1 + depth(String(p)) : 0;
       };
       for (const id of [...colIds].sort((a, b) => depth(a) - depth(b))) {
+        if (untrash("collections", id)) {
+          touched.collections.push(id);
+          continue;
+        }
         const row = withWs(snapCols.get(id)!);
         if (row.parent_id && !exists("collections", row.parent_id)) row.parent_id = null;
         if (row.created_by && !c.prepare("select 1 from users where id = ?").get(row.created_by)) row.created_by = null;
@@ -733,6 +799,10 @@ export function recoverItems(actor: Actor, backupId: string, rawKeys: unknown) {
       for (const f of rowsOf("favorites")) if (f.collection_id && colIds.has(String(f.collection_id)) && available.has(`favorite:${f.id}`)) favIds.add(String(f.id));
       const snapFavs = byId("favorites");
       for (const id of favIds) {
+        if (untrash("favorites", id)) {
+          touched.favorites.push(id);
+          continue;
+        }
         const row = withWs(snapFavs.get(id)!);
         if (row.collection_id && !exists("collections", row.collection_id)) row.collection_id = null;
         if (row.created_by && !c.prepare("select 1 from users where id = ?").get(row.created_by)) row.created_by = null;
@@ -804,6 +874,10 @@ export function recoverItems(actor: Actor, backupId: string, rawKeys: unknown) {
       // Plans: deleted ones with their versions, tags, comments and members.
       const snapPlans = byId("plans");
       for (const id of ids("plan", "deleted")) {
+        if (untrash("plans", id)) {
+          touched.plans.push(id);
+          continue;
+        }
         const row = withWs(snapPlans.get(id)!);
         row.slug = uniqueValue((v) => !!c.prepare("select 1 from plans where workspace_id = ? and slug = ?").get(ws, v), String(row.slug), (n) => `-${n + 1}`);
         if (row.created_by && !c.prepare("select 1 from users where id = ?").get(row.created_by)) row.created_by = null;

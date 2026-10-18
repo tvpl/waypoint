@@ -17,7 +17,8 @@ import { cn, timeAgo } from "@/lib/utils";
 import { after } from "next/server";
 import { recentlyBroken, sweepStaleLinks } from "@/server/services/link-health";
 import type { HomePlan } from "@/server/services/home";
-import { homeLayout, listShortcuts, todayTasks } from "@/server/services/dashboard";
+import { homeLayout, listShortcuts, todayTasks, weeklyReview } from "@/server/services/dashboard";
+import { WeekReview } from "@/features/home/week-review";
 import { importantItems } from "@/server/services/marks";
 import { HOME_WIDGETS, type HomeWidget } from "@/domain/dashboard";
 import { localDate } from "@/domain/tasks";
@@ -86,6 +87,7 @@ export default async function HomePage() {
 
   const widgets: Record<HomeWidget, React.ReactNode> = {
     shortcuts: <ShortcutsPanel initial={shortcuts} />,
+    week: <WeekReview review={weeklyReview(actor)} />,
     important: (
       <Panel title="Importantes" icon={<Star />} tour="home-important">
         <ImportantPanel items={important} today={today} />
@@ -191,7 +193,7 @@ export default async function HomePage() {
   for (const id of layout.order) {
     if (layout.hidden.includes(id) || !widgets[id]) continue;
     const last = rows.at(-1);
-    if (half.has(id) && last && last.length === 1 && half.has(last[0])) last.push(id);
+    if (half.has(id) && last && last.length < layout.columns && half.has(last[0])) last.push(id);
     else rows.push([id]);
   }
 
@@ -231,10 +233,13 @@ export default async function HomePage() {
         )}
 
         {rows.map((row) =>
-          row.length === 2 ? (
-            <div key={row.join("+")} className="grid gap-4 md:grid-cols-2">
-              {widgets[row[0]]}
-              {widgets[row[1]]}
+          row.length > 1 ? (
+            <div key={row.join("+")} className={cn("grid gap-4 md:grid-cols-2", row.length === 3 && "lg:grid-cols-3")}>
+              {row.map((id) => (
+                <div key={id} className={cn("flex min-w-0 flex-col [&>section]:flex-1", row.length === 3 && id === row[2] && "md:col-span-2 lg:col-span-1")}>
+                  {widgets[id]}
+                </div>
+              ))}
             </div>
           ) : half.has(row[0]) ? (
             <div key={row[0]} className="grid gap-4">

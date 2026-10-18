@@ -4,14 +4,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Bell,
   BookOpen,
+  CalendarCheck,
   Check,
   CircleHelp,
   Keyboard,
   LifeBuoy,
   PlayCircle,
   ListTodo,
-  Download,
+  Eye,
+  FileBarChart2,
   FolderInput,
   Home,
   Inbox,
@@ -30,6 +33,7 @@ import {
   ShieldCheck,
   Sun,
   Tag,
+  Trash2,
   User,
   Users,
   Workflow,
@@ -37,12 +41,13 @@ import {
 } from "lucide-react";
 import { HoverCard } from "radix-ui";
 import { toast } from "sonner";
-import { Tooltip } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { Kbd, SiteIcon } from "@/components/ui/misc";
 import { PlanThumb } from "@/components/plan-thumb";
 import { cn } from "@/lib/utils";
-import { applyTheme, cycleTheme, openPalette, THEME_LABEL, useThemePref, type ThemePref } from "@/lib/theme";
+import { applyTheme, openPalette, THEME_LABEL, useThemePref, type ThemePref } from "@/lib/theme";
 import { CollectionGlyph } from "@/features/links/collection-style";
 import { createPlanAction } from "@/app/(app)/plans/actions";
 import type { RailResponse } from "@/app/api/rail/route";
@@ -53,6 +58,7 @@ import { TOGGLE_RAIL_EVENT, useDesktop } from "@/lib/desktop";
 import { helpModuleFor } from "@/features/help/guides";
 import { startTour } from "@/features/help/events";
 import { openShortcuts } from "./shortcuts";
+import { NotificationsPanel, UnreadBadge, unreadLabel, useNotifications } from "./notifications";
 
 const NAV = [
   { href: "/", label: "Início", icon: Home, match: (p: string) => p === "/" },
@@ -104,8 +110,9 @@ function useRailData(active: boolean) {
 
 /**
  * Navigation rail: a compact column of large icons with short labels. Hovering (or focusing) an
- * item opens its own card beside it with what is useful there: recent plans, the inbox, tags,
- * settings sections. ⌘B / "[" hides or shows the whole rail.
+ * item opens its own card beside it with what is useful there: recent plans, the inbox, tasks,
+ * tags, settings sections. The bell opens the notification center; the theme lives in the
+ * account menu. Sized to fit a 700px-tall window. ⌘B / "[" hides or shows the whole rail.
  */
 export function AppRail({
   user,
@@ -120,7 +127,6 @@ export function AppRail({
 }) {
   const pathname = usePathname();
   const theme = useThemePref();
-  const ThemeIcon = THEME_ICON[theme];
   const [hidden, setHidden] = React.useState(false);
   const [open, setOpen] = React.useState<string | null>(null);
   const data = useRailData(open !== null);
@@ -159,8 +165,11 @@ export function AppRail({
   const pinnedPlans = pins.filter((p): p is Extract<RailPin, { kind: "plan" }> => p.kind === "plan");
 
   return (
-    <nav aria-label="Navegação principal" className={cn("w-[76px] shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-3", hidden ? "hidden" : "hidden sm:flex")}>
-      <Link href="/" aria-label="Waypoint — início" className="mb-3 shrink-0">
+    <nav
+      aria-label="Navegação principal"
+      className={cn("scrollbar-none w-[76px] shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-line bg-surface py-2.5", hidden ? "hidden" : "hidden sm:flex")}
+    >
+      <Link href="/" aria-label="Waypoint — início" className="mb-2 shrink-0">
         <Logo />
       </Link>
 
@@ -231,7 +240,43 @@ export function AppRail({
         </CardFoot>
       </RailCard>
 
-      <RailLink href="/tasks" label="Tarefas" icon={ListTodo} on={pathname.startsWith("/tasks")} data-tour="nav-tasks" />
+      <RailCard {...card("tasks")} trigger={<RailLink href="/tasks" label="Tarefas" icon={ListTodo} on={NAV[3].match(pathname)} data-tour="nav-tasks" />}>
+        <CardHead icon={ListTodo} title="Tarefas" text="Board por etapas, prazos e acompanhamentos." />
+        <CardList>
+          <CardRow href="/tasks?scope=today" icon={CalendarCheck} label="Meu dia" />
+          <CardRow href="/tasks?scope=followup" icon={Eye} label="Acompanhar" />
+          <CardRow href="/tasks?report=1" icon={FileBarChart2} label="Relatório de concluídas" />
+        </CardList>
+        <CardSection label="Projetos">
+          {data ? (
+            data.projects.length ? (
+              <div className="scrollbar-thin flex max-h-48 flex-col overflow-y-auto">
+                {data.projects.map((p) => (
+                  <Link key={p.id} href={`/tasks?project=${encodeURIComponent(p.id)}`} className="flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-body hover:bg-surface-2">
+                    <span data-color={p.color} className="wp-task-color mx-1 size-2 shrink-0 rounded-full" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    {p.open > 0 && (
+                      <span className="px-1.5 text-caption font-medium tabular-nums text-muted" title="Tarefas abertas">
+                        {p.open}
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="px-2 py-1.5 text-body text-muted">Nenhum projeto ainda.</p>
+            )
+          ) : (
+            <CardLoading />
+          )}
+        </CardSection>
+        <CardFoot>
+          <Link href="/tasks?new=1" className={footPrimary}>
+            <Plus className="size-3.5" /> Nova tarefa
+          </Link>
+          <CardFootLink href="/tasks">Todas as tarefas</CardFootLink>
+        </CardFoot>
+      </RailCard>
 
       <RailCard {...card("tags")} trigger={<RailLink href="/tags" label="Tags" icon={Tag} on={NAV[4].match(pathname)} data-tour="nav-tags" />}>
         <CardHead icon={Tag} title="Tags" text="Temas compartilhados entre plans e links." />
@@ -277,9 +322,7 @@ export function AppRail({
 
       <div className="flex-1" />
 
-      <Tooltip content={`Tema: ${THEME_LABEL[theme].toLowerCase()} (clique para alternar)`} side="right">
-        <RailButton label="Tema" icon={ThemeIcon} onClick={() => cycleTheme()} ariaLabel={`Alternar tema (atual: ${THEME_LABEL[theme].toLowerCase()})`} />
-      </Tooltip>
+      <NotificationsButton scope={workspace.id} onOpen={() => setOpen(null)} />
 
       <HelpCard {...card("help")} pathname={pathname} />
 
@@ -304,6 +347,7 @@ export function AppRail({
               <DropdownMenuSeparator />
             </>
           )}
+          <DropdownMenuLabel>Tema</DropdownMenuLabel>
           <ThemeItems current={theme} />
           <DropdownMenuSeparator />
           <SignOutItem />
@@ -316,7 +360,7 @@ export function AppRail({
 // ------------------------------------------------------------------ rail pieces
 
 const railItem =
-  "group/rail relative flex h-[54px] w-[60px] flex-col items-center justify-center gap-[3px] rounded-xl text-muted outline-none transition-colors hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-accent/40 data-[state=open]:bg-hover data-[state=open]:text-ink [&_svg]:size-[22px]";
+  "group/rail relative flex h-[50px] w-[60px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-xl text-muted outline-none transition-colors hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-accent/40 data-[state=open]:bg-hover data-[state=open]:text-ink [&_svg]:size-[22px]";
 const railOn = "bg-accent-soft text-accent-ink hover:bg-accent-soft hover:text-accent-ink data-[state=open]:bg-accent-soft data-[state=open]:text-accent-ink";
 const railLabel = "max-w-full truncate px-0.5 text-[10.5px] font-medium leading-none tracking-[.01em]";
 
@@ -333,17 +377,40 @@ const RailLink = React.forwardRef<HTMLAnchorElement, { href: string; label: stri
   );
 });
 
-const RailButton = React.forwardRef<HTMLButtonElement, { label: string; icon: LucideIcon; ariaLabel?: string } & React.ComponentProps<"button">>(function RailButton(
-  { label, icon: Icon, ariaLabel, className, ...rest },
+const RailButton = React.forwardRef<HTMLButtonElement, { label: string; icon: LucideIcon; ariaLabel?: string; badge?: React.ReactNode } & React.ComponentProps<"button">>(function RailButton(
+  { label, icon: Icon, ariaLabel, badge, className, ...rest },
   ref,
 ) {
   return (
     <button ref={ref} type="button" aria-label={ariaLabel} className={cn(railItem, className)} {...rest}>
       <Icon strokeWidth={1.75} />
       <span className={railLabel}>{label}</span>
+      {badge}
     </button>
   );
 });
+
+/** The bell: unread count on the icon, the notification center in a popover beside the rail. */
+function NotificationsButton({ scope, onOpen }: { scope: string; onOpen: () => void }) {
+  const { unread } = useNotifications(scope);
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) onOpen();
+      }}
+    >
+      <PopoverTrigger asChild>
+        <RailButton label="Avisos" icon={Bell} ariaLabel={unreadLabel(unread)} badge={<UnreadBadge count={unread} className="right-3 top-1.5" />} />
+      </PopoverTrigger>
+      <PopoverContent side="right" align="end" sideOffset={12} collisionPadding={12} className="flex max-h-[min(560px,calc(100dvh-24px))] w-[340px] flex-col overflow-hidden p-0">
+        <NotificationsPanel scope={scope} onNavigate={() => setOpen(false)} />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /** The card that opens beside a rail item on hover or focus. */
 function RailCard({ open, onOpenChange, trigger, children }: { open: boolean; onOpenChange: (o: boolean) => void; trigger: React.ReactElement; children: React.ReactNode }) {
@@ -476,6 +543,7 @@ function SettingsCard({ open, onOpenChange, on }: { open: boolean; onOpenChange:
         <CardRow href="/settings?tab=workspace" icon={Users} label="Workspace e pessoas" />
         <CardRow href="/settings?tab=integracoes" icon={KeyRound} label="Integrações e tokens" />
         <CardRow href="/settings?tab=backup" icon={ShieldCheck} label="Backup e dados" />
+        <CardRow href="/trash" icon={Trash2} label="Lixeira" />
         {desktop && <CardRow href="/settings?tab=aplicativo" icon={Monitor} label="Aplicativo e bloqueio" />}
       </CardList>
     </RailCard>
@@ -549,6 +617,9 @@ function ThemeItems({ current }: { current: ThemePref }) {
 export function MobileTabBar({ user }: { user: { name: string; email: string } }) {
   const pathname = usePathname();
   const theme = useThemePref();
+  // The rail (mounted too, hidden on phones) refetches on workspace switches; the store is shared.
+  const { unread } = useNotifications("phone");
+  const [notesOpen, setNotesOpen] = React.useState(false);
   const tab = "group/tab flex h-full flex-1 flex-col items-center justify-center gap-0.5 text-caption font-medium text-muted [&_svg]:size-[22px]";
   // Active tab: a pill behind the icon (not just a color change).
   const pill = "flex h-7 w-12 items-center justify-center rounded-full transition-colors group-aria-[current=page]/tab:bg-accent-soft";
@@ -581,8 +652,9 @@ export function MobileTabBar({ user }: { user: { name: string; email: string } }
             aria-current={pathname.startsWith("/tags") || pathname.startsWith("/settings") ? "page" : undefined}
             className={cn(tab, (pathname.startsWith("/tags") || pathname.startsWith("/settings")) && "text-accent-ink")}
           >
-            <span className={pill}>
+            <span className={cn(pill, "relative")}>
               <Menu strokeWidth={1.75} />
+              <UnreadBadge count={unread} className="-top-1 right-0.5" />
             </span>
             Mais
           </button>
@@ -593,6 +665,10 @@ export function MobileTabBar({ user }: { user: { name: string; email: string } }
             <span className="block text-xs font-normal text-muted">{user.email}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setNotesOpen(true)}>
+            <Bell /> Notificações
+            {unread > 0 && <span className="ml-auto rounded-full bg-accent px-1.5 text-caption font-medium tabular-nums text-white">{unread > 99 ? "99+" : unread}</span>}
+          </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href="/tags"><Tag /> Tags</Link>
           </DropdownMenuItem>
@@ -613,6 +689,11 @@ export function MobileTabBar({ user }: { user: { name: string; email: string } }
           <SignOutItem />
         </DropdownMenuContent>
       </DropdownMenu>
+      <Dialog open={notesOpen} onOpenChange={setNotesOpen}>
+        <DialogContent title="Notificações" description="Lembretes, prazos, menções e links quebrados." className="max-h-[80dvh]">
+          {notesOpen && <NotificationsPanel scope="phone" hideTitle onNavigate={() => setNotesOpen(false)} className="border-t border-line" />}
+        </DialogContent>
+      </Dialog>
     </nav>
   );
 }

@@ -31,6 +31,7 @@ import { EXCALIDRAW_ACCEPT } from "./excalidraw-file";
 import { planPayloadFromFile } from "./excalidraw-import";
 import { toggleImportantAction } from "@/app/(app)/dashboard-actions";
 import { archivePlanAction, createPlanAction, deletePlanAction, duplicatePlanAction, importPlanAction } from "@/app/(app)/plans/actions";
+import { trashedToast } from "@/features/trash/undo-toast";
 
 export type PlanFilter = "mine" | "shared" | "templates" | "archived";
 
@@ -310,7 +311,7 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent title="Excluir plan?" description={p.title} className="max-w-[440px]">
           <DialogBody>
-            <p className="text-sm text-ink-2">O plan, seu histórico de versões e os links compartilhados serão removidos. Se precisar dele de volta, recupere-o em Configurações › Backup e dados.</p>
+            <p className="text-sm text-ink-2">O plan vai para a lixeira e some de listas, buscas e links compartilhados. Por 30 dias você pode restaurá-lo em Configurações › Backup e dados › Lixeira; depois disso, ele é excluído de vez.</p>
           </DialogBody>
           <DialogFooter className="justify-end">
             <Button variant="secondary" onClick={() => setConfirm(false)}>
@@ -321,10 +322,15 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
               disabled={pending}
               onClick={() => {
                 setConfirm(false);
-                act(() => deletePlanAction(p.id), "Plan excluído");
+                start(async () => {
+                  const r = await deletePlanAction(p.id);
+                  if (!r.ok) return void toast.error(r.error ?? "Algo deu errado.");
+                  trashedToast("Plan movido para a lixeira", [{ type: "plan", id: p.id }], { description: p.title, onUndone: () => router.refresh() });
+                  router.refresh();
+                });
               }}
             >
-              <Trash2 /> Excluir
+              <Trash2 /> Mover para a lixeira
             </Button>
           </DialogFooter>
         </DialogContent>

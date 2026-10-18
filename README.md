@@ -49,6 +49,8 @@ Qualquer bloco de um plan pode apontar para um **Resource**: uma URL, outro plan
 
 **Backups e recuperação.** Em Configurações › Backup e dados ficam os pontos de restauração automáticos e manuais: recupere um item excluído, volte o workspace inteiro (com um backup "Antes de restaurar" para desfazer), baixe ou envie um `.json`, ou crie um workspace a partir de um backup (veja `docs/backups.md`). As configurações são organizadas em abas: Conta, Aparência, Workspace, Integrações, Backup e dados e, no desktop, Aplicativo.
 
+**Menos atrito.** Exclusões vão para a **Lixeira** (30 dias) e todo excluir oferece **Desfazer**. O sino de **notificações** reúne lembretes, tarefas atrasadas e retornos, menções em comentários e links quebrados. Tarefas têm **calendário**, **agenda**, **recorrência** e **referências** a plans, links e coleções; os marcadores aparecem nas Tags. Na busca (⌘K) ou na captura rápida, `+ título` cria uma tarefa. As preferências de exibição acompanham a pessoa em qualquer dispositivo, e a Início traz a revisão **Sua semana**. Backups podem ser baixados **protegidos por senha** e copiados para uma pasta (`WAYPOINT_BACKUP_DIR`).
+
 **Ajuda guiada.** A **Central de ajuda** (`/help`) explica para que serve cada módulo, o que dá para fazer, dicas e atalhos, com busca. Cada módulo tem um **tour guiado** que destaca os elementos da própria tela, passo a passo; o botão **Ajuda** da barra lateral começa o tour da página atual, e a busca (⌘K) também. O conteúdo fica em `src/features/help/guides.ts`, e os alvos dos passos são atributos `data-tour` nos elementos.
 
 ## Stack

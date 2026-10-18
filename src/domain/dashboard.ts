@@ -5,6 +5,7 @@ export const HOME_WIDGETS = [
   { id: "shortcuts", label: "Atalhos", description: "Seus caminhos para qualquer página ou site", half: false },
   { id: "important", label: "Importantes", description: "Tarefas, plans e coleções com estrela", half: true },
   { id: "today", label: "Para hoje", description: "Tarefas do dia, atrasadas e retornos", half: true },
+  { id: "week", label: "Sua semana", description: "Revisão semanal: o que foi concluído", half: false },
   { id: "links", label: "Links importantes", description: "Links que você marcou com estrela", half: false },
   { id: "recent", label: "Plans recentes", description: "Os diagramas em que você mexeu por último", half: false },
   { id: "attention", label: "Pede atenção", description: "Conversas abertas e links quebrados", half: true },
@@ -18,9 +19,11 @@ const WIDGET_IDS = HOME_WIDGETS.map((w) => w.id) as [HomeWidget, ...HomeWidget[]
 export const homeLayoutSchema = z.object({
   order: z.array(z.enum(WIDGET_IDS)).max(WIDGET_IDS.length),
   hidden: z.array(z.enum(WIDGET_IDS)).max(WIDGET_IDS.length),
+  /** Side-by-side panels per row on wide screens. */
+  columns: z.union([z.literal(2), z.literal(3)]).default(2),
 });
 export type HomeLayout = z.infer<typeof homeLayoutSchema>;
-export const defaultHomeLayout = (): HomeLayout => ({ order: [...WIDGET_IDS], hidden: [] });
+export const defaultHomeLayout = (): HomeLayout => ({ order: [...WIDGET_IDS], hidden: [], columns: 2 });
 
 /** Stored layout + any section added since it was saved (appended at the end). */
 export function normalizeLayout(raw: unknown): HomeLayout {
@@ -28,7 +31,7 @@ export function normalizeLayout(raw: unknown): HomeLayout {
   if (!parsed.success) return defaultHomeLayout();
   const order = [...new Set(parsed.data.order)];
   for (const id of WIDGET_IDS) if (!order.includes(id)) order.push(id);
-  return { order, hidden: [...new Set(parsed.data.hidden)] };
+  return { order, hidden: [...new Set(parsed.data.hidden)], columns: parsed.data.columns };
 }
 
 // ---------------------------------------------------------------- shortcuts

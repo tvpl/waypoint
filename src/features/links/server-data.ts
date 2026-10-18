@@ -9,6 +9,7 @@ import {
   getFavorite,
   listFavorites,
   listMarks,
+  trashedCollectionIds,
   type CollectionNode,
   type FavoriteFilter,
   type FavoriteView,
@@ -43,10 +44,13 @@ export function toTreeNode(n: CollectionNode, userId: string): TreeNode {
   };
 }
 
-/** Visible collection tree plus the ids hidden from this user (private collections of others, with subtrees). */
+/**
+ * Visible collection tree plus the ids hidden from this user: private collections of others
+ * (with subtrees) and trashed collections, so callers filtering links by `hidden` skip both.
+ */
 export function visibleTree(workspaceId: string, userId: string) {
   const raw = getCollectionTree(workspaceId);
-  const hidden = new Set<string>();
+  const hidden = trashedCollectionIds(workspaceId);
   const collectHidden = (nodes: CollectionNode[], parentHidden: boolean) => {
     for (const n of nodes) {
       const h = parentHidden || !canSee(n, userId);
@@ -130,7 +134,8 @@ export function libraryCounts(workspaceId: string, userId: string, hidden: Set<s
         sum(case when f.archived_at is null and exists (select 1 from recents r where r.user_id = ? and r.entity_type = 'favorite' and r.entity_id = f.id) then 1 else 0 end) as recent,
         sum(case when f.archived_at is null and f.health_status in ('broken', 'unreachable') then 1 else 0 end) as broken,
         sum(case when f.archived_at is null and exists (select 1 from user_marks m where m.user_id = ? and m.entity_type = 'favorite' and m.entity_id = f.id and m.mark = 'star') then 1 else 0 end) as starred
-       from favorites f where f.workspace_id = ? ${notHidden}`,
+       from favorites f where f.workspace_id = ? and f.deleted_at is null
+         and (f.collection_id is null or f.collection_id not in (select tc.id from collections tc where tc.deleted_at is not null)) ${notHidden}`,
     )
     .get(userId, userId, workspaceId, ...hiddenIds) as Record<string, number | null>;
   return {

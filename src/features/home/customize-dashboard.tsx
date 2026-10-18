@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { saveHomeLayoutAction } from "@/app/(app)/dashboard-actions";
 import { defaultHomeLayout, HOME_WIDGETS, type HomeLayout, type HomeWidget } from "@/domain/dashboard";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/misc";
 
 /** Show, hide and reorder the home sections; saved per person and workspace. */
 export function CustomizeDashboard({ layout: initial }: { layout: HomeLayout }) {
@@ -86,7 +87,20 @@ export function CustomizeDashboard({ layout: initial }: { layout: HomeLayout }) 
             );
           })}
         </ul>
-        <div className="flex justify-end border-t border-line px-3 py-2">
+        <div className="flex items-center justify-between gap-2 border-t border-line px-3 py-2">
+          <span className="flex items-center gap-2 text-caption text-ink-2">
+            Painéis por linha
+            <Segmented<"2" | "3">
+              size="sm"
+              label="Painéis lado a lado"
+              value={String(layout.columns) as "2" | "3"}
+              onChange={(v) => save({ ...layout, columns: Number(v) as 2 | 3 })}
+              options={[
+                { value: "2", label: "2" },
+                { value: "3", label: "3" },
+              ]}
+            />
+          </span>
           <Button size="sm" variant="ghost" onClick={() => save(defaultHomeLayout())}>
             <RotateCcw /> Padrão
           </Button>

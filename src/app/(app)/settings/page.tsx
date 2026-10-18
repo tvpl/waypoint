@@ -8,11 +8,12 @@ import { DesktopSettings } from "@/features/settings/desktop-settings";
 import { DesktopSecurity } from "@/features/settings/desktop-security";
 import { DesktopBackups } from "@/features/settings/desktop-backups";
 import { WorkspaceBackups } from "@/features/settings/workspace-backups";
+import { TrashSummary } from "@/features/trash/trash-summary";
 import { SettingsTabs, type SettingsTab } from "@/features/settings/settings-tabs";
 import { isDesktop } from "@/server/desktop";
 import { desktopSecurity } from "@/server/desktop-security";
 import { listApiTokens } from "@/server/services/api-tokens";
-import { backupSettings, listBackups } from "@/server/services/backups";
+import { backupFolder, backupSettings, listBackups } from "@/server/services/backups";
 
 export const metadata = { title: "Configurações" };
 
@@ -37,6 +38,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       icon: <User />,
       title: "Conta",
       description: "Seu nome e sua senha. É assim que você aparece para as pessoas do workspace.",
+      keywords: ["perfil", "nome", "e-mail", "senha", "login", "usuário"],
       content: (
         <Card id="perfil" title="Perfil" description="Nome, e-mail e senha de acesso.">
           <ProfileForm name={ctx.user.name} email={ctx.user.email} />
@@ -49,6 +51,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       icon: <Palette />,
       title: "Aparência",
       description: "Tema e animações. Vale só para este dispositivo.",
+      keywords: ["tema", "claro", "escuro", "sistema", "cores", "animações", "movimento", "acessibilidade"],
       content: (
         <Card id="aparencia" title="Tema e movimento" description="Cores dos blocos no Planner não mudam com o tema — o contraste do texto se adapta.">
           <ThemePicker />
@@ -62,6 +65,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       icon: <Users />,
       title: `Workspace · ${ctx.workspace.name}`,
       description: "Owners gerenciam o nome e as pessoas. Editors criam e editam; viewers apenas consultam.",
+      keywords: ["pessoas", "membros", "convidar", "equipe", "papéis", "permissões", "owner", "editor", "viewer"],
       content: (
         <Card id="workspace" title="Nome e pessoas" description="Convide por e-mail quem já tem conta e escolha o papel de cada pessoa.">
           <WorkspaceForm name={ctx.workspace.name} members={members} isOwner={ctx.role === "owner"} meId={ctx.user.id} />
@@ -74,6 +78,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       icon: <KeyRound />,
       title: "Integrações",
       description: "Conecte a extensão do navegador e outras ferramentas ao Waypoint.",
+      keywords: ["tokens", "api", "extensão", "navegador", "chave", "integração", "automação"],
       content: (
         <Card
           id="api-tokens"
@@ -90,6 +95,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       icon: <ShieldCheck />,
       title: "Backup e dados",
       description: "Pontos de restauração para não perder nada, recuperação de itens excluídos e exportações dos seus dados.",
+      keywords: ["backup", "restaurar", "recuperar", "exportar", "importar", "arquivados", "lixeira", "excluídos", "dados"],
       content: (
         <>
           <Card
@@ -98,10 +104,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             description="Cópias de tudo deste workspace — plans, links, coleções, projetos, tarefas com histórico e configurações pessoais. Recupere um item excluído, volte o workspace inteiro ou baixe um arquivo para guardar fora daqui."
           >
             {editor ? (
-              <WorkspaceBackups initial={listBackups(actor)} settings={backupSettings(ctx.workspace.id)} isOwner={ctx.role === "owner"} workspaceName={ctx.workspace.name} />
+              <WorkspaceBackups initial={listBackups(actor)} settings={backupSettings(ctx.workspace.id)} isOwner={ctx.role === "owner"} workspaceName={ctx.workspace.name} folder={ctx.role === "owner" ? backupFolder() : null} />
             ) : (
               <p className="text-body text-muted">Owners e editors do workspace gerenciam os backups. Peça a um deles para recuperar algo.</p>
             )}
+          </Card>
+          <Card id="lixeira" title="Lixeira" description="Plans, coleções e links excluídos ficam na lixeira por 30 dias. Restaure com um clique ou exclua de vez.">
+            <TrashSummary actor={actor} />
           </Card>
           {desktop && <DesktopBackups />}
           <Card id="dados" title="Exportar" description="Nada fica preso aqui: leve seus dados quando quiser.">
@@ -156,6 +165,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       icon: <Monitor />,
       title: "Aplicativo",
       description: "Bloqueio com senha, captura rápida e o endereço local para a extensão do navegador.",
+      keywords: ["desktop", "aplicativo", "bloqueio", "senha", "segurança", "captura rápida", "atalho", "endereço local"],
       content: (
         <>
           <DesktopSecurity initial={desktopSecurity()} mac={process.platform === "darwin"} />

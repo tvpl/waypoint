@@ -19,9 +19,11 @@ import {
   CalendarClock,
   Pencil,
   RotateCcw,
+  Repeat,
   Star,
   StarOff,
 } from "lucide-react";
+import { RECURRENCE_LABELS } from "@/domain/task-recurrence";
 import type { DragEvent } from "react";
 import {
   Popover,
@@ -226,7 +228,9 @@ export function TaskCard({
   onOpenTask,
   reminderCount,
   starred = false,
+  linkCount = 0,
 }: {
+  linkCount?: number;
   starred?: boolean;
   dependencies: Task[];
   onOpenTask: (id: string) => void;
@@ -521,6 +525,26 @@ export function TaskCard({
               >
                 <CalendarClock className="size-3" />
               </button>
+            )}
+            {linkCount > 0 && (
+              <button
+                className="inline-flex min-h-7 shrink-0 items-center gap-0.5 rounded px-1 hover:bg-surface/40"
+                title={`${linkCount} ${linkCount === 1 ? "referência" : "referências"}`}
+                aria-label={`${linkCount} referência(s) em ${task.title}`}
+                onClick={commands.edit}
+              >
+                <Link2 className="size-3" />
+                {linkCount}
+              </button>
+            )}
+            {task.recurrence && (
+              <span
+                className="inline-flex min-h-7 shrink-0 items-center px-1"
+                title={`Repete: ${RECURRENCE_LABELS[task.recurrence].toLowerCase()}`}
+                aria-label={`Repete ${RECURRENCE_LABELS[task.recurrence].toLowerCase()}`}
+              >
+                <Repeat className="size-3" />
+              </span>
             )}
             {fields.people && task.people.length > 0 && (
               <span className="ml-auto pl-1">

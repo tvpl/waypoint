@@ -132,3 +132,49 @@ export function todayTasks(actor: Actor, today: string, limit = 8): { items: Tod
     .sort((a, b) => ["overdue", "today", "followup"].indexOf(a.reason) - ["overdue", "today", "followup"].indexOf(b.reason) || (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
   return { items: items.slice(0, limit), total: items.length };
 }
+
+export type WeeklyReview = {
+  days: { date: string; label: string; completed: number; future: boolean }[];
+  completed: number;
+  lastWeek: number;
+  created: number;
+  open: number;
+  projects: { name: string; color: string | null; completed: number }[];
+};
+
+/** This week (Monday on) at a glance: completions per day, versus last week, per project. */
+export function weeklyReview(actor: Actor, now = new Date()): WeeklyReview {
+  member(actor);
+  const local = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  const lastMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7);
+  const rows = getDb()
+    .select({ task: schema.tasks, project: schema.taskProjects })
+    .from(schema.tasks)
+    .leftJoin(schema.taskProjects, eq(schema.taskProjects.id, schema.tasks.projectId))
+    .where(eq(schema.tasks.workspaceId, actor.workspaceId))
+    .all();
+  const done = rows.filter(({ task }) => task.status === "done" && task.completedAt && task.completedAt >= lastMonday);
+  const thisWeek = done.filter(({ task }) => task.completedAt! >= monday);
+  const labels = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+  const days = labels.map((label, i) => {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    const date = local(d);
+    return { date, label, completed: thisWeek.filter(({ task }) => local(task.completedAt!) === date).length, future: date > local(now) };
+  });
+  const byProject = new Map<string, { name: string; color: string | null; completed: number }>();
+  for (const { project } of thisWeek) {
+    const key = project?.id ?? "";
+    const entry = byProject.get(key) ?? { name: project?.name ?? "Sem projeto", color: project?.color ?? null, completed: 0 };
+    entry.completed++;
+    byProject.set(key, entry);
+  }
+  return {
+    days,
+    completed: thisWeek.length,
+    lastWeek: done.length - thisWeek.length,
+    created: rows.filter(({ task }) => task.createdAt >= monday).length,
+    open: rows.filter(({ task }) => !task.archivedAt && task.status !== "done").length,
+    projects: [...byProject.values()].sort((a, b) => b.completed - a.completed).slice(0, 4),
+  };
+}

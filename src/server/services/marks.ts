@@ -18,7 +18,7 @@ function assertVisible(actor: Actor, type: ImportantType, id: string) {
       ? !!db.select({ id: schema.tasks.id }).from(schema.tasks).where(and(eq(schema.tasks.id, id), eq(schema.tasks.workspaceId, actor.workspaceId))).get()
       : type === "plan"
         ? (() => {
-            const plan = db.select().from(schema.plans).where(and(eq(schema.plans.id, id), eq(schema.plans.workspaceId, actor.workspaceId))).get();
+            const plan = db.select().from(schema.plans).where(and(eq(schema.plans.id, id), eq(schema.plans.workspaceId, actor.workspaceId), isNull(schema.plans.deletedAt))).get();
             return !!plan && !!planAccess(actor.userId, plan);
           })()
         : type === "collection"
@@ -91,7 +91,7 @@ export function importantItems(actor: Actor, limit = 24): ImportantItem[] {
   }
   const planIds = ids("plan");
   if (planIds.length)
-    for (const p of db.select().from(schema.plans).where(and(inArray(schema.plans.id, planIds), eq(schema.plans.workspaceId, actor.workspaceId), isNull(schema.plans.archivedAt))).all())
+    for (const p of db.select().from(schema.plans).where(and(inArray(schema.plans.id, planIds), eq(schema.plans.workspaceId, actor.workspaceId), isNull(schema.plans.archivedAt), isNull(schema.plans.deletedAt))).all())
       if (planAccess(actor.userId, p)) items.push({ type: "plan", id: p.id, title: p.title, markedAt: markedAt.get(`plan:${p.id}`)! });
   const collectionIds = ids("collection");
   if (collectionIds.length)

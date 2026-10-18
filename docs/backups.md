@@ -19,6 +19,15 @@ Tudo o que pertence ao workspace: plans (rascunho, versões publicadas, membros,
 - **Restaurar tudo** (owners) troca o conteúdo do workspace pelo do backup. Plans e coleções privados de outras pessoas não são alterados.
 - **Criar workspace a partir dele** (owners) copia o backup para um workspace novo, com identificadores novos. É o caminho para backups de outro workspace ou de outro servidor.
 
+## Fora do banco
+
+- **Pasta:** com `WAYPOINT_BACKUP_DIR` (caminho absoluto) definido no servidor, cada ponto de restauração também é gravado em `<pasta>/workspace-<id>/<data>-<tipo>-<id>.json.gz`, e os arquivos acompanham a retenção. Use uma pasta sincronizada ou outro disco.
+- **Senha:** **Baixar protegido por senha** gera o mesmo arquivo criptografado com AES-256-GCM e chave derivada da senha (scrypt). Ao enviar um arquivo protegido, o Waypoint pede a senha. Sem ela, não há como abrir.
+
+## Lixeira
+
+Plans, coleções e links excluídos vão para a **Lixeira** (`/trash`, também em Configurações › Backup e dados) por 30 dias, com Restaurar e Excluir definitivamente; depois disso são apagados. A recuperação de backups trata um item que ainda está na lixeira como excluído e o tira de lá.
+
 ## Privacidade
 
 O arquivo baixado (owners) não inclui plans e coleções privados de outras pessoas; nesse caso ele é marcado como parcial. A lista de recuperação também só mostra o que a pessoa pode ver.

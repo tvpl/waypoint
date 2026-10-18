@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Bookmark, Check, Settings2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -83,48 +83,84 @@ const savedViewSchema = z.object({
   filters: viewFiltersSchema,
 });
 export type SavedTaskView = z.infer<typeof savedViewSchema>;
+export const TASK_LAYOUTS = ["board", "list", "calendar", "agenda"] as const;
+export type TaskLayout = (typeof TASK_LAYOUTS)[number];
 const storageSchema = z.object({
   version: z.literal(1),
   projects: z.record(z.string(), preferencesSchema),
   views: z.array(savedViewSchema).max(20),
+  layout: z.enum(TASK_LAYOUTS).optional(),
 });
 type Storage = z.infer<typeof storageSchema>;
-export function useTaskPreferences(key: string, project: string) {
-  const [storage, setStorage] = useState<Storage>({
-    version: 1,
-    projects: {},
-    views: [],
-  });
+const parseStorage = (value: unknown): Storage | null => {
+  const r = storageSchema.safeParse(value);
+  return r.success ? r.data : null;
+};
+
+/**
+ * Personal board preferences (display, folder hide rules, saved views, layout). Stored on the
+ * server so they follow the person across devices; this device keeps a copy for instant loads
+ * and to migrate what was saved before syncing existed.
+ */
+export function useTaskPreferences(
+  key: string,
+  project: string,
+  initial: unknown = null,
+  save?: (value: Storage) => Promise<unknown>,
+) {
+  const [storage, setStorage] = useState<Storage>(
+    () => parseStorage(initial) ?? { version: 1, projects: {}, views: [] },
+  );
   const [loaded, setLoaded] = useState(false);
+  const dirty = useRef(false);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      const value = raw && storageSchema.safeParse(JSON.parse(raw));
-      if (value && value.success) setStorage(value.data);
-    } catch {}
-    setLoaded(true);
-  }, [key]);
-  useEffect(() => {
-    if (loaded) {
+    if (!parseStorage(initial)) {
       try {
-        localStorage.setItem(key, JSON.stringify(storage));
+        const local = parseStorage(JSON.parse(localStorage.getItem(key) ?? "null"));
+        if (local) {
+          setStorage(local);
+          dirty.current = true; // first sync of what this device had
+        }
+        const layout = localStorage.getItem("wp-tasks-view");
+        if (!local && (layout === "board" || layout === "list"))
+          setStorage((s) => ({ ...s, layout }));
       } catch {}
     }
-  }, [key, storage, loaded]);
+    setLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      localStorage.setItem(key, JSON.stringify(storage));
+    } catch {}
+    if (!dirty.current || !save) return;
+    const timer = setTimeout(() => {
+      dirty.current = false;
+      save(storage).catch(() => (dirty.current = true));
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [key, storage, loaded, save]);
+  const update = (fn: (s: Storage) => Storage) => {
+    dirty.current = true;
+    setStorage(fn);
+  };
   const scope = project || "all";
   return {
     preferences: storage.projects[scope] ?? defaultPreferences(),
     setPreferences: (patch: Partial<BoardPreferences>) =>
-      setStorage((s) => ({
+      update((s) => ({
         ...s,
         projects: {
           ...s.projects,
           [scope]: { ...(s.projects[scope] ?? defaultPreferences()), ...patch },
         },
       })),
+    layout: storage.layout ?? "board",
+    setLayout: (layout: TaskLayout) => update((s) => ({ ...s, layout })),
     views: storage.views,
     saveView: (name: string, filters: ViewFilters) =>
-      setStorage((s) => ({
+      update((s) => ({
         ...s,
         views: [
           ...s.views.filter(
@@ -134,7 +170,7 @@ export function useTaskPreferences(key: string, project: string) {
         ].slice(-20),
       })),
     removeView: (id: string) =>
-      setStorage((s) => ({ ...s, views: s.views.filter((v) => v.id !== id) })),
+      update((s) => ({ ...s, views: s.views.filter((v) => v.id !== id) })),
   };
 }
 export function BoardDisplaySettings({

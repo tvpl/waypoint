@@ -20,6 +20,8 @@ import {
 } from "@/server/services/tasks";
 import { addTaskNote, deleteTaskNote, historyForTasks, listTaskHistory } from "@/server/services/task-history";
 import { toggleImportant } from "@/server/services/marks";
+import { setPreference } from "@/server/services/preferences";
+import { listTaskLinks, setTaskLinks } from "@/server/services/task-links";
 import { buildTaskReport, reportOptionsSchema } from "@/domain/task-report";
 import type { TaskStatus } from "@/domain/tasks";
 import {
@@ -168,6 +170,10 @@ export async function changeReminderAction(
   return run((actor) => changeTaskReminder(actor, id, version, action, until));
 }
 
+/** Archived tasks are loaded only when the "Arquivadas" view opens. */
+export async function archivedTasksAction() {
+  return run((actor) => listTasks(actor, { archived: true }), false);
+}
 export async function taskHistoryAction(id: string) {
   return run((actor) => listTaskHistory(actor, z.string().parse(id)), false);
 }
@@ -198,4 +204,14 @@ export async function taskReportAction(options: unknown) {
       workspaceName: workspaceName(ctx.workspaceId),
     });
   }, false);
+}
+/** Board display, folder hide rules and saved views follow the person across devices. */
+export async function saveTaskPreferencesAction(value: unknown) {
+  return run((actor) => setPreference(actor, "tasks.board", value), false);
+}
+export async function taskLinksAction(id: string) {
+  return run((actor) => listTaskLinks(actor, id), false);
+}
+export async function setTaskLinksAction(id: string, refs: unknown) {
+  return run((actor) => setTaskLinks(actor, id, refs));
 }

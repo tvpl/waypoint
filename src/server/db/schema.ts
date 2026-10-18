@@ -93,6 +93,8 @@ export const plans = sqliteTable(
       onDelete: "set null",
     }),
     archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    /** In the trash since (purged after 30 days); hidden everywhere else. */
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -166,6 +168,8 @@ export const collections = sqliteTable(
     defaultView: text("default_view", { enum: ["cards", "compact", "list"] }).notNull().default("cards"),
     visibility: text("visibility", { enum: VISIBILITIES }).notNull().default("workspace"),
     archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    /** In the trash since (purged after 30 days); hidden everywhere else. */
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -214,6 +218,8 @@ export const favorites = sqliteTable(
     enrichedAt: integer("enriched_at", { mode: "timestamp_ms" }),
     /** Set while the link waits in the inbox for triage (quick captures); null once filed. */
     inboxAt: integer("inbox_at", { mode: "timestamp_ms" }),
+    /** In the trash since (purged after 30 days); hidden everywhere else. */
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -497,6 +503,8 @@ export const tasks = sqliteTable("tasks", {
   tagsJson: text("tags_json").notNull().default("[]"),
   peopleJson: text("people_json").notNull().default("[]"),
   subtasksJson: text("subtasks_json").notNull().default("[]"),
+  /** "", "daily", "weekdays", "weekly", "monthly": completing creates the next occurrence. */
+  recurrence: text("recurrence").notNull().default(""),
   sortOrder: integer("sort_order").notNull().default(0),
   version: integer("version").notNull().default(1),
   completedAt: integer("completed_at", { mode: "timestamp_ms" }),
@@ -601,3 +609,12 @@ export const workspaceBackups = sqliteTable("workspace_backups", {
   data: blob("data", { mode: "buffer" }).notNull(),
   createdAt: createdAt(),
 }, (t) => [index("workspace_backups_ws_idx").on(t.workspaceId, t.createdAt)]);
+
+/** Plans, links and collections a task refers to ("Referências"); shown back as backlinks. */
+export const taskLinks = sqliteTable("task_links", {
+  taskId: text("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  targetType: text("target_type", { enum: ["plan", "favorite", "collection"] }).notNull(),
+  targetId: text("target_id").notNull(),
+  createdAt: createdAt(),
+}, (t) => [primaryKey({ columns: [t.taskId, t.targetType, t.targetId] }), index("task_links_target_idx").on(t.targetType, t.targetId)]);

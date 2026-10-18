@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../db";
 import { newId } from "@/lib/utils";
@@ -26,6 +26,7 @@ import type {
 import { canEditWorkspace, UserError, workspaceRole } from "./workspaces";
 import { indexEntity, removeEntity } from "./search";
 import { recordTaskArchive, recordTaskChange, recordTaskCreated } from "./task-history";
+import { nextOccurrence } from "@/domain/task-recurrence";
 import {
   boardInputSchema,
   boardsForProject,
@@ -358,12 +359,22 @@ function reindex(id: string, conn: Conn) {
 export function reindexTasks(ids: string[], conn: Conn = getDb()) {
   for (const id of ids) reindex(id, conn);
 }
-export function listTasks(actor: Actor): Task[] {
+/** `archived`: undefined → all, false → active only (the board), true → archived only (on demand). */
+export function listTasks(actor: Actor, opts: { archived?: boolean } = {}): Task[] {
   access(actor);
   return getDb()
     .select()
     .from(schema.tasks)
-    .where(eq(schema.tasks.workspaceId, actor.workspaceId))
+    .where(
+      and(
+        eq(schema.tasks.workspaceId, actor.workspaceId),
+        opts.archived === undefined
+          ? undefined
+          : opts.archived
+            ? isNotNull(schema.tasks.archivedAt)
+            : isNull(schema.tasks.archivedAt),
+      ),
+    )
     .orderBy(
       asc(schema.tasks.sortOrder),
       asc(schema.tasks.createdAt),
@@ -406,6 +417,34 @@ function insertTask(actor: Actor, input: TaskInput, conn: Conn, origin: "created
   reindex(id, conn);
   recordTaskCreated(conn, actor, { id, status: input.status }, origin);
   return present(rowFor(actor, id, conn));
+}
+/**
+ * Completing a repeating task creates its next occurrence (once per completion of a given due
+ * date: reopening and completing again doesn't duplicate it).
+ */
+function spawnRecurrence(actor: Actor, id: string, before: TaskInput, after: TaskInput, conn: Conn) {
+  if (before.status === "done" || after.status !== "done" || !after.recurrence) return;
+  const marker = `recurrence:${id}:${after.dueDate ?? ""}`;
+  if (conn.select({ id: schema.taskEvents.id }).from(schema.taskEvents).where(and(eq(schema.taskEvents.workspaceId, actor.workspaceId), eq(schema.taskEvents.body, marker))).get()) return;
+  const dueDate = nextOccurrence(after.recurrence, after.dueDate);
+  const shift = after.dueDate && after.followUpDate ? Date.parse(after.followUpDate) - Date.parse(after.dueDate) : null;
+  const board = boardRows(actor, conn).find((b) => b.id === after.blockId);
+  const column = board?.columns.find((c) => c.status === "todo");
+  const next = insertTask(
+    actor,
+    taskInputSchema.parse({
+      ...after,
+      status: "todo",
+      dueDate,
+      followUpDate: shift === null ? null : new Date(Date.parse(dueDate) + shift).toISOString().slice(0, 10),
+      blockId: board && column ? board.id : null,
+      columnId: board && column ? column.id : null,
+      dependsOn: [],
+      subtasks: after.subtasks.map((st) => ({ ...st, id: newId(), done: false })),
+    }),
+    conn,
+  );
+  conn.update(schema.taskEvents).set({ body: marker }).where(and(eq(schema.taskEvents.taskId, next.id), eq(schema.taskEvents.kind, "created"))).run();
 }
 export function createTask(actor: Actor, raw: unknown) {
   access(actor, true);
@@ -456,6 +495,7 @@ export function updateTask(
       .run();
     reindex(id, tx);
     recordTaskChange(tx, actor, id, current, input);
+    spawnRecurrence(actor, id, current, input, tx);
     return present(rowFor(actor, id, tx));
   });
 }
@@ -577,6 +617,7 @@ export function moveTask(
     });
     reindex(id, tx);
     recordTaskChange(tx, actor, id, current, input);
+    spawnRecurrence(actor, id, current, input, tx);
   });
 }
 export function saveTaskProject(actor: Actor, raw: unknown, id?: string) {
@@ -1101,6 +1142,7 @@ export function applyTaskUpdates(
         .run();
       reindex(current.id, tx);
       recordTaskChange(tx, actor, current.id, current, input);
+      spawnRecurrence(actor, current.id, current, input, tx);
     }
     return chosen.length;
   });

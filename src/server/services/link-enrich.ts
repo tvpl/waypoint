@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { fetchLinkMetadata } from "./metadata";
-import { descendantIds, updateFavorite } from "./links";
+import { descendantIds, favoriteNotTrashed, updateFavorite } from "./links";
 
 /**
  * Fills in favicon, cover and description for links that arrived bare (browser imports
@@ -29,6 +29,7 @@ function pendingWhere(workspaceId: string, sel: EnrichSelector): SQL | undefined
   const conds: (SQL | undefined)[] = [
     eq(f.workspaceId, workspaceId),
     isNull(f.archivedAt),
+    favoriteNotTrashed(),
     isNull(f.enrichedAt),
     isNull(f.favicon),
     isNull(f.coverImage),

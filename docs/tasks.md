@@ -38,6 +38,22 @@ No menu da página, **Relatório de concluídas** gera um Markdown com tudo o qu
 
 **Marcar como importante** (menu do card ou detalhes) coloca a tarefa em **Importantes**, na página inicial. A estrela é pessoal; viewers também podem usar. Tarefas concluídas ou arquivadas saem do painel.
 
+## Calendário, agenda e recorrência
+
+Além de **Quadro** e **Lista**, a página tem **Calendário** (mês, semanas começando na segunda; arraste uma tarefa para outro dia, ou da coluna Sem data, para mudar o prazo; o `+` ou o duplo clique num dia cria uma tarefa com aquela data) e **Agenda** (atrasadas, hoje, amanhã, os próximos sete dias, depois e sem data). O formato escolhido, a exibição, as regras de ocultar e as visões salvas ficam nas preferências pessoais do servidor (`user_preferences`, chave `tasks.board`) e acompanham a pessoa em qualquer dispositivo; o navegador guarda uma cópia para abrir rápido e para migrar o que estava salvo só nele.
+
+**Repetir** (todo dia, dias úteis, toda semana ou todo mês) cria a próxima ocorrência quando a tarefa é concluída: mesmo título, contexto, projeto, bloco (na coluna A fazer), marcadores, pessoas e prioridade, com subtarefas desmarcadas e o prazo avançado a partir do prazo atual — se ele já passou, a data avança até depois de hoje. Mensal mantém o dia do mês, ajustado para meses mais curtos. Reabrir e concluir de novo não duplica a próxima ocorrência. Na captura rápida: `~diaria`, `~uteis`, `~semanal`, `~mensal`.
+
+## Referências e tags
+
+Nos detalhes, **Referências** liga a tarefa a plans, links e coleções do workspace (`task_links`). Os itens aparecem com o acesso de quem vê; o plan (ⓘ Detalhes) e o painel do link mostram de volta as **Tarefas ligadas**. Os marcadores das tarefas viram tags do workspace: a página de Tags conta tarefas, cada `#tag` lista as tarefas, e renomear ou excluir uma tag atualiza as tarefas.
+
+## Criar tarefas de qualquer lugar
+
+Na busca (⌘K) e na captura rápida do aplicativo, comece com `+` para criar uma tarefa com a sintaxe do quadro (`+ Enviar proposta amanhã #cliente @Ana !alta ~semanal`).
+
+As tarefas arquivadas são carregadas só quando a visão Arquivadas é aberta.
+
 ## Lembretes e notificações do Mac
 
 O botão **Lembretes** abre uma central pessoal do workspace. Também está disponível nos detalhes, no botão direito de um card e na barra de seleção. Os avisos não são enviados às pessoas citadas na tarefa.
@@ -87,6 +103,6 @@ O leitor oferece títulos, parágrafos, listas, citações, negrito, itálico, c
 
 ## Persistência
 
-As migrações Drizzle `0009_modern_kang.sql`, `0010_serious_skrulls.sql`, `0011_busy_junta.sql` e `0012_thin_ted_forrester.sql` criam `task_projects`, `tasks`, `task_boards`, `task_templates` e `task_reminders`; `0013_long_sinister_six.sql` cria `task_events` (histórico e observações). São aplicadas automaticamente quando o servidor abre o banco; reinicie um servidor já aberto para aplicar a nova migração. O backup SQLite do desktop inclui tarefas, organização compartilhada e agendamentos pessoais. Lembretes não são incluídos na exportação Markdown nem copiados junto com tarefas ou modelos. As preferências locais de exibição e visões salvas ficam no armazenamento do navegador.
+As migrações Drizzle `0009_modern_kang.sql`, `0010_serious_skrulls.sql`, `0011_busy_junta.sql` e `0012_thin_ted_forrester.sql` criam `task_projects`, `tasks`, `task_boards`, `task_templates` e `task_reminders`; `0013_long_sinister_six.sql` cria `task_events` (histórico e observações); `0014_tiny_surge.sql` cria `task_links` e a coluna `recurrence`. São aplicadas automaticamente quando o servidor abre o banco; reinicie um servidor já aberto para aplicar a nova migração. O backup SQLite do desktop inclui tarefas, organização compartilhada e agendamentos pessoais. Lembretes não são incluídos na exportação Markdown nem copiados junto com tarefas ou modelos. As preferências locais de exibição e visões salvas ficam no armazenamento do navegador.
 
 Alterações verificam a função do usuário e o workspace no servidor. Versões de tarefa e de bloco evitam sobrescrever edições concorrentes. Importação, reordenação, exclusão de projeto e atualização do índice FTS usam transações. Tarefas ativas aparecem na busca global, incluindo nomes de blocos/colunas e tipos de pendência; arquivadas saem do índice.

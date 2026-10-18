@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { safeFetch, UnsafeUrlError } from "../lib/safe-fetch";
 import { classifyError, classifyResponse, shouldRetryWithGet, type HealthVerdict } from "../lib/link-status";
-import { descendantIds } from "./links";
+import { descendantIds, favoriteNotTrashed } from "./links";
 
 /** A link checked less than this long ago is skipped unless forced. */
 export const HEALTH_TTL_MS = 24 * 60 * 60 * 1000;
@@ -70,7 +70,7 @@ export type HealthSummary = {
 
 function selectorConds(workspaceId: string, sel: HealthSelector, now: number): SQL[] {
   const f = schema.favorites;
-  const conds: SQL[] = [eq(f.workspaceId, workspaceId), isNull(f.archivedAt)];
+  const conds: SQL[] = [eq(f.workspaceId, workspaceId), isNull(f.archivedAt), favoriteNotTrashed()];
   if (sel.ids) conds.push(inArray(f.id, sel.ids.length ? sel.ids : ["-"]));
   if (sel.collectionId) conds.push(inArray(f.collectionId, descendantIds(sel.collectionId)));
   const hidden = [...(sel.hiddenCollections ?? [])];
@@ -210,6 +210,7 @@ export function recentlyBroken(workspaceId: string, hiddenCollections: Set<strin
         and(
           eq(f.workspaceId, workspaceId),
           isNull(f.archivedAt),
+          favoriteNotTrashed(),
           inArray(f.healthStatus, ["broken", "unreachable"]),
           sql`${f.healthCheckedAt} > ${Date.now() - SWEEP_STALE_MS}`,
           hidden.length ? or(isNull(f.collectionId), sql`${f.collectionId} not in (${sql.join(hidden.map((h) => sql`${h}`), sql`, `)})`) : undefined,

@@ -1,4 +1,5 @@
 "use client";
+import { TaskBacklinks } from "@/features/tasks/task-references";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -401,6 +402,7 @@ export function PlanDetailsButton() {
       </Tooltip>
       <PopoverContent align="start" className="flex max-h-[min(640px,80vh)] w-[340px] flex-col overflow-hidden p-0">
         <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />
+        <TaskBacklinks type="plan" id={ed.planId} className="border-t border-line px-[18px] py-3" />
       </PopoverContent>
     </Popover>
   );

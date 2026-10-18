@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   Download,
   FolderPlus,
+  HardDrive,
+  Lock,
   History,
   LifeBuoy,
   Loader2,
@@ -54,17 +56,21 @@ export function WorkspaceBackups({
   settings: initialSettings,
   isOwner,
   workspaceName,
+  folder = null,
 }: {
   initial: BackupSummary[];
   settings: { frequency: Frequency; keep: number };
   isOwner: boolean;
   workspaceName: string;
+  /** WAYPOINT_BACKUP_DIR, when the server copies every restore point there. */
+  folder?: string | null;
 }) {
   const router = useRouter();
   const [backups, setBackups] = React.useState(initial);
   const [settings, setSettings] = React.useState(initialSettings);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [recover, setRecover] = React.useState<BackupSummary | null>(null);
+  const [password, setPassword] = React.useState<{ mode: "download"; backup: BackupSummary } | { mode: "upload"; file: File } | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => setBackups(initial), [initial]);
 
@@ -93,11 +99,16 @@ export function WorkspaceBackups({
     if (list) setBackups(list);
   };
 
-  const upload = async (file: File) => {
+  const upload = async (file: File, secret?: string) => {
     setBusy("upload");
     try {
-      const res = await fetch("/api/backups/upload", { method: "POST", body: file });
+      const res = await fetch("/api/backups/upload", {
+        method: "POST",
+        body: file,
+        headers: secret ? { "x-backup-password": encodeURIComponent(secret) } : undefined,
+      });
       const body = await res.json().catch(() => ({}));
+      if (body.needsPassword) return setPassword({ mode: "upload", file });
       if (!res.ok) return void toast.error(body.error ?? "Não foi possível enviar o backup.");
       setBackups((list) => [body.backup as BackupSummary, ...list]);
       toast.success(body.backup.foreign ? "Backup enviado. Ele é de outro workspace: crie um workspace a partir dele." : "Backup enviado. Agora você pode recuperar itens ou restaurar.");
@@ -106,6 +117,21 @@ export function WorkspaceBackups({
     } finally {
       setBusy(null);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const downloadProtected = async (b: BackupSummary, secret: string) => {
+    setBusy(`dl-${b.id}`);
+    try {
+      const res = await fetch(`/api/backups/${b.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: secret }) });
+      if (!res.ok) return void toast.error((await res.json().catch(() => ({}))).error ?? "Não foi possível gerar o arquivo.");
+      const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "waypoint-backup.protegido.json";
+      const url = URL.createObjectURL(await res.blob());
+      Object.assign(document.createElement("a"), { href: url, download: name }).click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success("Backup protegido baixado. Guarde a senha: sem ela o arquivo não abre.");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -251,6 +277,9 @@ export function WorkspaceBackups({
                         <Download /> Baixar (.json)
                       </a>
                     </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setPassword({ mode: "download", backup: b })}>
+                      <Lock /> Baixar protegido por senha…
+                    </DropdownMenuItem>
                     {!b.foreign && (
                       <DropdownMenuItem onSelect={() => restoreAll(b)}>
                         <RotateCcw /> Restaurar tudo…
@@ -277,8 +306,83 @@ export function WorkspaceBackups({
           className="py-10"
         />
       )}
+      {isOwner && (
+        <p className="flex items-start gap-2 rounded-control border border-line bg-surface-2 px-3 py-2.5 text-caption leading-5 text-muted">
+          <HardDrive className="mt-0.5 size-3.5 shrink-0" />
+          {folder ? (
+            <span>
+              Cada ponto de restauração também é copiado para <code className="font-mono text-ink-2">{folder}</code>. Use uma pasta sincronizada ou outro disco para ter uma cópia fora deste
+              banco.
+            </span>
+          ) : (
+            <span>
+              Estes pontos ficam no mesmo banco do Waypoint. Para uma cópia fora dele, baixe o arquivo de vez em quando — ou peça a quem administra o servidor para definir{" "}
+              <code className="font-mono text-ink-2">WAYPOINT_BACKUP_DIR</code> (uma pasta sincronizada recebe cada backup automaticamente).
+            </span>
+          )}
+        </p>
+      )}
+      {password && (
+        <PasswordDialog
+          mode={password.mode}
+          onClose={() => setPassword(null)}
+          onSubmit={(secret) => {
+            const p = password;
+            setPassword(null);
+            if (p.mode === "download") void downloadProtected(p.backup, secret);
+            else void upload(p.file, secret);
+          }}
+        />
+      )}
       {recover && <RecoverDialog backup={recover} onClose={() => setRecover(null)} onDone={() => router.refresh()} />}
     </div>
+  );
+}
+
+function PasswordDialog({ mode, onClose, onSubmit }: { mode: "download" | "upload"; onClose: () => void; onSubmit: (password: string) => void }) {
+  const [value, setValue] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const download = mode === "download";
+  const error = download && value.length > 0 && value.length < 8 ? "Use pelo menos 8 caracteres." : download && confirm && confirm !== value ? "As senhas não conferem." : "";
+  const ready = download ? value.length >= 8 && value === confirm : value.length > 0;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        title={download ? "Baixar protegido por senha" : "Backup protegido"}
+        description={download ? "O arquivo é criptografado (AES-256). Sem a senha, ninguém consegue abrir — nem o Waypoint." : "Informe a senha usada ao baixar este backup."}
+        className="max-w-[440px]"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (ready) onSubmit(value);
+          }}
+          className="flex flex-col"
+        >
+          <DialogBody>
+            <label className="flex flex-col gap-1.5 text-body text-ink-2">
+              Senha
+              <Input type="password" autoFocus autoComplete="new-password" value={value} onChange={(e) => setValue(e.target.value)} maxLength={200} />
+            </label>
+            {download && (
+              <label className="flex flex-col gap-1.5 text-body text-ink-2">
+                Confirme a senha
+                <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} maxLength={200} />
+              </label>
+            )}
+            {error && <p className="text-caption text-danger">{error}</p>}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" className="ml-auto" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" variant="primary" disabled={!ready}>
+              <Lock /> {download ? "Baixar" : "Enviar"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

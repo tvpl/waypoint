@@ -11,13 +11,13 @@ import { COLLECTION_COLORS, colorOf, tagTint } from "@/features/links/collection
 import { cn } from "@/lib/utils";
 import { ask } from "@/components/ui/ask";
 
-type Tag = { id: string; name: string; links: number; plans: number; color: string | null };
+type Tag = { id: string; name: string; links: number; plans: number; tasks?: number; color: string | null };
 
 export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
   const [q, setQ] = useState("");
   const [, start] = useTransition();
   const shown = useMemo(() => tags.filter((t) => t.name.includes(q.trim().toLowerCase().replace(/^#/, ""))), [tags, q]);
-  const max = Math.max(1, ...tags.map((t) => t.links + t.plans));
+  const max = Math.max(1, ...tags.map((t) => t.links + t.plans + (t.tasks ?? 0)));
 
   if (tags.length === 0) {
     return (
@@ -99,7 +99,7 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
                       onSelect={async () => {
                         const ok = await ask.confirm({
                           title: `Excluir #${t.name}?`,
-                          description: `A tag será removida de ${t.links} ${t.links === 1 ? "link" : "links"} e ${t.plans} ${t.plans === 1 ? "plan" : "plans"}.`,
+                          description: `A tag será removida de ${t.links} ${t.links === 1 ? "link" : "links"}, ${t.plans} ${t.plans === 1 ? "plan" : "plans"} e ${t.tasks ?? 0} ${t.tasks === 1 ? "tarefa" : "tarefas"}.`,
                           confirmLabel: "Excluir",
                           danger: true,
                         });
@@ -123,9 +123,14 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
               <span>
                 <b className="font-semibold text-ink">{t.links}</b> links
               </span>
+              {t.tasks ? (
+                <span>
+                  <b className="font-semibold text-ink">{t.tasks}</b> {t.tasks === 1 ? "tarefa" : "tarefas"}
+                </span>
+              ) : null}
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
-              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, ((t.links + t.plans) / max) * 100)}%`, ...(t.color ? { background: colorOf(t.color).ink } : {}) }} />
+              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, ((t.links + t.plans + (t.tasks ?? 0)) / max) * 100)}%`, ...(t.color ? { background: colorOf(t.color).ink } : {}) }} />
             </div>
           </div>
         ))}

@@ -4,6 +4,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { ChevronLeft, Boxes } from "lucide-react";
 import { requireWorkspace } from "@/server/services/workspaces";
 import { getTagByName } from "@/server/services/tags";
+import { syncTaskTags, tasksWithTag } from "@/server/services/task-tags";
 import { listFavorites } from "@/server/services/links";
 import { listPlans } from "@/server/services/plans";
 import { getDb, schema } from "@/server/db";
@@ -20,6 +21,7 @@ export async function generateMetadata({ params }: { params: Promise<{ name: str
 export default async function TagPage({ params }: { params: Promise<{ name: string }> }) {
   const ctx = await requireWorkspace();
   const name = decodeURIComponent((await params).name);
+  syncTaskTags(ctx.workspace.id);
   const tag = getTagByName(ctx.workspace.id, name);
   if (!tag) notFound();
 
@@ -40,12 +42,13 @@ export default async function TagPage({ params }: { params: Promise<{ name: stri
     ? getDb()
         .select()
         .from(schema.plans)
-        .where(and(inArray(schema.plans.id, [...new Set(nodeHits.map((n) => n.planId))]), isNull(schema.plans.archivedAt)))
+        .where(and(inArray(schema.plans.id, [...new Set(nodeHits.map((n) => n.planId))]), isNull(schema.plans.archivedAt), isNull(schema.plans.deletedAt)))
         .all()
         .filter((p) => planAccess(ctx.user.id, p))
     : [];
   const planTitle = new Map(nodePlans.map((p) => [p.id, p.title]));
   const nodes = nodeHits.filter((n) => planTitle.has(n.planId));
+  const tasks = tasksWithTag(ctx.workspace.id, tag.name);
 
   return (
     <main className="scrollbar-thin flex-1 overflow-y-auto">
@@ -70,10 +73,37 @@ export default async function TagPage({ params }: { params: Promise<{ name: stri
                 <b className="text-2xl font-semibold text-ink">{nodes.length}</b> blocos
               </span>
             )}
+            {tasks.length > 0 && (
+              <span>
+                <b className="text-2xl font-semibold text-ink">{tasks.length}</b> tarefas
+              </span>
+            )}
           </div>
         </div>
 
-        {plans.length + links.length + nodes.length === 0 && <EmptyState title="Nada com esta tag ainda" description="Adicione a tag a links, plans ou blocos." />}
+        {plans.length + links.length + nodes.length + tasks.length === 0 && <EmptyState title="Nada com esta tag ainda" description="Adicione a tag a links, plans, blocos ou tarefas." />}
+
+        {tasks.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-body font-semibold text-ink-2">Tarefas</h2>
+              <Link href={`/tasks?q=${encodeURIComponent(`#${tag.name}`)}`} className="text-body text-accent-ink hover:underline">
+                Abrir em Tarefas
+              </Link>
+            </div>
+            <div className="grid gap-1 rounded-card border border-line bg-surface p-1.5 md:grid-cols-2">
+              {tasks.map((t) => (
+                <Link key={t.id} href={`/tasks?open=${t.id}`} className="flex items-center gap-3 rounded-control px-3 py-2.5 hover:bg-surface-2">
+                  <span className={`size-2 shrink-0 rounded-full wp-task-status-${t.status}`} />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className={t.status === "done" ? "truncate text-sm text-muted line-through" : "truncate text-sm font-medium"}>{t.title}</span>
+                    <span className="truncate text-xs text-muted">{[t.projectName, t.dueDate].filter(Boolean).join(" · ") || "Sem projeto"}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {plans.length > 0 && (
           <section className="flex flex-col gap-3.5">

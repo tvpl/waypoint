@@ -91,8 +91,20 @@ function ReportPreview({ markdown }: { markdown: string }) {
 }
 
 /** "Relatório de concluídas": everything completed in a period, as Markdown to copy or download. */
-export function TaskReportDialog({ projects, projectId, workspaceName, onClose }: { projects: TaskProject[]; projectId: string; workspaceName: string; onClose: () => void }) {
-  const [period, setPeriod] = useState<ReportPeriod>("this-month");
+export function TaskReportDialog({
+  projects,
+  projectId,
+  workspaceName,
+  initialPeriod,
+  onClose,
+}: {
+  projects: TaskProject[];
+  projectId: string;
+  workspaceName: string;
+  initialPeriod?: ReportPeriod;
+  onClose: () => void;
+}) {
+  const [period, setPeriod] = useState<ReportPeriod>(initialPeriod ?? "this-month");
   const today = localDate();
   const [custom, setCustom] = useState({ from: `${today.slice(0, 8)}01`, to: today });
   const [selected, setSelected] = useState<string[] | null>(projectId ? [projectId] : null);

@@ -73,8 +73,8 @@ describe("backups", () => {
     expect(summary.counts).toMatchObject({ plans: 2, collections: 2, favorites: 1, tasks: 2, taskProjects: 1 });
 
     // Damage: delete things, change a task and a plan, add something new.
-    plans.deletePlan(s.planId);
-    links.deleteCollection(s.colId);
+    plans.purgePlan(s.planId);
+    links.purgeCollection(s.colId);
     t.deleteTaskProject(owner, s.project);
     const current = t.listTasks(owner).find((x) => x.id === s.task.id)!;
     t.updateTask(owner, s.task.id, current.version, { title: "Publicar (mudou)", status: "done" });
@@ -181,5 +181,34 @@ describe("backups", () => {
     // Backups of another workspace are not reachable.
     const foreign = b.listBackups({ workspaceId: "ws2", userId: "other" })[0];
     expect(() => b.listRecoverable(owner, foreign.id)).toThrow(/não encontrado/);
+  });
+});
+
+describe("backups outside the database", () => {
+  it("encrypts downloads and mirrors restore points to WAYPOINT_BACKUP_DIR", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const crypto = await import("../lib/backup-crypto");
+    const { file } = b.downloadBackup(owner, b.createBackup(owner));
+    const sealed = crypto.encryptBackup(Buffer.from(JSON.stringify(file)), "senha-forte");
+    expect(crypto.isEncryptedBackup(sealed)).toBe(true);
+    expect(sealed.toString()).not.toContain(file.workspace.name);
+    expect(() => b.importBackupFile(owner, sealed)).toThrow(/protegido por senha/);
+    expect(() => b.importBackupFile(owner, sealed, "errada")).toThrow(/Senha incorreta/);
+    expect(b.importBackupFile(owner, sealed, "senha-forte").kind).toBe("upload");
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wp-backups-"));
+    process.env.WAYPOINT_BACKUP_DIR = dir;
+    try {
+      const id = b.createBackup(owner);
+      const folder = path.join(dir, "workspace-ws1");
+      expect(fs.readdirSync(folder).some((f) => f.endsWith(`-${id}.json.gz`))).toBe(true);
+      b.deleteBackup(owner, id);
+      expect(fs.readdirSync(folder).some((f) => f.includes(id))).toBe(false);
+    } finally {
+      delete process.env.WAYPOINT_BACKUP_DIR;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

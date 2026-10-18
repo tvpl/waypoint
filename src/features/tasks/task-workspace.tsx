@@ -14,6 +14,7 @@ import {
   Bell,
   ArrowDownWideNarrow,
   CalendarDays,
+  CalendarRange,
   CheckCheck,
   ListChecks,
   Eye,
@@ -38,6 +39,7 @@ import {
 import { toast } from "sonner";
 import {
   archiveTaskAction,
+  archivedTasksAction,
   changeTasksAction,
   deleteProjectAction,
   importTasksAction,
@@ -50,6 +52,7 @@ import {
   applyTaskUpdatesAction,
   saveTaskAction,
   toggleTaskStarAction,
+  saveTaskPreferencesAction,
 } from "@/app/(app)/tasks/actions";
 import { Button } from "@/components/ui/button";
 import { Input, selectClass } from "@/components/ui/input";
@@ -102,6 +105,8 @@ import { MarkdownUpdateDialog } from "./task-markdown-update";
 import { TaskBoardEditor } from "./task-board-editor";
 import { TaskReminders, type ReminderLaunch } from "./task-reminders";
 import { TaskReportDialog } from "./task-report-dialog";
+import type { ReportPeriod } from "@/domain/task-report";
+import { TaskAgenda, TaskCalendar } from "./task-calendar";
 import { TaskHideControl } from "./task-hide-control";
 import {
   activeHideRules,
@@ -185,12 +190,20 @@ export function TaskWorkspace({
   meId = "",
   isOwner = false,
   initial = {},
+  initialPreferences = null,
+  linkCounts: sourceLinkCounts = {},
+  workspaceTags = [],
 }: {
+  workspaceTags?: string[];
+  /** References per task (plans, links, collections). */
+  linkCounts?: Record<string, number>;
+  /** Stored board preferences (server copy; see useTaskPreferences). */
+  initialPreferences?: unknown;
   starred?: string[];
   meId?: string;
   isOwner?: boolean;
   /** From the URL: ?scope=today, ?project=<id>, ?new=1, ?report=1 (home shortcuts). */
-  initial?: { scope?: Scope; projectId?: string; compose?: boolean; report?: boolean };
+  initial?: { scope?: Scope; projectId?: string; compose?: boolean; report?: boolean; query?: string; reportPeriod?: ReportPeriod };
   tasks: Task[];
   projects: TaskProject[];
   boards: TaskBoard[];
@@ -202,7 +215,14 @@ export function TaskWorkspace({
   workspaceName: string;
   openId: string | null;
 }) {
-  const [tasks, optimistic] = useOptimistic(sourceTasks);
+  // Archived tasks come on demand (the "Arquivadas" view); the board starts with the active ones.
+  const [archivedTasks, setArchivedTasks] = useState<Task[] | null>(null);
+  const loadedTasks = useMemo(() => {
+    if (!archivedTasks) return sourceTasks;
+    const active = new Set(sourceTasks.map((t) => t.id));
+    return [...sourceTasks, ...archivedTasks.filter((t) => !active.has(t.id))];
+  }, [sourceTasks, archivedTasks]);
+  const [tasks, optimistic] = useOptimistic(loadedTasks);
   const [busy, start] = useTransition();
   const [templateDialog, setTemplateDialog] = useState(false);
   const [markdownUpdate, setMarkdownUpdate] = useState(false);
@@ -223,11 +243,25 @@ export function TaskWorkspace({
       ? initial.projectId
       : "",
   );
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  useEffect(() => {
+    if (scope !== "archived") return;
+    let live = true;
+    setLoadingArchived(true);
+    archivedTasksAction()
+      .then((r) => live && r.ok && setArchivedTasks(r.data))
+      .catch(() => live && toast.error("Não foi possível carregar as arquivadas."))
+      .finally(() => live && setLoadingArchived(false));
+    return () => {
+      live = false;
+    };
+    // Reloaded on every visit and after the active list changes (an archive or a restore).
+  }, [scope, sourceTasks]);
   const [starred, setStarred] = useState(() => new Set(sourceStarred));
+  const [linkCounts, setLinkCounts] = useState(sourceLinkCounts);
   const [hideOpen, setHideOpen] = useState(false);
   const [report, setReport] = useState(!!initial.report);
-  const [query, setQuery] = useState("");
-  const [view, setView] = useState<"board" | "list">("board");
+  const [query, setQuery] = useState(initial.query ?? "");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [hideDone, setHideDone] = useState(false);
   const [quickDestination, setQuickDestination] =
@@ -236,8 +270,20 @@ export function TaskWorkspace({
   const [boardEditor, setBoardEditor] = useState<TaskBoard | "new" | null>(
     null,
   );
-  const { preferences, setPreferences, views, saveView, removeView } =
-    useTaskPreferences(preferenceKey, projectId);
+  const {
+    preferences,
+    setPreferences,
+    views,
+    saveView,
+    removeView,
+    layout: view,
+    setLayout: changeView,
+  } = useTaskPreferences(
+    preferenceKey,
+    projectId,
+    initialPreferences,
+    saveTaskPreferencesAction,
+  );
   const [selecting, setSelecting] = useState(false);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [priority, setPriority] = useState("");
@@ -261,10 +307,6 @@ export function TaskWorkspace({
   const searchRef = useRef<HTMLInputElement>(null);
   const lastOpen = useRef<string | null>(null);
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("wp-tasks-view");
-      if (stored === "board" || stored === "list") setView(stored);
-    } catch {}
     const timer = setInterval(() => setToday(localDate()), 60000);
     return () => clearInterval(timer);
   }, []);
@@ -462,7 +504,8 @@ export function TaskWorkspace({
   const hiddenCount = matching.length - visible.length;
   const hiding = activeHideRules(hideRules).length > 0;
   const filtering = !!(query || projectId || filterCount || hideDone);
-  const list = view === "list" || scope === "archived";
+  const layout = scope === "archived" && view !== "agenda" ? "list" : view;
+  const list = layout === "list" || layout === "agenda";
   const projectTasks = active.filter(
     (t) =>
       !projectId ||
@@ -478,12 +521,6 @@ export function TaskWorkspace({
       else toast.info("Selecione até 200 tarefas por vez.");
       return next;
     });
-  const changeView = (v: "board" | "list") => {
-    setView(v);
-    try {
-      localStorage.setItem("wp-tasks-view", v);
-    } catch {}
-  };
   const perform = (
     action: () => Promise<Result>,
     onSuccess?: () => void,
@@ -536,10 +573,10 @@ export function TaskWorkspace({
   };
   useEffect(() => {
     if (initial.compose) newTask();
-    if (initial.scope || initial.projectId || initial.compose || initial.report) {
+    if (initial.scope || initial.projectId || initial.compose || initial.report || initial.query) {
       // Shortcut parameters apply once; a reload shouldn't repeat them.
       const url = new URL(window.location.href);
-      ["scope", "project", "new", "report"].forEach((k) =>
+      ["scope", "project", "new", "report", "q", "period"].forEach((k) =>
         url.searchParams.delete(k),
       );
       window.history.replaceState(null, "", url);
@@ -687,6 +724,7 @@ export function TaskWorkspace({
       )}
       reminderCount={reminders.filter((r) => r.taskId === task.id).length}
       starred={starred.has(task.id)}
+      linkCount={linkCounts[task.id] ?? 0}
       onOpenTask={(id) => {
         const related = tasks.find((t) => t.id === id);
         if (related) setEditor({ task: related, defaults: {} });
@@ -925,7 +963,7 @@ export function TaskWorkspace({
                   </span>
                 )}
               </Button>
-              {!list && (
+              {layout === "board" && (
                 <div
                   className="flex items-center rounded-lg border border-line bg-surface p-0.5"
                   role="group"
@@ -1305,8 +1343,8 @@ export function TaskWorkspace({
                 size="icon-sm"
                 variant="ghost"
                 aria-label="Quadro"
-                aria-pressed={!list}
-                className={!list ? "bg-subtle" : "text-muted"}
+                aria-pressed={layout === "board"}
+                className={layout === "board" ? "bg-subtle" : "text-muted"}
                 onClick={() => changeView("board")}
               >
                 <LayoutGrid />
@@ -1315,11 +1353,31 @@ export function TaskWorkspace({
                 size="icon-sm"
                 variant="ghost"
                 aria-label="Lista"
-                aria-pressed={list}
-                className={list ? "bg-subtle" : "text-muted"}
+                aria-pressed={layout === "list"}
+                className={layout === "list" ? "bg-subtle" : "text-muted"}
                 onClick={() => changeView("list")}
               >
                 <List />
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Calendário"
+                aria-pressed={layout === "calendar"}
+                className={layout === "calendar" ? "bg-subtle" : "text-muted"}
+                onClick={() => changeView("calendar")}
+              >
+                <CalendarDays />
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Agenda"
+                aria-pressed={layout === "agenda"}
+                className={layout === "agenda" ? "bg-subtle" : "text-muted"}
+                onClick={() => changeView("agenda")}
+              >
+                <CalendarRange />
               </Button>
             </div>
           </div>
@@ -1404,7 +1462,9 @@ export function TaskWorkspace({
                 : filtering
                 ? "Nenhuma tarefa combina com essa combinação de filtros."
                 : scope === "archived"
-                  ? "As tarefas arquivadas aparecem aqui."
+                  ? loadingArchived
+                    ? "Carregando as arquivadas…"
+                    : "As tarefas arquivadas aparecem aqui."
                   : "Comece por uma tarefa. Os detalhes podem vir depois."}
               {hiddenCount > 0 && matching.length === hiddenCount && (
                 <button
@@ -1424,7 +1484,24 @@ export function TaskWorkspace({
               )}
             </div>
           )}
-          {list ? (
+          {layout === "calendar" ? (
+            <TaskCalendar
+              tasks={visible}
+              projects={projectMap}
+              today={today}
+              canEdit={canEdit && !busy}
+              onOpen={(task) => setEditor({ task, defaults: {} })}
+              onMove={(task, dueDate) => patchTask(task, { dueDate })}
+              onCreate={(dueDate) => {
+                newTask();
+                setEditor((e) =>
+                  e ? { ...e, defaults: { ...e.defaults, dueDate } } : e,
+                );
+              }}
+            />
+          ) : layout === "agenda" ? (
+            <TaskAgenda tasks={visible} today={today} renderCard={card} />
+          ) : list ? (
             <div className="space-y-2">
               {quickDestination && quickCreate(quickDestination)}
               {visible.map(card)}
@@ -1548,6 +1625,11 @@ export function TaskWorkspace({
           }
           meId={meId}
           isOwner={isOwner}
+          tagSuggestions={[...new Set([...tags, ...workspaceTags])]}
+          onLinksChange={(n) =>
+            editor.task &&
+            setLinkCounts((c) => ({ ...c, [editor.task!.id]: n }))
+          }
           onClose={() => setEditor(null)}
           onSave={(data, task) =>
             perform(
@@ -1670,6 +1752,7 @@ export function TaskWorkspace({
           projects={projects}
           projectId={projectId}
           workspaceName={workspaceName}
+          initialPeriod={initial.reportPeriod}
           onClose={() => setReport(false)}
         />
       )}

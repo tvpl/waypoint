@@ -13,6 +13,10 @@ import { TaskWorkspace } from "@/features/tasks/task-workspace";
 import { listTaskTemplates } from "@/server/services/task-templates";
 import { listTaskReminders } from "@/server/services/task-reminders";
 import { starredIds } from "@/server/services/marks";
+import { getPreference } from "@/server/services/preferences";
+import { taskLinkCounts } from "@/server/services/task-links";
+import { listTags } from "@/server/services/tags";
+import { REPORT_PERIODS } from "@/domain/task-report";
 
 const SCOPES = ["all", "today", "week", "waiting", "followup", "done", "archived"] as const;
 const param = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
@@ -29,7 +33,7 @@ export default async function TasksPage({
   return (
     <TaskWorkspace
       key={ctx.workspace.id}
-      tasks={listTasks(actor)}
+      tasks={listTasks(actor, { archived: false })}
       projects={listTaskProjects(actor)}
       boards={listTaskBoards(actor)}
       templates={listTaskTemplates(actor)}
@@ -40,6 +44,9 @@ export default async function TasksPage({
       workspaceName={ctx.workspace.name}
       openId={typeof params.open === "string" ? params.open : null}
       starred={[...starredIds(ctx.user.id, "task")]}
+      initialPreferences={getPreference(actor, "tasks.board")}
+      linkCounts={taskLinkCounts(actor)}
+      workspaceTags={listTags(ctx.workspace.id, ctx.user.id).map((t) => t.name)}
       meId={ctx.user.id}
       isOwner={ctx.role === "owner"}
       initial={{
@@ -47,6 +54,8 @@ export default async function TasksPage({
         projectId: param(params.project),
         compose: param(params.new) === "1" && canEditWorkspace(ctx.role),
         report: param(params.report) === "1",
+        query: param(params.q)?.slice(0, 200),
+        reportPeriod: REPORT_PERIODS.find((p) => p.id === param(params.period))?.id,
       }}
     />
   );

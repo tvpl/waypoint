@@ -12,6 +12,10 @@ import {
 import { TaskWorkspace } from "@/features/tasks/task-workspace";
 import { listTaskTemplates } from "@/server/services/task-templates";
 import { listTaskReminders } from "@/server/services/task-reminders";
+import { starredIds } from "@/server/services/marks";
+
+const SCOPES = ["all", "today", "week", "waiting", "followup", "done", "archived"] as const;
+const param = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
 
 export const metadata: Metadata = { title: "Tarefas" };
 export default async function TasksPage({
@@ -35,6 +39,15 @@ export default async function TasksPage({
       canEdit={canEditWorkspace(ctx.role)}
       workspaceName={ctx.workspace.name}
       openId={typeof params.open === "string" ? params.open : null}
+      starred={[...starredIds(ctx.user.id, "task")]}
+      meId={ctx.user.id}
+      isOwner={ctx.role === "owner"}
+      initial={{
+        scope: SCOPES.find((s) => s === param(params.scope)),
+        projectId: param(params.project),
+        compose: param(params.new) === "1" && canEditWorkspace(ctx.role),
+        report: param(params.report) === "1",
+      }}
     />
   );
 }

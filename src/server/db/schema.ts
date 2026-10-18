@@ -3,6 +3,7 @@ import {
   sqliteTable,
   text,
   integer,
+  blob,
   primaryKey,
   index,
   uniqueIndex,
@@ -336,7 +337,8 @@ export const userMarks = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    entityType: text("entity_type", { enum: ["plan", "collection", "favorite"] }).notNull(),
+    /** "task" marks are stars only ("Importante" on the home dashboard). */
+    entityType: text("entity_type", { enum: ["plan", "collection", "favorite", "task"] }).notNull(),
     entityId: text("entity_id").notNull(),
     mark: text("mark", { enum: ["pin", "star"] }).notNull(),
     /** Manual order of pinned items (quick access); null sorts after, by creation. */
@@ -527,3 +529,75 @@ export const taskReminders = sqliteTable("task_reminders", {
   version: integer("version").notNull().default(1),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("task_reminders_person_kind").on(t.userId, t.taskId, t.kind), index("task_reminders_due_idx").on(t.userId, t.state, t.nextAt)]);
+
+export const TASK_EVENT_KINDS = ["created", "imported", "status", "updated", "archived", "restored", "note"] as const;
+export type TaskEventKind = (typeof TASK_EVENT_KINDS)[number];
+
+/** Task history: lifecycle events recorded by the services, plus observations people add ("note"). */
+export const taskEvents = sqliteTable("task_events", {
+  id: id(),
+  taskId: text("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  kind: text("kind", { enum: TASK_EVENT_KINDS }).notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  /** Observation text ("note") or the changed fields' labels ("updated"). */
+  body: text("body").notNull().default(""),
+  createdAt: createdAt(),
+}, (t) => [index("task_events_task_idx").on(t.taskId, t.createdAt), index("task_events_ws_idx").on(t.workspaceId, t.createdAt)]);
+
+// ---------------------------------------------------------------- home, preferences, backups
+
+/** Personal shortcuts on the home dashboard: an internal path or an external http(s) URL. */
+export const homeShortcuts = sqliteTable("home_shortcuts", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  href: text("href").notNull(),
+  icon: text("icon").notNull().default("link"),
+  color: text("color").notNull().default("accent"),
+  position: integer("position").notNull().default(0),
+  createdAt: createdAt(),
+}, (t) => [index("home_shortcuts_user_idx").on(t.userId, t.workspaceId, t.position)]);
+
+/** Small per-person, per-workspace settings stored as JSON (e.g. the home dashboard layout). */
+export const userPreferences = sqliteTable("user_preferences", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  valueJson: text("value_json").notNull(),
+  updatedAt: updatedAt(),
+}, (t) => [primaryKey({ columns: [t.userId, t.workspaceId, t.key] })]);
+
+export const BACKUP_FREQUENCIES = ["daily", "weekly", "off"] as const;
+export type BackupFrequency = (typeof BACKUP_FREQUENCIES)[number];
+
+export const workspaceSettings = sqliteTable("workspace_settings", {
+  workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  backupFrequency: text("backup_frequency", { enum: BACKUP_FREQUENCIES }).notNull().default("daily"),
+  /** How many automatic restore points to keep. */
+  backupKeep: integer("backup_keep").notNull().default(14),
+});
+
+export const BACKUP_KINDS = ["auto", "manual", "safety", "upload"] as const;
+export type BackupKind = (typeof BACKUP_KINDS)[number];
+
+/** Restore points: a gzip'd JSON snapshot of one workspace's data (see services/backups.ts). */
+export const workspaceBackups = sqliteTable("workspace_backups", {
+  id: id(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  kind: text("kind", { enum: BACKUP_KINDS }).notNull(),
+  note: text("note"),
+  /** The workspace the snapshot was taken from (differs from workspaceId for uploaded files). */
+  sourceWorkspaceId: text("source_workspace_id").notNull(),
+  sourceWorkspaceName: text("source_workspace_name").notNull(),
+  /** When the snapshot was taken (for uploads, the original date). */
+  takenAt: integer("taken_at", { mode: "timestamp_ms" }).notNull(),
+  size: integer("size").notNull(),
+  countsJson: text("counts_json").notNull().default("{}"),
+  data: blob("data", { mode: "buffer" }).notNull(),
+  createdAt: createdAt(),
+}, (t) => [index("workspace_backups_ws_idx").on(t.workspaceId, t.createdAt)]);

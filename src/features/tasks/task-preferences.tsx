@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { TASK_STATUSES } from "@/domain/tasks";
+import { hideRulesSchema, noHideRules } from "@/domain/task-visibility";
 
 export const viewFiltersSchema = z.object({
   scope: z.enum([
@@ -30,6 +31,8 @@ export const viewFiltersSchema = z.object({
   person: z.string().max(100),
   pending: z.enum(["", "note", "waiting", "blocked", "decision"]),
   sort: z.enum(["manual", "due", "priority"]),
+  /** Hide rules of the folder when the view was saved (older views have none). */
+  hide: hideRulesSchema.optional(),
 });
 export type ViewFilters = z.infer<typeof viewFiltersSchema>;
 const fieldsSchema = z.object({
@@ -50,6 +53,8 @@ const preferencesSchema = z.object({
   collapsedColumns: z.array(z.string()).max(300),
   collapsedBlocks: z.array(z.string()).max(100),
   widths: z.record(z.string(), z.number().min(200).max(420)),
+  /** "Ocultar itens": per stage, everything or only older items (see domain/task-visibility.ts). */
+  hide: hideRulesSchema.default(noHideRules),
 });
 export type CardFields = z.infer<typeof fieldsSchema>;
 export type BoardPreferences = z.infer<typeof preferencesSchema>;
@@ -70,6 +75,7 @@ export const defaultPreferences = (): BoardPreferences => ({
   collapsedColumns: [],
   collapsedBlocks: [],
   widths: {},
+  hide: noHideRules(),
 });
 const savedViewSchema = z.object({
   id: z.string().max(64),

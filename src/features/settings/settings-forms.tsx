@@ -34,8 +34,8 @@ function useAction() {
 
 export function Card({ title, description, children, id }: { title: string; description?: string; children: React.ReactNode; id?: string }) {
   return (
-    <section id={id} className="grid scroll-mt-6 gap-6 border-t border-line py-8 md:grid-cols-[240px_1fr]">
-      <div className="flex flex-col gap-1">
+    <section id={id} className="flex scroll-mt-6 flex-col gap-5 border-t border-line py-7 first:border-t-0 first:pt-4">
+      <div className="flex max-w-2xl flex-col gap-1">
         <h2 className="text-lead font-semibold">{title}</h2>
         {description && <p className="text-body leading-5 text-muted">{description}</p>}
       </div>

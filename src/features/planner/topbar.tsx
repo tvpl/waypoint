@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, ClipboardCopy, CloudOff, Presentation, Download, Eye, FileJson, FileUp, History, ImageDown, Layers, Loader2, MoreHorizontal, Pencil, PenLine, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleHelp, ClipboardCopy, CloudOff, Presentation, Download, Eye, FileJson, FileUp, History, ImageDown, Layers, Loader2, MoreHorizontal, Pencil, PenLine, Printer, Redo2, Share2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/popover";
@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { cn, timeAgo } from "@/lib/utils";
+import { startTour } from "@/features/help/events";
 import type { SaveStatus } from "./autosave";
 
 export type ExportKind = "json" | "png" | "svg" | "pdf" | "frames-pdf" | "excalidraw" | "excalidraw-png" | "excalidraw-svg" | "excalidraw-copy";
@@ -159,10 +160,13 @@ export function ExportMenu({
   trigger,
   views = [],
   frames = 0,
+  onHelp,
 }: {
   onExport: (k: ExportKind, viewId?: string) => void;
   /** "Importar do Excalidraw…" (editor only). */
   onImport?: () => void;
+  /** "Ajuda": the editor's guided tour (editor only). */
+  onHelp?: () => void;
   trigger?: React.ReactNode;
   views?: { id: string; name: string }[];
   /** The plan has frames: offers one PDF page per frame. */
@@ -172,7 +176,7 @@ export function ExportMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {trigger ?? (
-          <Button variant="ghost" size="icon" aria-label="Mais opções">
+          <Button data-tour="editor-more" variant="ghost" size="icon" aria-label="Mais opções">
             <MoreHorizontal />
           </Button>
         )}
@@ -200,6 +204,14 @@ export function ExportMenu({
         <DropdownMenuSeparator />
         <ExcalidrawItems onExport={onExport} onImport={onImport} />
         <ViewExportItems views={views} onExport={onExport} />
+        {onHelp && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onHelp}>
+              <CircleHelp /> Ajuda
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -269,7 +281,7 @@ export function EditorTopbar(props: {
           </Link>
         </Button>
       </Tooltip>
-      <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-sm">
+      <div data-tour="editor-title" className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-sm">
         <span className="hidden shrink-0 text-muted md:inline">{props.workspaceName}</span>
         <span className="hidden text-line-2 md:inline" aria-hidden>
           /
@@ -296,7 +308,7 @@ export function EditorTopbar(props: {
         </span>
         <SaveIndicator status={props.status} error={props.saveError} savedAt={props.savedAt} />
       </div>
-      <div role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-control bg-subtle p-[3px] max-sm:hidden">
+      <div data-tour="editor-mode" role="radiogroup" aria-label="Modo" className="flex shrink-0 gap-0.5 rounded-control bg-subtle p-[3px] max-sm:hidden">
         {seg("edit", "Editar", Pencil)}
         {seg("preview", "Visualizar", Eye)}
       </div>
@@ -313,7 +325,7 @@ export function EditorTopbar(props: {
         </Tooltip>
         <span className="hidden md:contents">
           <Tooltip content="Apresentar (tela cheia, passo a passo)">
-            <Button variant="ghost" size="icon" aria-label="Apresentar" onClick={props.onPresent}>
+            <Button data-tour="editor-present" variant="ghost" size="icon" aria-label="Apresentar" onClick={props.onPresent}>
               <Presentation />
             </Button>
           </Tooltip>
@@ -325,16 +337,16 @@ export function EditorTopbar(props: {
         </span>
         {props.comments}
         <span className="hidden md:contents">
-          <ExportMenu onExport={props.onExport} onImport={props.onImport} views={props.views} frames={props.frames} />
+          <ExportMenu onExport={props.onExport} onImport={props.onImport} views={props.views} frames={props.frames} onHelp={() => startTour("editor")} />
           <span className="mx-1.5 h-5 w-px bg-line" aria-hidden />
           <span className="hidden lg:contents">
             <Avatars people={props.people} />
           </span>
-          <Button variant="secondary" size="sm" className="h-[34px]" onClick={props.onShare}>
+          <Button data-tour="editor-share" variant="secondary" size="sm" className="h-[34px]" onClick={props.onShare}>
             <Share2 /> Compartilhar
           </Button>
         </span>
-        <Button variant="primary" size="sm" className="h-[34px]" onClick={props.onPublish} disabled={props.publishing}>
+        <Button data-tour="editor-publish" variant="primary" size="sm" className="h-[34px]" onClick={props.onPublish} disabled={props.publishing}>
           {props.publishing && <Loader2 className="animate-spin" />}
           Publicar
         </Button>

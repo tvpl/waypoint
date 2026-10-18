@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowRight,
+  BookOpen,
   Check,
+  CircleHelp,
+  Keyboard,
+  LifeBuoy,
+  PlayCircle,
   ListTodo,
   Download,
   FolderInput,
@@ -45,6 +50,9 @@ import { Logo } from "./logo";
 import { logoutAction } from "./actions";
 import { overlayOpen } from "@/lib/dom";
 import { TOGGLE_RAIL_EVENT, useDesktop } from "@/lib/desktop";
+import { helpModuleFor } from "@/features/help/guides";
+import { startTour } from "@/features/help/events";
+import { openShortcuts } from "./shortcuts";
 
 const NAV = [
   { href: "/", label: "Início", icon: Home, match: (p: string) => p === "/" },
@@ -156,7 +164,7 @@ export function AppRail({
         <Logo />
       </Link>
 
-      <RailCard {...card("home")} trigger={<RailLink href="/" label="Início" icon={Home} on={NAV[0].match(pathname)} />}>
+      <RailCard {...card("home")} trigger={<RailLink href="/" label="Início" icon={Home} on={NAV[0].match(pathname)} data-tour="nav-home" />}>
         <CardHead icon={Home} title="Início" text={`Sua mesa de trabalho em ${workspace.name}.`} />
         <CardList>
           <CardRow href="/plans" icon={Workflow} label="Todos os plans" />
@@ -165,7 +173,7 @@ export function AppRail({
         </CardList>
       </RailCard>
 
-      <RailCard {...card("plans")} trigger={<RailLink href="/plans" label="Planner" icon={Workflow} on={NAV[1].match(pathname)} />}>
+      <RailCard {...card("plans")} trigger={<RailLink href="/plans" label="Planner" icon={Workflow} on={NAV[1].match(pathname)} data-tour="nav-plans" />}>
         <CardHead icon={Workflow} title="Planner" text="Diagramas, mapas e arquiteturas." />
         <CardSection label="Recentes">
           {data ? (
@@ -198,7 +206,7 @@ export function AppRail({
         </CardFoot>
       </RailCard>
 
-      <RailCard {...card("links")} trigger={<RailLink href="/links" label="Links" icon={Link2} on={NAV[2].match(pathname)} />}>
+      <RailCard {...card("links")} trigger={<RailLink href="/links" label="Links" icon={Link2} on={NAV[2].match(pathname)} data-tour="nav-links" />}>
         <CardHead icon={Link2} title="Links" text="Sua biblioteca de favoritos e coleções." />
         <CardList>
           <CardRow href="/links?scope=inbox" icon={Inbox} label="Caixa de entrada" meta={data?.inbox || undefined} accent={!!data?.inbox} />
@@ -223,9 +231,9 @@ export function AppRail({
         </CardFoot>
       </RailCard>
 
-      <RailLink href="/tasks" label="Tarefas" icon={ListTodo} on={pathname.startsWith("/tasks")} />
+      <RailLink href="/tasks" label="Tarefas" icon={ListTodo} on={pathname.startsWith("/tasks")} data-tour="nav-tasks" />
 
-      <RailCard {...card("tags")} trigger={<RailLink href="/tags" label="Tags" icon={Tag} on={NAV[4].match(pathname)} />}>
+      <RailCard {...card("tags")} trigger={<RailLink href="/tags" label="Tags" icon={Tag} on={NAV[4].match(pathname)} data-tour="nav-tags" />}>
         <CardHead icon={Tag} title="Tags" text="Temas compartilhados entre plans e links." />
         <CardSection label="Mais usadas">
           {data ? (
@@ -256,7 +264,7 @@ export function AppRail({
       <RailCard
         {...card("search")}
         trigger={
-          <RailButton label="Buscar" icon={Search} onClick={() => openPalette()} />
+          <RailButton label="Buscar" icon={Search} onClick={() => openPalette()} data-tour="nav-search" />
         }
       >
         <CardHead icon={Search} title="Buscar" text="Plans, blocos dentro dos plans, links, coleções e tags, num lugar só." kbd="⌘K" />
@@ -272,6 +280,8 @@ export function AppRail({
       <Tooltip content={`Tema: ${THEME_LABEL[theme].toLowerCase()} (clique para alternar)`} side="right">
         <RailButton label="Tema" icon={ThemeIcon} onClick={() => cycleTheme()} ariaLabel={`Alternar tema (atual: ${THEME_LABEL[theme].toLowerCase()})`} />
       </Tooltip>
+
+      <HelpCard {...card("help")} pathname={pathname} />
 
       <SettingsCard {...card("settings")} on={pathname.startsWith("/settings")} />
 
@@ -458,16 +468,31 @@ function NewPlanButton() {
 function SettingsCard({ open, onOpenChange, on }: { open: boolean; onOpenChange: (o: boolean) => void; on: boolean }) {
   const desktop = useDesktop();
   return (
-    <RailCard open={open} onOpenChange={onOpenChange} trigger={<RailLink href="/settings" label="Ajustes" icon={Settings} on={on} />}>
-      <CardHead icon={Settings} title="Configurações" text="Conta, aparência, workspace e seus dados." />
+    <RailCard open={open} onOpenChange={onOpenChange} trigger={<RailLink href="/settings" label="Ajustes" icon={Settings} on={on} data-tour="nav-settings" />}>
+      <CardHead icon={Settings} title="Configurações" text="Conta, aparência, workspace, integrações e backups." />
       <CardList>
-        {desktop && <CardRow href="/settings#seguranca" icon={ShieldCheck} label="Segurança e bloqueio" />}
-        {desktop && <CardRow href="/settings#backups" icon={Download} label="Backups" />}
-        <CardRow href="/settings#perfil" icon={User} label="Perfil" />
-        <CardRow href="/settings#aparencia" icon={Palette} label="Aparência" />
-        <CardRow href="/settings#workspace" icon={Users} label="Workspace e pessoas" />
-        <CardRow href="/settings#api-tokens" icon={KeyRound} label="Tokens de API" />
-        <CardRow href="/settings#dados" icon={FolderInput} label="Exportar seus dados" />
+        <CardRow href="/settings?tab=conta" icon={User} label="Conta" />
+        <CardRow href="/settings?tab=aparencia" icon={Palette} label="Aparência" />
+        <CardRow href="/settings?tab=workspace" icon={Users} label="Workspace e pessoas" />
+        <CardRow href="/settings?tab=integracoes" icon={KeyRound} label="Integrações e tokens" />
+        <CardRow href="/settings?tab=backup" icon={ShieldCheck} label="Backup e dados" />
+        {desktop && <CardRow href="/settings?tab=aplicativo" icon={Monitor} label="Aplicativo e bloqueio" />}
+      </CardList>
+    </RailCard>
+  );
+}
+
+/** Contextual help: the current module's tour and guide, the help center and the shortcuts. */
+function HelpCard({ open, onOpenChange, pathname }: { open: boolean; onOpenChange: (o: boolean) => void; pathname: string }) {
+  const current = helpModuleFor(pathname);
+  return (
+    <RailCard open={open} onOpenChange={onOpenChange} trigger={<RailLink href={current ? `/help/${current.id}` : "/help"} label="Ajuda" icon={CircleHelp} on={pathname.startsWith("/help")} data-tour="nav-help" />}>
+      <CardHead icon={CircleHelp} title="Ajuda" text={current ? `Você está em ${current.title}. ${current.summary}` : "Guias e tours de cada módulo."} />
+      <CardList>
+        {current && current.tour.length > 0 && <CardRow onSelect={() => (onOpenChange(false), startTour(current.id))} icon={PlayCircle} label={`Tour: ${current.title}`} accent />}
+        {current && <CardRow href={`/help/${current.id}`} icon={BookOpen} label={`Guia de ${current.title}`} />}
+        <CardRow href="/help" icon={LifeBuoy} label="Central de ajuda" />
+        <CardRow onSelect={() => (onOpenChange(false), openShortcuts())} icon={Keyboard} label="Atalhos de teclado" kbd="?" />
       </CardList>
     </RailCard>
   );
@@ -574,6 +599,14 @@ export function MobileTabBar({ user }: { user: { name: string; email: string } }
           <DropdownMenuItem asChild>
             <Link href="/settings"><Settings /> Configurações</Link>
           </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/help"><CircleHelp /> Ajuda</Link>
+          </DropdownMenuItem>
+          {helpModuleFor(pathname)?.tour.length ? (
+            <DropdownMenuItem onSelect={() => startTour(helpModuleFor(pathname)!.id)}>
+              <PlayCircle /> Tour desta página
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuLabel>Tema</DropdownMenuLabel>
           <ThemeItems current={theme} />
           <DropdownMenuSeparator />

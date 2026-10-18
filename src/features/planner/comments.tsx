@@ -123,6 +123,7 @@ export function CommentsToggle({ count, open, onClick, className }: { count: num
         aria-label={label}
         aria-pressed={open}
         data-comments-toggle
+        data-tour="editor-comments"
         onClick={onClick}
         className={cn(
           "relative inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-2 transition-colors hover:bg-hover hover:text-ink [&_svg]:size-4",

@@ -10,6 +10,7 @@ import {
   Plus,
   Users,
   Link2,
+  Star,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ import {
   type TaskBoard,
 } from "@/domain/task-board";
 import { TaskMarkdown } from "./markdown";
+import { TaskHistory } from "./task-history";
 
 export function ColorPicker({
   value,
@@ -195,7 +197,15 @@ export function TaskEditor({
   busy,
   onSave,
   onClose,
+  starred = false,
+  onToggleStar,
+  meId = "",
+  isOwner = false,
 }: {
+  starred?: boolean;
+  onToggleStar?: () => void;
+  meId?: string;
+  isOwner?: boolean;
   task: Task | null;
   defaults: Partial<TaskInput>;
   projects: TaskProject[];
@@ -422,6 +432,37 @@ export function TaskEditor({
                 </select>
               </Field>
             </fieldset>
+            {task && onToggleStar && (
+              <button
+                type="button"
+                onClick={onToggleStar}
+                aria-pressed={starred}
+                className={cn(
+                  "flex items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm transition-colors",
+                  starred
+                    ? "border-amber-line bg-amber-bg text-amber-ink"
+                    : "border-line bg-surface-2/40 hover:bg-hover",
+                )}
+              >
+                <Star
+                  className={cn(
+                    "size-4 transition-transform",
+                    starred ? "scale-110 fill-current" : "text-muted",
+                  )}
+                />
+                <span className="flex-1">
+                  {starred ? "Importante" : "Marcar como importante"}
+                  <span
+                    className={cn(
+                      "mt-0.5 block text-xs",
+                      starred ? "opacity-80" : "text-muted",
+                    )}
+                  >
+                    Aparece em Importantes, na página inicial
+                  </span>
+                </span>
+              </button>
+            )}
             {onRemind && (
               <button
                 type="button"
@@ -809,6 +850,15 @@ export function TaskEditor({
                 </Field>
               </Extra>
             </fieldset>
+            {task && (
+              <TaskHistory
+                key={`${task.id}:${task.version}`}
+                taskId={task.id}
+                canEdit={canEdit}
+                meId={meId}
+                isOwner={isOwner}
+              />
+            )}
             {task?.completedAt && (
               <p className="text-xs text-muted">
                 Concluída em{" "}

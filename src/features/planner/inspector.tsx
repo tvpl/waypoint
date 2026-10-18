@@ -394,7 +394,7 @@ export function PlanDetailsButton() {
     <Popover>
       <Tooltip content="Detalhes do plan">
         <PopoverTrigger asChild>
-          <button type="button" aria-label="Detalhes do plan" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-4">
+          <button type="button" data-tour="editor-details" aria-label="Detalhes do plan" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-4">
             <Info />
           </button>
         </PopoverTrigger>

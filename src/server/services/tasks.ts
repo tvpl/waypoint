@@ -25,6 +25,7 @@ import type {
 } from "@/domain/task-markdown-review";
 import { canEditWorkspace, UserError, workspaceRole } from "./workspaces";
 import { indexEntity, removeEntity } from "./search";
+import { recordTaskArchive, recordTaskChange, recordTaskCreated } from "./task-history";
 import {
   boardInputSchema,
   boardsForProject,
@@ -72,6 +73,7 @@ function present(row: typeof schema.tasks.$inferSelect): Task {
     completedAt: row.completedAt?.valueOf() ?? null,
     archivedAt: row.archivedAt?.valueOf() ?? null,
     updatedAt: row.updatedAt.valueOf(),
+    createdAt: row.createdAt.valueOf(),
   };
 }
 function fields(input: TaskInput) {
@@ -113,6 +115,12 @@ function validateDependencyGraph(graph: Map<string, string[]>) {
     visited.add(id);
   };
   for (const id of graph.keys()) walk(id);
+}
+/** Rejects a workspace whose dependency links point nowhere or form a cycle (after a restore). */
+export function validateWorkspaceDependencies(actor: Actor, conn: Conn = getDb()) {
+  const graph = dependencyGraph(actor, conn);
+  for (const [id, deps] of graph) graph.set(id, deps.filter((d) => graph.has(d)));
+  validateDependencyGraph(graph);
 }
 function assertDependencies(
   actor: Actor,
@@ -346,6 +354,10 @@ function reindex(id: string, conn: Conn) {
     tags: task.tags.join(" "),
   });
 }
+/** Rebuilds the search entries of these tasks (e.g. after a restore). */
+export function reindexTasks(ids: string[], conn: Conn = getDb()) {
+  for (const id of ids) reindex(id, conn);
+}
 export function listTasks(actor: Actor): Task[] {
   access(actor);
   return getDb()
@@ -370,7 +382,7 @@ export function listTaskProjects(actor: Actor): TaskProject[] {
     .all()
     .map((p) => ({ id: p.id, ...projectInputSchema.parse(p) }));
 }
-function insertTask(actor: Actor, input: TaskInput, conn: Conn) {
+function insertTask(actor: Actor, input: TaskInput, conn: Conn, origin: "created" | "imported" = "created") {
   assertProject(actor, input.projectId, conn);
   input = placeTask(actor, input, conn);
   const id = newId();
@@ -392,6 +404,7 @@ function insertTask(actor: Actor, input: TaskInput, conn: Conn) {
     })
     .run();
   reindex(id, conn);
+  recordTaskCreated(conn, actor, { id, status: input.status }, origin);
   return present(rowFor(actor, id, conn));
 }
 export function createTask(actor: Actor, raw: unknown) {
@@ -442,6 +455,7 @@ export function updateTask(
       .where(eq(schema.tasks.id, id))
       .run();
     reindex(id, tx);
+    recordTaskChange(tx, actor, id, current, input);
     return present(rowFor(actor, id, tx));
   });
 }
@@ -467,6 +481,7 @@ export function archiveTask(
       .where(eq(schema.tasks.id, id))
       .run();
     reindex(id, tx);
+    if (!!row.archivedAt !== archived) recordTaskArchive(tx, actor, id, archived);
   });
 }
 export function moveTask(
@@ -561,6 +576,7 @@ export function moveTask(
         .run();
     });
     reindex(id, tx);
+    recordTaskChange(tx, actor, id, current, input);
   });
 }
 export function saveTaskProject(actor: Actor, raw: unknown, id?: string) {
@@ -712,6 +728,7 @@ export function importTasks(actor: Actor, markdown: string) {
           dependsOn: [],
         }),
         tx,
+        "imported",
       );
       if (input.reference) {
         if (copied.has(input.reference.id))
@@ -1083,6 +1100,7 @@ export function applyTaskUpdates(
         .where(eq(schema.tasks.id, current.id))
         .run();
       reindex(current.id, tx);
+      recordTaskChange(tx, actor, current.id, current, input);
     }
     return chosen.length;
   });

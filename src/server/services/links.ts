@@ -232,6 +232,10 @@ export function deleteCollection(id: string) {
   for (const cid of ids) removeEntity("collection", cid);
 }
 
+export function reindexCollections(ids: string[]) {
+  for (const id of ids) indexCollection(id);
+}
+
 function indexCollection(id: string) {
   const c = getCollection(id);
   if (!c) return;

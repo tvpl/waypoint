@@ -44,7 +44,7 @@ function uniqueSlug(workspaceId: string, base: string, exceptId?: string) {
 
 type DocRow = { nodesJson: string; edgesJson: string; viewportJson: string; layersJson?: string | null };
 
-function parseDoc(row: DocRow): PlanDocument {
+export function parseDoc(row: DocRow): PlanDocument {
   const extra = row.layersJson ? (JSON.parse(row.layersJson) as Pick<PlanDocument, "layers" | "views" | "palette">) : {};
   return normalizeDocument({
     schemaVersion: 1,
@@ -303,6 +303,11 @@ function syncDocumentIndexes(planId: string, workspaceId: string, doc: PlanDocum
         .run();
     }
   });
+}
+
+/** Rebuilds the search entries (plan, nodes) and resource refs of these plans (e.g. after a restore). */
+export function reindexPlans(ids: string[]) {
+  for (const id of ids) indexPlan(id);
 }
 
 function indexPlan(planId: string) {

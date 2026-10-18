@@ -3,8 +3,14 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Command } from "cmdk";
 import { Dialog as D } from "radix-ui";
+import { helpModuleFor } from "@/features/help/guides";
+import { startTour } from "@/features/help/events";
 import {
   Search,
+  CircleHelp,
+  PlayCircle,
+  ShieldCheck,
+  FileBarChart2,
   ListTodo,
   Workflow,
   Link2,
@@ -208,6 +214,12 @@ export function CommandPalette({ workspaces, currentWorkspaceId }: { workspaces:
     { id: "theme", label: "Alternar tema", icon: <Moon />, run: () => cycleTheme() },
     { id: "settings", label: "Configurações", icon: <Settings />, run: () => go("/settings") },
     { id: "shortcuts", label: "Atalhos de teclado", icon: <Keyboard />, run: () => (setOpen(false), openShortcuts()) },
+    { id: "help", label: "Central de ajuda", icon: <CircleHelp />, run: () => go("/help") },
+    ...(helpModuleFor(pathname)?.tour.length
+      ? [{ id: "tour", label: `Fazer o tour desta página (${helpModuleFor(pathname)!.title})`, icon: <PlayCircle />, run: () => (setOpen(false), startTour(helpModuleFor(pathname)!.id)) }]
+      : []),
+    { id: "backup", label: "Backup e dados", icon: <ShieldCheck />, run: () => go("/settings?tab=backup") },
+    { id: "task-report", label: "Relatório de tarefas concluídas", icon: <FileBarChart2 />, run: () => go("/tasks?report=1") },
     ...workspaces
       .filter((w) => w.id !== currentWorkspaceId)
       .map((w) => ({

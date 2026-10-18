@@ -31,13 +31,13 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <label className="flex h-9 w-full max-w-xs items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
+      <label data-tour="tags-filter" className="flex h-9 w-full max-w-xs items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
         <Search className="size-4" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar tags…" aria-label="Filtrar tags" className="w-full bg-transparent text-sm text-ink outline-none" />
       </label>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((t) => (
-          <div key={t.id} className="group relative flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise">
+      <div data-tour="tags-grid" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {shown.map((t, i) => (
+          <div key={t.id} data-tour={i === 0 ? "tags-card" : undefined} className="group relative flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise">
             <Link href={`/tags/${encodeURIComponent(t.name)}`} className="absolute inset-0 rounded-card" aria-label={`Abrir tag ${t.name}`} />
             <div className="flex items-center justify-between gap-2">
               <span className={cn("truncate rounded-full text-lead font-semibold", t.color && "wp-tint -ml-1 px-2.5 py-0.5")} style={tagTint(t.color)}>

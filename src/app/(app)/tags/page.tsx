@@ -10,7 +10,7 @@ export default async function TagsPage() {
   return (
     <main className="scrollbar-thin flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8 px-6 pb-16 pt-10 sm:px-10">
-        <div className="flex flex-col gap-2">
+        <div data-tour="tags-header" className="flex flex-col gap-2">
           <h1 className="font-display font-semibold text-display-sm leading-[1.05] tracking-[-0.025em] sm:text-display">Tags</h1>
           <p className="text-lead text-muted">Temas compartilhados entre Planner e Links — uma ponte natural entre os dois.</p>
         </div>

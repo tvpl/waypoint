@@ -215,7 +215,7 @@ function BackupStatus() {
           >
             <Archive /> {busy ? "Salvando…" : "Fazer backup"}
           </Button>
-          <Button size="sm" className="flex-1 justify-center" onClick={() => router.push("/settings#backups")}>
+          <Button size="sm" className="flex-1 justify-center" onClick={() => router.push("/settings?tab=backup#backups")}>
             Gerenciar
           </Button>
         </div>

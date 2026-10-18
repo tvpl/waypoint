@@ -18,6 +18,7 @@ import {
   ListChecks,
   Eye,
   EyeOff,
+  FileBarChart2,
   ChevronRight,
   CircleDashed,
   Folder,
@@ -48,6 +49,7 @@ import {
   previewTaskUpdatesAction,
   applyTaskUpdatesAction,
   saveTaskAction,
+  toggleTaskStarAction,
 } from "@/app/(app)/tasks/actions";
 import { Button } from "@/components/ui/button";
 import { Input, selectClass } from "@/components/ui/input";
@@ -99,6 +101,14 @@ import { TaskTemplateDialog } from "./task-template-dialog";
 import { MarkdownUpdateDialog } from "./task-markdown-update";
 import { TaskBoardEditor } from "./task-board-editor";
 import { TaskReminders, type ReminderLaunch } from "./task-reminders";
+import { TaskReportDialog } from "./task-report-dialog";
+import { TaskHideControl } from "./task-hide-control";
+import {
+  activeHideRules,
+  describeHideRules,
+  hiddenByRules,
+  noHideRules,
+} from "@/domain/task-visibility";
 import type { TaskReminder } from "@/domain/task-reminders";
 import {
   BoardDisplaySettings,
@@ -107,7 +117,7 @@ import {
   type ViewFilters,
 } from "./task-preferences";
 
-type Scope =
+export type Scope =
   | "all"
   | "today"
   | "week"
@@ -171,7 +181,16 @@ export function TaskWorkspace({
   canEdit,
   workspaceName,
   openId,
+  starred: sourceStarred = [],
+  meId = "",
+  isOwner = false,
+  initial = {},
 }: {
+  starred?: string[];
+  meId?: string;
+  isOwner?: boolean;
+  /** From the URL: ?scope=today, ?project=<id>, ?new=1, ?report=1 (home shortcuts). */
+  initial?: { scope?: Scope; projectId?: string; compose?: boolean; report?: boolean };
   tasks: Task[];
   projects: TaskProject[];
   boards: TaskBoard[];
@@ -196,8 +215,17 @@ export function TaskWorkspace({
     if (new URLSearchParams(window.location.search).get("reminders") === "1")
       setReminderDialog({});
   }, []);
-  const [scope, setScope] = useState<Scope>("all");
-  const [projectId, setProjectId] = useState("");
+  const [scope, setScope] = useState<Scope>(initial.scope ?? "all");
+  const [projectId, setProjectId] = useState(
+    initial.projectId &&
+      (initial.projectId === "none" ||
+        projects.some((p) => p.id === initial.projectId))
+      ? initial.projectId
+      : "",
+  );
+  const [starred, setStarred] = useState(() => new Set(sourceStarred));
+  const [hideOpen, setHideOpen] = useState(false);
+  const [report, setReport] = useState(!!initial.report);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"board" | "list">("board");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
@@ -354,7 +382,17 @@ export function TaskWorkspace({
     if (s === "done") return t.status === "done";
     return true;
   };
-  const visible = tasks
+  const now = useMemo(() => new Date(), [today]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hideRules = preferences.hide ?? noHideRules();
+  const exemptStages: TaskStatus[] =
+    scope === "archived"
+      ? [...TASK_STATUSES]
+      : [
+          ...(statusFilter ? [statusFilter] : []),
+          ...(scope === "done" ? (["done"] as const) : []),
+          ...(scope === "waiting" ? (["waiting"] as const) : []),
+        ];
+  const matching = tasks
     .filter((t) => {
       if (
         !matchesScope(t, scope) ||
@@ -396,7 +434,9 @@ export function TaskWorkspace({
                 )
               : haystack.includes(fold(term)),
         );
-    })
+    });
+  const visible = matching
+    .filter((t) => !hiddenByRules(t, hideRules, now, exemptStages))
     .sort((a, b) => {
       if (sort === "due")
         return (
@@ -419,6 +459,8 @@ export function TaskWorkspace({
     Number(!!person) +
     Number(!!statusFilter) +
     Number(!!pending);
+  const hiddenCount = matching.length - visible.length;
+  const hiding = activeHideRules(hideRules).length > 0;
   const filtering = !!(query || projectId || filterCount || hideDone);
   const list = view === "list" || scope === "archived";
   const projectTasks = active.filter(
@@ -467,6 +509,43 @@ export function TaskWorkspace({
         }
       });
     });
+  const toggleStar = (id: string) => {
+    const on = !starred.has(id);
+    const flip = (value: boolean) =>
+      setStarred((current) => {
+        const next = new Set(current);
+        if (value) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    flip(on);
+    toggleTaskStarAction(id)
+      .then((r) => {
+        if (!r.ok) {
+          flip(!on);
+          toast.error(r.error);
+        } else
+          toast.success(
+            on ? "Marcada como importante." : "Removida de importantes.",
+          );
+      })
+      .catch(() => {
+        flip(!on);
+        toast.error("Não foi possível conectar. Tente novamente.");
+      });
+  };
+  useEffect(() => {
+    if (initial.compose) newTask();
+    if (initial.scope || initial.projectId || initial.compose || initial.report) {
+      // Shortcut parameters apply once; a reload shouldn't repeat them.
+      const url = new URL(window.location.href);
+      ["scope", "project", "new", "report"].forEach((k) =>
+        url.searchParams.delete(k),
+      );
+      window.history.replaceState(null, "", url);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const patchTask = (task: Task, patch: Partial<TaskInput>) =>
     void perform(
       () => saveTaskAction(patch, task.id, task.version),
@@ -607,6 +686,7 @@ export function TaskWorkspace({
         task.dependsOn.includes(related.id),
       )}
       reminderCount={reminders.filter((r) => r.taskId === task.id).length}
+      starred={starred.has(task.id)}
       onOpenTask={(id) => {
         const related = tasks.find((t) => t.id === id);
         if (related) setEditor({ task: related, defaults: {} });
@@ -649,6 +729,7 @@ export function TaskWorkspace({
             compose: !reminders.some((r) => r.taskId === task.id),
           }),
         edit: () => setEditor({ task, defaults: {} }),
+        star: () => toggleStar(task.id),
         patch: (p) => patchTask(task, p),
         archive: () =>
           void perform(
@@ -775,6 +856,7 @@ export function TaskWorkspace({
     person,
     pending,
     sort,
+    hide: hideRules,
   };
   const applyView = (value: ViewFilters) => {
     if (
@@ -795,6 +877,7 @@ export function TaskWorkspace({
     setPerson(value.person);
     setPending(value.pending);
     setSort(value.sort);
+    if (value.hide) setPreferences({ hide: value.hide });
   };
   const boardStatusFilter =
     statusFilter ||
@@ -826,6 +909,7 @@ export function TaskWorkspace({
               <Button
                 variant="ghost"
                 size="sm"
+                data-tour="tasks-reminders"
                 aria-label="Meus lembretes"
                 onClick={() =>
                   setReminderDialog({
@@ -871,6 +955,7 @@ export function TaskWorkspace({
                   <Button
                     variant="ghost"
                     size="icon"
+                    data-tour="tasks-menu"
                     aria-label="Opções de tarefas"
                   >
                     <MoreHorizontal />
@@ -918,9 +1003,28 @@ export function TaskWorkspace({
                       <DropdownMenuSeparator />
                     </>
                   )}
-                  <DropdownMenuItem onSelect={() => setHideDone((v) => !v)}>
-                    {hideDone ? <Eye /> : <EyeOff />}
-                    {hideDone ? "Mostrar concluídas" : "Ocultar concluídas"}
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setPreferences({
+                        hide: {
+                          ...hideRules,
+                          done: hideRules.done === "all" ? "show" : "all",
+                        },
+                      })
+                    }
+                  >
+                    {hideRules.done === "all" ? <Eye /> : <EyeOff />}
+                    {hideRules.done === "all"
+                      ? "Mostrar concluídas"
+                      : "Ocultar concluídas"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setHideOpen(true)}>
+                    <SlidersHorizontal />
+                    Ocultar por etapa e data…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setReport(true)}>
+                    <FileBarChart2 />
+                    Relatório de concluídas
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={!visible.length}
@@ -935,6 +1039,7 @@ export function TaskWorkspace({
                 <Button
                   variant="primary"
                   size="sm"
+                  data-tour="tasks-new"
                   disabled={busy}
                   onClick={() => newTask()}
                 >
@@ -947,6 +1052,7 @@ export function TaskWorkspace({
           <nav
             className="mt-3 flex flex-wrap items-center gap-1"
             aria-label="Projetos de tarefas"
+            data-tour="tasks-projects"
           >
             <button
               className={cn("wp-task-project", !projectId && "is-active")}
@@ -1004,7 +1110,7 @@ export function TaskWorkspace({
           </nav>
         </header>
         <div className="mx-4 flex shrink-0 flex-wrap items-center gap-1.5 rounded-xl border border-line bg-surface px-2 py-1.5 sm:mx-6">
-          <div className="relative min-w-40 flex-1">
+          <div className="relative min-w-40 flex-1" data-tour="tasks-search">
             <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-muted" />
             <Input
               ref={searchRef}
@@ -1027,6 +1133,7 @@ export function TaskWorkspace({
           </div>
           <select
             aria-label="Visão de tarefas"
+            data-tour="tasks-scope"
             className={cn(
               selectClass,
               "h-8 w-auto max-w-36 border-transparent text-xs",
@@ -1042,7 +1149,11 @@ export function TaskWorkspace({
           </select>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant={filterCount ? "soft" : "ghost"} size="sm">
+              <Button
+                variant={filterCount ? "soft" : "ghost"}
+                size="sm"
+                data-tour="tasks-filters"
+              >
                 <SlidersHorizontal />
                 Filtros
                 {filterCount > 0 && (
@@ -1137,8 +1248,22 @@ export function TaskWorkspace({
               </Button>
             </PopoverContent>
           </Popover>
+          <TaskHideControl
+            rules={hideRules}
+            onChange={(hide) => setPreferences({ hide })}
+            scopeLabel={
+              currentProject?.name ??
+              (projectId === "none" ? "Sem projeto" : "Todas as tarefas")
+            }
+            hiddenCount={hiddenCount}
+            open={hideOpen}
+            onOpenChange={setHideOpen}
+          />
           <div className="ml-auto flex flex-wrap items-center gap-1">
-            <label className="flex items-center gap-1 text-muted">
+            <label
+              className="flex items-center gap-1 text-muted"
+              data-tour="tasks-sort"
+            >
               <ArrowDownWideNarrow className="size-3.5" />
               <select
                 aria-label="Ordenar tarefas"
@@ -1159,6 +1284,7 @@ export function TaskWorkspace({
               <Button
                 variant={selecting ? "soft" : "ghost"}
                 size="icon-sm"
+                data-tour="tasks-select"
                 aria-label="Selecionar tarefas"
                 aria-pressed={selecting}
                 onClick={() => {
@@ -1172,6 +1298,7 @@ export function TaskWorkspace({
             <div
               className="flex rounded-lg border border-line p-0.5"
               role="group"
+              data-tour="tasks-view"
               aria-label="Formato de visualização"
             >
               <Button
@@ -1197,7 +1324,10 @@ export function TaskWorkspace({
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-1 px-4 pb-2 pt-2 sm:px-6">
+        <div
+          className="flex shrink-0 flex-wrap items-center justify-between gap-1 px-4 pb-2 pt-2 sm:px-6"
+          data-tour="tasks-saved-views"
+        >
           <SavedTaskViews
             views={views}
             filters={filters}
@@ -1212,7 +1342,7 @@ export function TaskWorkspace({
             {busy ? "Salvando…" : `${visible.length} tarefas`}
           </span>
         </div>
-        {(filterCount > 0 || hideDone) && (
+        {(filterCount > 0 || hideDone || hiding) && (
           <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pb-3 sm:px-6">
             {[
               {
@@ -1235,6 +1365,15 @@ export function TaskWorkspace({
                 value: hideDone ? "Concluídas ocultas" : "",
                 clear: () => setHideDone(false),
               },
+              {
+                value: !hiding
+                  ? ""
+                  : activeHideRules(hideRules).join() === "done" &&
+                      hideRules.done === "all"
+                    ? "Concluídas ocultas"
+                    : `Ocultas: ${describeHideRules(hideRules, STATUS_LABELS)} (${hiddenCount})`,
+                clear: () => setPreferences({ hide: noHideRules() }),
+              },
             ]
               .filter((f) => f.value)
               .map((f) => (
@@ -1255,15 +1394,26 @@ export function TaskWorkspace({
             selecting && "pb-28",
           )}
           aria-busy={busy}
+          data-tour="tasks-board"
         >
           {visible.length === 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line px-4 py-4 text-body text-muted">
               <CircleDashed className="size-4" />
-              {filtering
+              {hiddenCount > 0 && matching.length === hiddenCount
+                ? `${hiddenCount} ${hiddenCount === 1 ? "tarefa está oculta" : "tarefas estão ocultas"} pelas regras desta pasta.`
+                : filtering
                 ? "Nenhuma tarefa combina com essa combinação de filtros."
                 : scope === "archived"
                   ? "As tarefas arquivadas aparecem aqui."
                   : "Comece por uma tarefa. Os detalhes podem vir depois."}
+              {hiddenCount > 0 && matching.length === hiddenCount && (
+                <button
+                  onClick={() => setPreferences({ hide: noHideRules() })}
+                  className="text-accent-ink underline"
+                >
+                  Mostrar tudo
+                </button>
+              )}
               {filtering && (
                 <button
                   onClick={clearFilters}
@@ -1392,6 +1542,12 @@ export function TaskWorkspace({
           members={[...new Set([...members, ...people])]}
           canEdit={canEdit}
           busy={busy}
+          starred={!!editor.task && starred.has(editor.task.id)}
+          onToggleStar={
+            editor.task ? () => toggleStar(editor.task!.id) : undefined
+          }
+          meId={meId}
+          isOwner={isOwner}
           onClose={() => setEditor(null)}
           onSave={(data, task) =>
             perform(
@@ -1507,6 +1663,14 @@ export function TaskWorkspace({
               setEditor({ task, defaults: {} });
             }
           }}
+        />
+      )}
+      {report && (
+        <TaskReportDialog
+          projects={projects}
+          projectId={projectId}
+          workspaceName={workspaceName}
+          onClose={() => setReport(false)}
         />
       )}
       {markdown && (

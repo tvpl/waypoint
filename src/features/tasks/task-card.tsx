@@ -19,6 +19,8 @@ import {
   CalendarClock,
   Pencil,
   RotateCcw,
+  Star,
+  StarOff,
 } from "lucide-react";
 import type { DragEvent } from "react";
 import {
@@ -75,6 +77,7 @@ export type TaskCommands = {
   duplicate: () => void;
   copy: () => void;
   reorder: (direction: -1 | 1) => void;
+  star: () => void;
 };
 function MenuItems({
   context,
@@ -82,9 +85,11 @@ function MenuItems({
   commands,
   disabled,
   destinations,
+  starred,
 }: {
   destinations?: { name: string; value: TaskDestination }[];
   context: boolean;
+  starred: boolean;
   task: Task;
   commands: TaskCommands;
   disabled: boolean;
@@ -99,6 +104,10 @@ function MenuItems({
       <Item onSelect={commands.edit}>
         <Pencil />
         Abrir detalhes
+      </Item>
+      <Item onSelect={commands.star}>
+        {starred ? <StarOff /> : <Star />}
+        {starred ? "Remover de importantes" : "Marcar como importante"}
       </Item>
       <Item
         disabled={!!task.archivedAt || task.status === "done"}
@@ -216,7 +225,9 @@ export function TaskCard({
   dependencies,
   onOpenTask,
   reminderCount,
+  starred = false,
 }: {
+  starred?: boolean;
   dependencies: Task[];
   onOpenTask: (id: string) => void;
   reminderCount: number;
@@ -256,6 +267,7 @@ export function TaskCard({
       task={task}
       commands={commands}
       destinations={destinations}
+      starred={starred}
       disabled={!canEdit || busy}
     />
   );
@@ -317,9 +329,18 @@ export function TaskCard({
                   {stageName ?? STATUS_LABELS[task.status]}
                 </span>
               )}
+            {starred && (
+              <Star
+                className="ml-auto size-3 shrink-0 fill-current text-amber-ink"
+                aria-label="Importante"
+              />
+            )}
             {fields.priority && task.priority !== "none" && (
               <span
-                className="ml-auto inline-flex shrink-0 items-center gap-0.5"
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-0.5",
+                  !starred && "ml-auto",
+                )}
                 title={`Prioridade ${PRIORITY_LABELS[task.priority]}`}
               >
                 <Flag className="size-3" />

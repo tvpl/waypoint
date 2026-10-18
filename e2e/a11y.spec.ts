@@ -31,7 +31,7 @@ test("keyboard: F6 moves between the editor's areas; reduced motion from the set
   await page.keyboard.press("Shift+F6");
   expect(await area()).toBe(seen[2]);
 
-  await page.goto("/settings");
+  await page.goto("/settings?tab=aparencia");
   await page.getByRole("radio", { name: "Reduzir animações" }).click();
   await expect(page.locator("html")).toHaveClass(/wp-reduce-motion/);
   await page.reload();

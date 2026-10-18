@@ -22,6 +22,22 @@ O módulo `/tasks` reúne demandas do workspace em um board compacto. Owners e e
 - **Menu e atalhos:** botão direito ou reticências para abrir, mover, colorir, duplicar, copiar em Markdown e arquivar/restaurar. Arquivar oferece Desfazer. `N` cria, `/` busca e `g d` navega para Tarefas. No desktop, `Cmd/Ctrl+5` abre Tarefas.
 - **Projetos:** agrupamentos opcionais com nome e cor. Excluir um projeto mantém suas tarefas sem projeto e remove sua configuração de blocos.
 
+## Ocultar itens por etapa e data
+
+O botão **Ocultar** da barra de filtros define, para a pasta atual (projeto, Sem projeto ou Todos), o que sai da tela em cada etapa: nada, tudo, ou só o que é **anterior a hoje**, **a esta semana** (semanas começam na segunda) ou **a este mês**. Concluídas contam pela data de conclusão; as demais, pela data de criação. Há atalhos prontos (concluídas; concluídas antes de hoje; concluídas de meses anteriores; tudo exceto o que está em andamento) e o item **Ocultar concluídas** do menu da página alterna a regra mais comum. Um chip mostra quantas tarefas estão ocultas e desfaz a regra com um clique. As regras ficam nas preferências deste dispositivo, junto com a exibição da pasta, e entram nas visões salvas. A visão **Concluídas**, a visão **Aguardando** e o filtro de etapa sempre mostram a etapa que pedem.
+
+## Observações e histórico
+
+Os detalhes da tarefa têm **Observações e histórico**: registre andamentos, decisões e retornos com data e autor (`Cmd/Ctrl+Enter` registra). O histórico também guarda criação, importação, mudanças de etapa (concluir, reabrir, mover), campos editados, arquivamento e restauração, inclusive pelas ações em lote e pela atualização via Markdown. Reordenar dentro da mesma coluna não gera registro. Quem escreveu uma observação pode excluí-la; owners podem excluir qualquer uma. Os eventos do ciclo de vida não são editáveis. Tarefas criadas antes desta versão começam o histórico na próxima alteração.
+
+## Relatório de concluídas
+
+No menu da página, **Relatório de concluídas** gera um Markdown com tudo o que foi concluído num período (esta semana, semana passada, este mês, mês passado, últimos 30 dias, este ano, personalizado ou todo o histórico), em todos ou alguns projetos. O relatório traz um resumo (quantidade, tempo médio até concluir, entregas no prazo, subtarefas), cada tarefa agrupada por projeto com datas de criação, conclusão e prazo, duração, prioridade, marcadores, pessoas, pendência, subtarefas, contexto, observações e histórico, uma linha do tempo por dia e, opcionalmente, o que está em andamento. Os períodos usam o fuso do navegador. A prévia formatada pode ser copiada ou baixada como `.md`. `/tasks?report=1` abre o relatório direto.
+
+## Importantes
+
+**Marcar como importante** (menu do card ou detalhes) coloca a tarefa em **Importantes**, na página inicial. A estrela é pessoal; viewers também podem usar. Tarefas concluídas ou arquivadas saem do painel.
+
 ## Lembretes e notificações do Mac
 
 O botão **Lembretes** abre uma central pessoal do workspace. Também está disponível nos detalhes, no botão direito de um card e na barra de seleção. Os avisos não são enviados às pessoas citadas na tarefa.
@@ -71,6 +87,6 @@ O leitor oferece títulos, parágrafos, listas, citações, negrito, itálico, c
 
 ## Persistência
 
-As migrações Drizzle `0009_modern_kang.sql`, `0010_serious_skrulls.sql`, `0011_busy_junta.sql` e `0012_thin_ted_forrester.sql` criam `task_projects`, `tasks`, `task_boards`, `task_templates` e `task_reminders`. São aplicadas automaticamente quando o servidor abre o banco; reinicie um servidor já aberto para aplicar a nova migração. O backup SQLite do desktop inclui tarefas, organização compartilhada e agendamentos pessoais. Lembretes não são incluídos na exportação Markdown nem copiados junto com tarefas ou modelos. As preferências locais de exibição e visões salvas ficam no armazenamento do navegador.
+As migrações Drizzle `0009_modern_kang.sql`, `0010_serious_skrulls.sql`, `0011_busy_junta.sql` e `0012_thin_ted_forrester.sql` criam `task_projects`, `tasks`, `task_boards`, `task_templates` e `task_reminders`; `0013_long_sinister_six.sql` cria `task_events` (histórico e observações). São aplicadas automaticamente quando o servidor abre o banco; reinicie um servidor já aberto para aplicar a nova migração. O backup SQLite do desktop inclui tarefas, organização compartilhada e agendamentos pessoais. Lembretes não são incluídos na exportação Markdown nem copiados junto com tarefas ou modelos. As preferências locais de exibição e visões salvas ficam no armazenamento do navegador.
 
 Alterações verificam a função do usuário e o workspace no servidor. Versões de tarefa e de bloco evitam sobrescrever edições concorrentes. Importação, reordenação, exclusão de projeto e atualização do índice FTS usam transações. Tarefas ativas aparecem na busca global, incluindo nomes de blocos/colunas e tipos de pendência; arquivadas saem do índice.

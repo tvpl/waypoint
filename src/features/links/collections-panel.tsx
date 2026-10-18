@@ -43,6 +43,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { toggleImportantAction } from "@/app/(app)/dashboard-actions";
 import { CollectionGlyph, tagTint } from "./collection-style";
 import { dropPosition, endDrag, getDrag, startDrag } from "./dnd";
 import { getJson, PREF_EXPANDED, setJson } from "./prefs";
@@ -168,7 +170,7 @@ export function CollectionsPanel({
   ];
 
   return (
-    <aside aria-label="Coleções" className={cn("flex w-[272px] shrink-0 flex-col border-r border-line bg-surface-2", className)}>
+    <aside data-tour="links-sidebar" aria-label="Coleções" className={cn("flex w-[272px] shrink-0 flex-col border-r border-line bg-surface-2", className)}>
       <div className="flex items-center justify-between px-[18px] pb-3 pt-[18px]">
         <h2 className="text-lead font-semibold">Links</h2>
         {canEdit && (
@@ -180,7 +182,7 @@ export function CollectionsPanel({
         )}
       </div>
       <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3.5 pb-4">
-        <nav aria-label="Filtros rápidos" className="flex flex-col gap-px">
+        <nav data-tour="links-quick" aria-label="Filtros rápidos" className="flex flex-col gap-px">
           {quick.map((q) => {
             const on = !currentId && !savedId && scope === q.scope;
             const droppable = q.scope === "unsorted" && canEdit;
@@ -291,7 +293,7 @@ export function CollectionsPanel({
           </nav>
         )}
 
-        <div className="flex flex-col gap-1.5">
+        <div data-tour="links-collections" className="flex flex-col gap-1.5">
           <div
             className={cn("flex h-6 items-center justify-between rounded-md px-2", rootOver && "bg-accent-soft ring-2 ring-accent")}
             onDragOver={(e) => {
@@ -513,6 +515,16 @@ function TreeRow(props: RowProps) {
       <Item onSelect={() => handlers.togglePin(node)}>
         {pinned.has(node.id) ? <PinOff /> : <Pin />}
         {pinned.has(node.id) ? "Desafixar da Início" : "Fixar na Início"}
+      </Item>
+      <Item
+        onSelect={() =>
+          toggleImportantAction("collection", node.id).then((r) =>
+            r.ok ? toast.success(r.data ? "Coleção marcada como importante." : "Coleção removida de importantes.") : toast.error(r.error),
+          )
+        }
+      >
+        <Star />
+        Importante (Início)
       </Item>
       {canEdit && (
         <>

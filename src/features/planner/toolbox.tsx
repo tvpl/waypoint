@@ -32,6 +32,8 @@ const TABS: { id: Tab; label: string; icon: typeof Plus }[] = [
   { id: "layers", label: "Camadas", icon: Layers },
   { id: "outline", label: "Estrutura", icon: ListTree },
 ];
+/** Guided tour targets (help center). */
+const TAB_TOUR: Partial<Record<Tab, string>> = { library: "editor-library", layers: "editor-layers" };
 
 /** Left panel of the editor: insert elements and resources, library, layers and views, or the outline. */
 export function Toolbox() {
@@ -80,11 +82,12 @@ export function Toolbox() {
   if (p.leftCollapsed) {
     const open = flyout ? TABS.find((t) => t.id === flyout)! : null;
     return (
-      <aside ref={stripRef} aria-label="Ferramentas" className="relative z-30 flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-3">
+      <aside ref={stripRef} data-tour="editor-panel" aria-label="Ferramentas" className="relative z-30 flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-3">
         {TABS.map((t) => (
           <Tooltip key={t.id} content={t.label} side="right">
             <button
               type="button"
+              data-tour={TAB_TOUR[t.id]}
               aria-label={t.label}
               aria-expanded={flyout === t.id}
               onClick={() => setFlyout((f) => (f === t.id ? null : t.id))}
@@ -139,7 +142,7 @@ export function Toolbox() {
   }
 
   return (
-    <aside aria-label="Ferramentas" className="flex w-[288px] shrink-0 flex-col border-r border-line bg-surface">
+    <aside data-tour="editor-panel" aria-label="Ferramentas" className="flex w-[288px] shrink-0 flex-col border-r border-line bg-surface">
       <div className="mx-3 mt-3 flex shrink-0 items-center gap-1">
         <div role="tablist" aria-label="Painel" className="flex min-w-0 flex-1 gap-0.5 rounded-xl bg-subtle p-1">
           {TABS.map((t) => (
@@ -147,6 +150,7 @@ export function Toolbox() {
               key={t.id}
               type="button"
               role="tab"
+              data-tour={TAB_TOUR[t.id]}
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
               aria-label={t.label}

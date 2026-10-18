@@ -20,16 +20,16 @@ const GO: Record<string, string> = {
   "app:add-link": "/links?add=1",
   "app:new-collection": "/links?newCollection=1",
   "app:import": "/links/import",
-  "app:extension": "/settings#api-tokens",
-  "app:security": "/settings#seguranca",
-  "app:backups": "/settings#backups",
+  "app:extension": "/settings?tab=integracoes",
+  "app:security": "/settings?tab=aplicativo#seguranca",
+  "app:backups": "/settings?tab=backup#backups",
 };
 
 /** Ends the session and shows the lock screen; without the app lock, says where to turn it on. */
 export async function lockNow(router?: { push(href: string): void }) {
   const res = await lockNowAction().catch(() => ({ ok: false as const, error: "Não foi possível bloquear." }));
   if (!res.ok) {
-    toast(res.error, router ? { action: { label: "Configurar", onClick: () => router.push("/settings#seguranca") } } : undefined);
+    toast(res.error, router ? { action: { label: "Configurar", onClick: () => router.push("/settings?tab=aplicativo#seguranca") } } : undefined);
     return;
   }
   window.location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);

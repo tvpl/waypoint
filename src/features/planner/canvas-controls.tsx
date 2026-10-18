@@ -87,6 +87,7 @@ export function BottomPill() {
     <div
       role="toolbar"
       aria-label="Ferramentas do canvas"
+      data-tour="editor-tools"
       className="wp-no-print absolute bottom-5 left-1/2 z-10 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-2xl border border-line bg-surface p-1 shadow-float"
     >
       {DOCK[0].map(tool)}

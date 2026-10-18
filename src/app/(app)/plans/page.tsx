@@ -1,3 +1,4 @@
+import { starredIds } from "@/server/services/marks";
 import type { Metadata } from "next";
 import { canEditWorkspace, requireWorkspace } from "@/server/services/workspaces";
 import { listPlans } from "@/server/services/plans";
@@ -13,6 +14,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
   const raw = Array.isArray(sp.f) ? sp.f[0] : sp.f;
   const filter: PlanFilter = raw && (FILTERS as string[]).includes(raw) ? (raw as PlanFilter) : "mine";
   const canCreate = canEditWorkspace(ctx.role);
+  const starred = starredIds(ctx.user.id, "plan");
 
   const plans: PlanCardData[] = listPlans(ctx.user.id, ctx.workspace.id, filter).map((p) => ({
     id: p.id,
@@ -25,6 +27,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
     archived: p.archivedAt != null,
     thumbnail: p.thumbnail,
     tags: p.tags,
+    starred: starred.has(p.id),
   }));
 
   return (
@@ -38,7 +41,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
             <p className="text-lead text-muted">Mapas, arquiteturas e roadmaps de {ctx.workspace.name} — cada bloco ligado ao que importa.</p>
           </div>
           {canCreate && (
-            <div className="flex flex-wrap gap-2">
+            <div data-tour="planner-create" className="flex flex-wrap gap-2">
               <ImportPlanButton />
               <NewPlanButton variant="primary" />
             </div>

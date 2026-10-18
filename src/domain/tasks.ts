@@ -113,6 +113,7 @@ export type Task = TaskInput & {
   completedAt: number | null;
   archivedAt: number | null;
   updatedAt: number;
+  createdAt: number;
 };
 export type TaskProject = { id: string; name: string; color: TaskColor };
 export const projectInputSchema = z.object({

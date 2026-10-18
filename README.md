@@ -43,6 +43,14 @@ O botão **Mais formas** (`S`) traz hexágono, paralelogramo, triângulo, cilind
 
 Qualquer bloco de um plan pode apontar para um **Resource**: uma URL, outro plan, um favorito, uma coleção, um arquivo ou uma página interna. É isso que transforma o desenho em uma porta de entrada para todo o contexto de um projeto.
 
+**Página inicial como painel.** A Início reúne **atalhos** pessoais (qualquer página do Waypoint ou site, com ícone e cor), **Importantes** (tarefas, plans e coleções com estrela), **Para hoje** (tarefas do dia, atrasadas e retornos, que dá para concluir ali mesmo), **Links importantes**, plans recentes, o que pede atenção, a caixa de entrada, o acesso rápido e as coleções. **Personalizar** mostra, oculta e reordena as seções, por pessoa e workspace.
+
+**Tarefas que contam a história do trabalho.** Cada pasta (projeto) oculta etapas inteiras ou só o que é anterior a hoje, à semana ou ao mês. Os detalhes guardam **observações** datadas e o **histórico** de cada tarefa, e o **Relatório de concluídas** gera um Markdown do que foi entregue num período, com projetos, datas, observações e histórico (veja `docs/tasks.md`).
+
+**Backups e recuperação.** Em Configurações › Backup e dados ficam os pontos de restauração automáticos e manuais: recupere um item excluído, volte o workspace inteiro (com um backup "Antes de restaurar" para desfazer), baixe ou envie um `.json`, ou crie um workspace a partir de um backup (veja `docs/backups.md`). As configurações são organizadas em abas: Conta, Aparência, Workspace, Integrações, Backup e dados e, no desktop, Aplicativo.
+
+**Ajuda guiada.** A **Central de ajuda** (`/help`) explica para que serve cada módulo, o que dá para fazer, dicas e atalhos, com busca. Cada módulo tem um **tour guiado** que destaca os elementos da própria tela, passo a passo; o botão **Ajuda** da barra lateral começa o tour da página atual, e a busca (⌘K) também. O conteúdo fica em `src/features/help/guides.ts`, e os alvos dos passos são atributos `data-tour` nos elementos.
+
 ## Stack
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Radix UI · lucide · React Flow (`@xyflow/react`) · SQLite (`better-sqlite3`) com FTS5 · Drizzle ORM · Zod.

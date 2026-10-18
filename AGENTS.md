@@ -18,3 +18,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Any outbound request to a user-supplied URL must go through `safeFetch` (`src/server/lib/safe-fetch.ts`).
 - Checks before committing: `npm run typecheck`, `npm test`, `npm run build`.
 - Desktop app: `desktop/` (Electron; see the README). It runs the standalone server with `WAYPOINT_DESKTOP_SECRET` set, which `src/server/desktop.ts` and `src/proxy.ts` use for the local key and the automatic login. In the window, the page draws the title bar (`src/components/shell/title-bar.tsx`), so full-height screens use `h-app` / `min-h-app` instead of `h-dvh` / `min-h-dvh`. Desktop-only UI checks `useDesktop()` (`src/lib/desktop.ts`).
+- Help center and guided tours: content in `src/features/help/guides.ts`; tour steps point at `data-tour="…"` attributes. When you rename or remove an element a tour targets, update the guide (a missing target falls back to a centered card).
+- Workspace backups (`src/server/services/backups.ts`) copy every table listed in `SPECS`. A new table holding workspace data needs an entry there (scope, references, people columns) so backups and restores include it.
+- Task changes are logged in `task_events` through `services/task-history.ts`; new task mutations should call `recordTaskChange` / `recordTaskCreated`.

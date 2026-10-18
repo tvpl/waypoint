@@ -1309,6 +1309,7 @@ export function LinksLibrary(props: LibraryProps) {
                   {canEdit && (
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
+                        data-tour="links-batch"
                         size="sm"
                         variant="secondary"
                         onClick={() => setBatchText("")}

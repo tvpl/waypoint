@@ -98,11 +98,11 @@ test("batch review, shared context actions, editable details and remembered disp
       .getByRole("button", { name: "#pesquisa", exact: true }),
   ).toHaveCount(2);
   await page.evaluate(() => document.documentElement.classList.remove("dark"));
-  await page.screenshot({ path: "/private/tmp/waypoint-links-list-light.png" });
+  await page.screenshot({ path: test.info().outputPath("waypoint-links-list-light.png") });
   await page.evaluate(() => document.documentElement.classList.add("dark"));
-  await page.screenshot({ path: "/private/tmp/waypoint-links-list-dark.png" });
+  await page.screenshot({ path: test.info().outputPath("waypoint-links-list-dark.png") });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "/private/tmp/waypoint-links-mobile.png" });
+  await page.screenshot({ path: test.info().outputPath("waypoint-links-mobile.png") });
   expect(errors).toEqual([]);
 });
 
@@ -136,7 +136,7 @@ test("duplicate review preserves existing links and empty-space menu accepts mul
   expect(enrichmentIds.flat()).toEqual([addedId]);
   await page.reload();
   await expect(page.locator("[data-link-primary]")).toHaveCount(2);
-  await page.screenshot({ path: "/private/tmp/waypoint-links-cards.png" });
+  await page.screenshot({ path: test.info().outputPath("waypoint-links-cards.png") });
 });
 
 

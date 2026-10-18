@@ -22,12 +22,12 @@ export const homeLayoutSchema = z.object({
 export type HomeLayout = z.infer<typeof homeLayoutSchema>;
 export const defaultHomeLayout = (): HomeLayout => ({ order: [...WIDGET_IDS], hidden: [] });
 
-/** Stored layout + any section added since it was saved (appended in its default place). */
+/** Stored layout + any section added since it was saved (appended at the end). */
 export function normalizeLayout(raw: unknown): HomeLayout {
   const parsed = homeLayoutSchema.safeParse(raw);
   if (!parsed.success) return defaultHomeLayout();
   const order = [...new Set(parsed.data.order)];
-  for (const id of WIDGET_IDS) if (!order.includes(id)) order.splice(WIDGET_IDS.indexOf(id), 0, id);
+  for (const id of WIDGET_IDS) if (!order.includes(id)) order.push(id);
   return { order, hidden: [...new Set(parsed.data.hidden)] };
 }
 
@@ -69,7 +69,7 @@ export const shortcutHrefSchema = z
   .trim()
   .min(1, "Informe o endereço.")
   .max(2000, "Endereço muito longo.")
-  .transform((v) => (/^(www\.|[a-z0-9-]+\.[a-z]{2,})(\/|$)/i.test(v) ? `https://${v}` : v))
+  .transform((v) => (/^([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?(\/|$)/i.test(v) ? `https://${v}` : v))
   .refine((v) => {
     if (v.startsWith("/")) return !v.startsWith("//") && !v.startsWith("/\\");
     try {

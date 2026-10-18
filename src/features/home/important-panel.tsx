@@ -107,7 +107,7 @@ export function ImportantPanel({ items: initial, today }: { items: ImportantItem
       )}
       <div className="mt-auto flex gap-3 border-t border-line px-4 py-2 text-caption">
         <Link href="/tasks" className="inline-flex items-center gap-1 text-accent-ink hover:underline">
-          Tarefas <ArrowRight className="size-3" />
+          Ver tarefas <ArrowRight className="size-3" />
         </Link>
         <Link href="/links?scope=starred" className="inline-flex items-center gap-1 text-accent-ink hover:underline">
           Links com estrela <ArrowRight className="size-3" />

@@ -8,6 +8,7 @@ import { pinnedPlans } from "@/server/services/home";
 import type { RailPin } from "@/components/shell/app-rail";
 import { after } from "next/server";
 import { TourHost } from "@/features/help/tour";
+import { TimeZoneCookie } from "@/components/shell/time-zone-cookie";
 import { TourInvite } from "@/features/help/tour-invite";
 import { maybeAutoBackup } from "@/server/services/backups";
 import { purgeTrash } from "@/server/services/trash";
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MobileTabBar user={{ name: ctx.user.name, email: ctx.user.email }} />
       <Shortcuts />
       <TourHost />
+      <TimeZoneCookie />
       <TourInvite />
       <CommandPalette workspaces={ctx.workspaces.map((w) => ({ id: w.id, name: w.name }))} currentWorkspaceId={ctx.workspace.id} />
     </TooltipProvider>

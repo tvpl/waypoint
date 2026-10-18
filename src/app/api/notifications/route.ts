@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getWorkspaceContext, UserError } from "@/server/services/workspaces";
 import { listNotifications, markNotificationsSeen, type NotificationsResult } from "@/server/services/notifications";
-import { localDate } from "@/domain/tasks";
+import { requestToday } from "@/server/time";
 
 export type NotificationsResponse = NotificationsResult;
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const ctx = await getWorkspaceContext();
   if (!ctx) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const raw = req.nextUrl.searchParams.get("today");
-  const today = raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : localDate();
+  const today = raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : await requestToday();
   try {
     const res = listNotifications({ workspaceId: ctx.workspace.id, userId: ctx.user.id }, { userName: ctx.user.name, today });
     return NextResponse.json(res satisfies NotificationsResponse, { headers: noStore });

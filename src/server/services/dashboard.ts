@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, lte, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../db";
 import { newId } from "@/lib/utils";
+import { addDaysIso, dayInZone, weekdayIso } from "@/lib/timezone";
 import { UserError, workspaceRole } from "./workspaces";
 import { MAX_SHORTCUTS, normalizeLayout, shortcutInputSchema, type HomeLayout, homeLayoutSchema, type HomeShortcut } from "@/domain/dashboard";
 
@@ -143,24 +144,25 @@ export type WeeklyReview = {
 };
 
 /** This week (Monday on) at a glance: completions per day, versus last week, per project. */
-export function weeklyReview(actor: Actor, now = new Date()): WeeklyReview {
+export function weeklyReview(actor: Actor, now = new Date(), timeZone?: string | null): WeeklyReview {
   member(actor);
-  const local = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
-  const lastMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7);
+  // Days are counted in the person's time zone (completedAt is an instant).
+  const day = (d: Date | number) => dayInZone(d, timeZone);
+  const today = day(now);
+  const monday = addDaysIso(today, -weekdayIso(today));
+  const lastMonday = addDaysIso(monday, -7);
   const rows = getDb()
     .select({ task: schema.tasks, project: schema.taskProjects })
     .from(schema.tasks)
     .leftJoin(schema.taskProjects, eq(schema.taskProjects.id, schema.tasks.projectId))
     .where(eq(schema.tasks.workspaceId, actor.workspaceId))
     .all();
-  const done = rows.filter(({ task }) => task.status === "done" && task.completedAt && task.completedAt >= lastMonday);
-  const thisWeek = done.filter(({ task }) => task.completedAt! >= monday);
+  const done = rows.filter(({ task }) => task.status === "done" && task.completedAt && day(task.completedAt) >= lastMonday && day(task.completedAt) <= today);
+  const thisWeek = done.filter(({ task }) => day(task.completedAt!) >= monday);
   const labels = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
   const days = labels.map((label, i) => {
-    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
-    const date = local(d);
-    return { date, label, completed: thisWeek.filter(({ task }) => local(task.completedAt!) === date).length, future: date > local(now) };
+    const date = addDaysIso(monday, i);
+    return { date, label, completed: thisWeek.filter(({ task }) => day(task.completedAt!) === date).length, future: date > today };
   });
   const byProject = new Map<string, { name: string; color: string | null; completed: number }>();
   for (const { project } of thisWeek) {
@@ -173,7 +175,7 @@ export function weeklyReview(actor: Actor, now = new Date()): WeeklyReview {
     days,
     completed: thisWeek.length,
     lastWeek: done.length - thisWeek.length,
-    created: rows.filter(({ task }) => task.createdAt >= monday).length,
+    created: rows.filter(({ task }) => day(task.createdAt) >= monday).length,
     open: rows.filter(({ task }) => !task.archivedAt && task.status !== "done").length,
     projects: [...byProject.values()].sort((a, b) => b.completed - a.completed).slice(0, 4),
   };

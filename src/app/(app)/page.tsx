@@ -21,7 +21,8 @@ import { homeLayout, listShortcuts, todayTasks, weeklyReview } from "@/server/se
 import { WeekReview } from "@/features/home/week-review";
 import { importantItems } from "@/server/services/marks";
 import { HOME_WIDGETS, type HomeWidget } from "@/domain/dashboard";
-import { localDate } from "@/domain/tasks";
+import { requestTimeZone } from "@/server/time";
+import { dayInZone } from "@/lib/timezone";
 import { ShortcutsPanel } from "@/features/home/shortcuts-panel";
 import { ImportantPanel } from "@/features/home/important-panel";
 import { TodayPanel } from "@/features/home/today-panel";
@@ -76,7 +77,8 @@ export default async function HomePage() {
   const shownCols = pinnedCols.length ? pinnedCols : [...tree].sort((a, b) => b.totalCount - a.totalCount).slice(0, 6);
   const actor = { workspaceId: ctx.workspace.id, userId: ctx.user.id };
   const layout = homeLayout(actor);
-  const today = localDate();
+  const timeZone = await requestTimeZone();
+  const today = dayInZone(new Date(), timeZone);
   const shortcuts = listShortcuts(actor);
   const important = importantItems(actor);
   const due = todayTasks(actor, today);
@@ -87,7 +89,7 @@ export default async function HomePage() {
 
   const widgets: Record<HomeWidget, React.ReactNode> = {
     shortcuts: <ShortcutsPanel initial={shortcuts} />,
-    week: <WeekReview review={weeklyReview(actor)} />,
+    week: <WeekReview review={weeklyReview(actor, new Date(), timeZone)} />,
     important: (
       <Panel title="Importantes" icon={<Star />} tour="home-important">
         <ImportantPanel items={important} today={today} />

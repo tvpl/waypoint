@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ExternalLink, Folder, Link2, Loader2, Plus, Search, Workflow, X } from "lucide-react";
+import { ExternalLink, Folder, Link2, ListTodo, Loader2, Plus, Search, Workflow, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { SiteIcon } from "@/components/ui/misc";
@@ -192,5 +193,36 @@ export function TaskBacklinks({ type, id, className }: { type: Ref["type"]; id: 
         </a>
       ))}
     </section>
+  );
+}
+
+/** Compact "N tarefas ligadas" for headers (collections): a button that lists them. */
+export function TaskBacklinksChip({ type, id }: { type: Ref["type"]; id: string }) {
+  const [tasks, setTasks] = useState<{ id: string; title: string; status: string; projectName: string | null }[]>([]);
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/tasks/backlinks?type=${type}&id=${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : { tasks: [] }))
+      .then((b) => live && setTasks(b.tasks ?? []))
+      .catch(() => live && setTasks([]));
+    return () => {
+      live = false;
+    };
+  }, [type, id]);
+  if (!tasks.length) return null;
+  const open = tasks.filter((t) => t.status !== "done").length;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="inline-flex h-7 items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 text-caption text-ink-2 transition-colors hover:border-accent-line hover:text-accent-ink">
+          <ListTodo className="size-3.5" />
+          {tasks.length} {tasks.length === 1 ? "tarefa ligada" : "tarefas ligadas"}
+          {open > 0 && open < tasks.length && <span className="text-muted">· {open} em aberto</span>}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 p-3">
+        <TaskBacklinks type={type} id={id} />
+      </PopoverContent>
+    </Popover>
   );
 }

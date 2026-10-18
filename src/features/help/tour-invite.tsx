@@ -30,7 +30,7 @@ function dismiss(id: string) {
  * puts it away for good. Never shown to automated browsers (Playwright e2e): a floating card could
  * intercept their clicks.
  */
-export function TourInvite() {
+export function TourInvite({ placement = "rail" }: { placement?: "rail" | "canvas" }) {
   const pathname = usePathname();
   const [invite, setInvite] = React.useState<{ id: string; title: string } | null>(null);
   const [animate, setAnimate] = React.useState(false);
@@ -71,7 +71,11 @@ export function TourInvite() {
     <aside
       aria-label={`Tour de ${invite.title}`}
       className={cn(
-        "fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-3 z-40 w-[min(300px,calc(100vw-24px))] rounded-2xl border border-line bg-surface p-3.5 text-ink shadow-pop sm:bottom-4 sm:left-[92px]",
+        "fixed z-40 w-[min(300px,calc(100vw-24px))] rounded-2xl border border-line bg-surface p-3.5 text-ink shadow-pop",
+        // The editor keeps its tools at the bottom and on the left: the invite sits under the top bar.
+        placement === "canvas"
+          ? "right-3 top-[calc(var(--titlebar-h,0px)+64px)]"
+          : "bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-3 sm:bottom-4 sm:left-[92px]",
         animate && "animate-in",
       )}
     >

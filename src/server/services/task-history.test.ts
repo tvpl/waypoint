@@ -98,3 +98,21 @@ describe("recurring tasks", () => {
     expect(t.listTasks(owner).filter((x) => x.title === "Fechar caixa" && x.status === "todo")).toHaveLength(1);
   });
 });
+
+describe("weekly review", () => {
+  it("counts completions per day in the person's time zone", async () => {
+    const d = await import("./dashboard");
+    const { getDb, schema } = await import("../db");
+    const { eq } = await import("drizzle-orm");
+    const task = t.createTask(owner, { title: "Fechada tarde da noite" });
+    t.updateTask(owner, task.id, task.version, { status: "done" });
+    // Sunday 23:30 in São Paulo = Monday 02:30 UTC.
+    getDb().update(schema.tasks).set({ completedAt: new Date("2026-10-19T02:30:00Z") }).where(eq(schema.tasks.id, task.id)).run();
+    const now = new Date("2026-10-19T12:00:00Z");
+    const sp = d.weeklyReview(owner, now, "America/Sao_Paulo");
+    expect(sp.days[0].date).toBe("2026-10-19");
+    expect(sp.days[0].completed).toBe(0); // it belongs to last week there
+    const utc = d.weeklyReview(owner, now, "UTC");
+    expect(utc.days[0].completed).toBeGreaterThanOrEqual(1);
+  });
+});

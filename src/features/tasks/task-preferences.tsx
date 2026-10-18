@@ -90,6 +90,8 @@ const storageSchema = z.object({
   projects: z.record(z.string(), preferencesSchema),
   views: z.array(savedViewSchema).max(20),
   layout: z.enum(TASK_LAYOUTS).optional(),
+  /** Last change (ms): the newer of this device's copy and the server's wins on load. */
+  updatedAt: z.number().optional(),
 });
 type Storage = z.infer<typeof storageSchema>;
 const parseStorage = (value: unknown): Storage | null => {
@@ -114,18 +116,18 @@ export function useTaskPreferences(
   const [loaded, setLoaded] = useState(false);
   const dirty = useRef(false);
   useEffect(() => {
-    if (!parseStorage(initial)) {
-      try {
-        const local = parseStorage(JSON.parse(localStorage.getItem(key) ?? "null"));
-        if (local) {
-          setStorage(local);
-          dirty.current = true; // first sync of what this device had
-        }
-        const layout = localStorage.getItem("wp-tasks-view");
-        if (!local && (layout === "board" || layout === "list"))
-          setStorage((s) => ({ ...s, layout }));
-      } catch {}
-    }
+    const server = parseStorage(initial);
+    try {
+      const local = parseStorage(JSON.parse(localStorage.getItem(key) ?? "null"));
+      // A change made just before a reload may not have reached the server yet.
+      if (local && (!server || (local.updatedAt ?? 0) > (server.updatedAt ?? 0))) {
+        setStorage(local);
+        dirty.current = true;
+      }
+      const layout = localStorage.getItem("wp-tasks-view");
+      if (!local && !server && (layout === "board" || layout === "list"))
+        setStorage((s) => ({ ...s, layout }));
+    } catch {}
     setLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -143,7 +145,7 @@ export function useTaskPreferences(
   }, [key, storage, loaded, save]);
   const update = (fn: (s: Storage) => Storage) => {
     dirty.current = true;
-    setStorage(fn);
+    setStorage((s) => ({ ...fn(s), updatedAt: Date.now() }));
   };
   const scope = project || "all";
   return {

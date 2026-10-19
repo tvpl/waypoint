@@ -16,19 +16,19 @@ export type FavoriteRow = typeof schema.favorites.$inferSelect;
 
 export type CollectionNode = CollectionRow & { linkCount: number; totalCount: number; children: CollectionNode[] };
 
-/** Whole (non-archived) collection tree of a workspace with link counts. */
+/** Whole (non-archived, non-trashed) collection tree of a workspace with link counts. */
 export function getCollectionTree(workspaceId: string): CollectionNode[] {
   const db = getDb();
   const rows = db
     .select()
     .from(schema.collections)
-    .where(and(eq(schema.collections.workspaceId, workspaceId), isNull(schema.collections.archivedAt)))
+    .where(and(eq(schema.collections.workspaceId, workspaceId), isNull(schema.collections.archivedAt), isNull(schema.collections.deletedAt)))
     .orderBy(asc(schema.collections.sortOrder), asc(schema.collections.name))
     .all();
   const counts = db
     .select({ collectionId: schema.favorites.collectionId, n: sql<number>`count(*)` })
     .from(schema.favorites)
-    .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt)))
+    .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt), isNull(schema.favorites.deletedAt)))
     .groupBy(schema.favorites.collectionId)
     .all();
   const countMap = new Map(counts.map((c) => [c.collectionId, c.n]));
@@ -48,30 +48,52 @@ export function getCollectionTree(workspaceId: string): CollectionNode[] {
 
 /**
  * Subquery with the ids of collections `userId` can't see: other people's private
- * collections and everything nested below them (mirrors collectionAccess for members).
+ * collections and everything nested below them (mirrors collectionAccess for members),
+ * plus collections in the trash (unless `trashed` is false — the trash itself lists them).
  * An empty `userId` (anonymous) hides every private collection.
  */
-function hiddenCollectionsSql(workspaceId: string, userId: string): SQL {
+function hiddenCollectionsSql(workspaceId: string, userId: string, trashed = true): SQL {
   return sql`(with recursive hidden_cols(id) as (
       select hc.id from collections hc
-        where hc.workspace_id = ${workspaceId} and hc.visibility = 'private' and hc.created_by is not ${userId}
+        where hc.workspace_id = ${workspaceId} and ((hc.visibility = 'private' and hc.created_by is not ${userId})${sql.raw(trashed ? " or hc.deleted_at is not null" : "")})
       union
       select hc2.id from collections hc2 join hidden_cols on hc2.parent_id = hidden_cols.id
     ) select id from hidden_cols)`;
 }
 
-/** Ids of collections hidden from `userId` (see hiddenCollectionsSql). */
-export function hiddenCollectionIds(workspaceId: string, userId: string): Set<string> {
-  const rows = getDb().all<{ id: string }>(sql`select id from ${hiddenCollectionsSql(workspaceId, userId)}`);
+/**
+ * Ids of collections hidden from `userId` (see hiddenCollectionsSql). With `trashed: false`
+ * only privacy counts: trashed collections the user could see are left out of the set.
+ */
+export function hiddenCollectionIds(workspaceId: string, userId: string, opts: { trashed?: boolean } = {}): Set<string> {
+  const rows = getDb().all<{ id: string }>(sql`select id from ${hiddenCollectionsSql(workspaceId, userId, opts.trashed ?? true)}`);
   return new Set(rows.map((r) => r.id));
 }
 
-/** Condition on `favorites`: the link is not inside a collection hidden from `userId`. */
-export function favoriteVisibleTo(workspaceId: string, userId: string): SQL {
-  return sql`(${schema.favorites.collectionId} is null or ${schema.favorites.collectionId} not in ${hiddenCollectionsSql(workspaceId, userId)})`;
+/** Ids of the workspace's trashed collections (a trashed subtree is marked as a whole). */
+export function trashedCollectionIds(workspaceId: string): Set<string> {
+  const rows = getDb()
+    .select({ id: schema.collections.id })
+    .from(schema.collections)
+    .where(and(eq(schema.collections.workspaceId, workspaceId), isNotNull(schema.collections.deletedAt)))
+    .all();
+  return new Set(rows.map((r) => r.id));
 }
 
-/** Condition on `collections`: the collection is not hidden from `userId`. */
+/**
+ * Condition on `favorites`: the link is not in the trash — neither on its own nor with
+ * its collection (links stay inside a trashed collection so restoring brings them back).
+ */
+export function favoriteNotTrashed(): SQL {
+  return sql`(${schema.favorites.deletedAt} is null and (${schema.favorites.collectionId} is null or ${schema.favorites.collectionId} not in (select tc.id from collections tc where tc.deleted_at is not null)))`;
+}
+
+/** Condition on `favorites`: the link is live (not trashed) and not inside a collection hidden from `userId`. */
+export function favoriteVisibleTo(workspaceId: string, userId: string): SQL {
+  return sql`(${schema.favorites.deletedAt} is null and (${schema.favorites.collectionId} is null or ${schema.favorites.collectionId} not in ${hiddenCollectionsSql(workspaceId, userId)}))`;
+}
+
+/** Condition on `collections`: the collection is live (not trashed) and not hidden from `userId`. */
 export function collectionVisibleTo(workspaceId: string, userId: string): SQL {
   return sql`${schema.collections.id} not in ${hiddenCollectionsSql(workspaceId, userId)}`;
 }
@@ -80,8 +102,15 @@ export function flattenTree(nodes: CollectionNode[], depth = 0): (CollectionNode
   return nodes.flatMap((n) => [{ ...n, depth }, ...flattenTree(n.children, depth + 1)]);
 }
 
-export function getCollection(id: string) {
+/** A collection row, trashed or not (the trash needs the trashed ones). */
+export function getCollectionRow(id: string): CollectionRow | undefined {
   return getDb().select().from(schema.collections).where(eq(schema.collections.id, id)).get();
+}
+
+/** A live collection: trashed ones don't exist for the rest of the app. */
+export function getCollection(id: string): CollectionRow | undefined {
+  const c = getCollectionRow(id);
+  return c && !c.deletedAt ? c : undefined;
 }
 
 export function collectionPath(id: string): CollectionRow[] {
@@ -206,7 +235,9 @@ export function moveCollection(id: string, parentId: string | null, index?: numb
 }
 
 export function archiveCollection(id: string, archived: boolean) {
-  const ids = descendantIds(id);
+  // Sub-collections already in the trash keep their state.
+  const trashed = trashedCollectionIds(getCollectionRow(id)?.workspaceId ?? "");
+  const ids = descendantIds(id).filter((cid) => !trashed.has(cid));
   const at = archived ? new Date() : null;
   const db = getDb();
   db.transaction((tx) => {
@@ -219,23 +250,89 @@ export function archiveCollection(id: string, archived: boolean) {
   }
 }
 
-/** Deletes a collection subtree; its links move up to the parent collection. */
-export function deleteCollection(id: string) {
+/**
+ * Moves a collection subtree to the trash: the collection and its live sub-collections get the
+ * same `deletedAt`, so they're restored together. Their links stay inside (hidden with them);
+ * they move up to the parent only if the collection is deleted for good (purgeCollection).
+ */
+export function deleteCollection(id: string, at = new Date()) {
   const col = getCollection(id);
+  if (!col) return;
+  const db = getDb();
+  const ids = descendantIds(id);
+  const live = db
+    .select({ id: schema.collections.id })
+    .from(schema.collections)
+    .where(and(inArray(schema.collections.id, ids), isNull(schema.collections.deletedAt)))
+    .all()
+    .map((r) => r.id);
+  if (!live.length) return;
+  db.update(schema.collections).set({ deletedAt: at }).where(inArray(schema.collections.id, live)).run();
+  for (const cid of live) removeEntity("collection", cid);
+  for (const f of db.select({ id: schema.favorites.id }).from(schema.favorites).where(inArray(schema.favorites.collectionId, live)).all()) {
+    removeEntity("favorite", f.id);
+  }
+}
+
+/**
+ * Brings a trashed collection back with the sub-collections trashed at the same moment (and
+ * their links). When its parent is gone or still in the trash, it comes back at the top level.
+ */
+export function restoreCollection(id: string) {
+  const col = getCollectionRow(id);
+  if (!col?.deletedAt) return;
+  const db = getDb();
+  const stamp = col.deletedAt.getTime();
+  const ids = db
+    .select({ id: schema.collections.id, deletedAt: schema.collections.deletedAt })
+    .from(schema.collections)
+    .where(inArray(schema.collections.id, descendantIds(id)))
+    .all()
+    .filter((r) => r.deletedAt?.getTime() === stamp)
+    .map((r) => r.id);
+  const parentLive = col.parentId ? !!getCollection(col.parentId) : true;
+  db.transaction((tx) => {
+    tx.update(schema.collections).set({ deletedAt: null }).where(inArray(schema.collections.id, ids)).run();
+    if (!parentLive) {
+      tx.update(schema.collections)
+        .set({
+          parentId: null,
+          sortOrder: nextSort(schema.collections, and(eq(schema.collections.workspaceId, col.workspaceId), isNull(schema.collections.parentId))),
+        })
+        .where(eq(schema.collections.id, id))
+        .run();
+    }
+  });
+  for (const cid of ids) indexCollection(cid);
+  for (const f of db.select({ id: schema.favorites.id }).from(schema.favorites).where(inArray(schema.favorites.collectionId, ids)).all()) {
+    indexFavorite(f.id);
+  }
+}
+
+/** Deletes a collection subtree for good; its links move up to the parent collection — none is lost. */
+export function purgeCollection(id: string) {
+  const col = getCollectionRow(id);
   if (!col) return;
   const ids = descendantIds(id);
   const db = getDb();
+  const moved = db.select({ id: schema.favorites.id }).from(schema.favorites).where(inArray(schema.favorites.collectionId, ids)).all();
   db.transaction((tx) => {
     tx.update(schema.favorites).set({ collectionId: col.parentId }).where(inArray(schema.favorites.collectionId, ids)).run();
     tx.delete(schema.collections).where(eq(schema.collections.id, id)).run();
   });
   for (const cid of ids) removeEntity("collection", cid);
+  // Moved links are searchable again when they land somewhere live.
+  for (const f of moved) indexFavorite(f.id);
+}
+
+export function reindexCollections(ids: string[]) {
+  for (const id of ids) indexCollection(id);
 }
 
 function indexCollection(id: string) {
-  const c = getCollection(id);
+  const c = getCollectionRow(id);
   if (!c) return;
-  if (c.archivedAt) return removeEntity("collection", id);
+  if (c.archivedAt || c.deletedAt) return removeEntity("collection", id);
   indexEntity({ workspaceId: c.workspaceId, type: "collection", id, title: c.name, body: c.description });
 }
 
@@ -446,13 +543,46 @@ export function archiveFavorite(id: string, archived: boolean) {
   indexFavorite(id);
 }
 
-export function deleteFavorite(id: string) {
+/** Moves a link to the trash (purged after 30 days). */
+export function deleteFavorite(id: string, at = new Date()) {
+  removeEntity("favorite", id);
+  getDb()
+    .update(schema.favorites)
+    .set({ deletedAt: at })
+    .where(and(eq(schema.favorites.id, id), isNull(schema.favorites.deletedAt)))
+    .run();
+}
+
+/** Brings a trashed link back; when its collection is gone or in the trash, it lands in "Sem coleção". */
+export function restoreFavorite(id: string) {
+  const fav = getFavoriteRow(id);
+  if (!fav?.deletedAt) return;
+  const collectionLive = fav.collectionId ? !!getCollection(fav.collectionId) : true;
+  getDb()
+    .update(schema.favorites)
+    .set({ deletedAt: null, ...(collectionLive ? {} : { collectionId: null }) })
+    .where(eq(schema.favorites.id, id))
+    .run();
+  indexFavorite(id);
+}
+
+/** Deletes a link for good. */
+export function purgeFavorite(id: string) {
   removeEntity("favorite", id);
   getDb().delete(schema.favorites).where(eq(schema.favorites.id, id)).run();
 }
 
-export function getFavorite(id: string) {
+/** A link row, trashed or not (the trash needs the trashed ones). */
+export function getFavoriteRow(id: string): FavoriteRow | undefined {
   return getDb().select().from(schema.favorites).where(eq(schema.favorites.id, id)).get();
+}
+
+/** A live link: trashed links, and links inside a trashed collection, don't exist for the rest of the app. */
+export function getFavorite(id: string): FavoriteRow | undefined {
+  const f = getFavoriteRow(id);
+  if (!f || f.deletedAt) return undefined;
+  if (f.collectionId && getCollectionRow(f.collectionId)?.deletedAt) return undefined;
+  return f;
 }
 
 export function recordOpen(id: string, userId: string) {
@@ -470,9 +600,9 @@ export function reindexFavorites(ids: string[]) {
 }
 
 function indexFavorite(id: string) {
-  const f = getFavorite(id);
+  const f = getFavoriteRow(id);
   if (!f) return;
-  if (f.archivedAt) return removeEntity("favorite", id);
+  if (f.archivedAt || !getFavorite(id)) return removeEntity("favorite", id);
   const tags = tagsForFavorites([id]).get(id) ?? [];
   indexEntity({
     workspaceId: f.workspaceId,
@@ -514,7 +644,7 @@ function queryConditions(workspaceId: string, userId: string, q: LinkQuery): SQL
     const cols = getDb()
       .select({ id: schema.collections.id, name: schema.collections.name })
       .from(schema.collections)
-      .where(eq(schema.collections.workspaceId, workspaceId))
+      .where(and(eq(schema.collections.workspaceId, workspaceId), isNull(schema.collections.deletedAt)))
       .all();
     for (const name of q.collections) {
       const ids = cols.filter((c) => normalizeText(c.name) === name).flatMap((c) => descendantIds(c.id));
@@ -664,7 +794,7 @@ export function countFavorites(workspaceId: string) {
     getDb()
       .select({ n: sql<number>`count(*)` })
       .from(schema.favorites)
-      .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt)))
+      .where(and(eq(schema.favorites.workspaceId, workspaceId), isNull(schema.favorites.archivedAt), favoriteNotTrashed()))
       .get()?.n ?? 0
   );
 }
@@ -797,7 +927,7 @@ export function importTree(
       ? db
           .select({ url: schema.favorites.url })
           .from(schema.favorites)
-          .where(eq(schema.favorites.workspaceId, workspaceId))
+          .where(and(eq(schema.favorites.workspaceId, workspaceId), favoriteNotTrashed()))
           .all()
           .map((r) => canonicalUrl(r.url))
       : [],

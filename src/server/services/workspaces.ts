@@ -96,6 +96,10 @@ export function createWorkspace(userId: string, name: string) {
   return id;
 }
 
+export function workspaceName(workspaceId: string) {
+  return getDb().select({ name: schema.workspaces.name }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).get()?.name ?? "";
+}
+
 export function renameWorkspace(workspaceId: string, name: string) {
   getDb().update(schema.workspaces).set({ name: name.trim() }).where(eq(schema.workspaces.id, workspaceId)).run();
 }

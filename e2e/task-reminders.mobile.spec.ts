@@ -41,7 +41,7 @@ test("reminders fit a narrow viewport and retain custom scheduling and snoozing"
   };
   await fits();
   await page.screenshot({
-    path: "/private/tmp/waypoint-reminder-mobile-compose.png",
+    path: test.info().outputPath("waypoint-reminder-mobile-compose.png"),
   });
   await page
     .getByRole("button", { name: "Agendar lembrete", exact: true })
@@ -70,12 +70,12 @@ test("reminders fit a narrow viewport and retain custom scheduling and snoozing"
   await expect(page.getByText(/Adiado para/)).toBeVisible();
   await fits();
   await page.screenshot({
-    path: "/private/tmp/waypoint-reminder-mobile-inbox.png",
+    path: test.info().outputPath("waypoint-reminder-mobile-inbox.png"),
     animations: "disabled",
   });
   await page.evaluate(() => document.documentElement.classList.add("dark"));
   await page.screenshot({
-    path: "/private/tmp/waypoint-reminder-mobile-dark.png",
+    path: test.info().outputPath("waypoint-reminder-mobile-dark.png"),
     animations: "disabled",
   });
 });

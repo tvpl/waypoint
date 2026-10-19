@@ -30,7 +30,7 @@ export function LibraryDisplayOptions({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="secondary">
+        <Button data-tour="links-display" size="sm" variant="secondary">
           <SlidersHorizontal />
           Visualização
         </Button>

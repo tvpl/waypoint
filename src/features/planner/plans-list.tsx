@@ -14,6 +14,8 @@ import {
   MoreHorizontal,
   Pencil,
   Search,
+  Star,
+  StarOff,
   Trash2,
   Upload,
   Workflow,
@@ -27,7 +29,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { cn, timeAgo } from "@/lib/utils";
 import { EXCALIDRAW_ACCEPT } from "./excalidraw-file";
 import { planPayloadFromFile } from "./excalidraw-import";
+import { toggleImportantAction } from "@/app/(app)/dashboard-actions";
 import { archivePlanAction, createPlanAction, deletePlanAction, duplicatePlanAction, importPlanAction } from "@/app/(app)/plans/actions";
+import { trashedToast } from "@/features/trash/undo-toast";
 
 export type PlanFilter = "mine" | "shared" | "templates" | "archived";
 
@@ -42,6 +46,8 @@ export type PlanCardData = {
   archived: boolean;
   thumbnail: Thumb;
   tags: string[];
+  /** Marked "Importante" by this person (shown on the home dashboard). */
+  starred?: boolean;
 };
 
 const TABS: { value: PlanFilter; label: string }[] = [
@@ -97,7 +103,7 @@ export function PlansList({ filter, plans, canCreate }: { filter: PlanFilter; pl
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line">
-        <nav aria-label="Filtrar plans" className="-mx-6 -mb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex max-w-[calc(100%+48px)] gap-5 overflow-x-auto whitespace-nowrap px-6 text-sm sm:mx-0 sm:max-w-full sm:px-0">
+        <nav data-tour="planner-tabs" aria-label="Filtrar plans" className="-mx-6 -mb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex max-w-[calc(100%+48px)] gap-5 overflow-x-auto whitespace-nowrap px-6 text-sm sm:mx-0 sm:max-w-full sm:px-0">
           {TABS.map((t) => (
             <Link
               key={t.value}
@@ -110,7 +116,7 @@ export function PlansList({ filter, plans, canCreate }: { filter: PlanFilter; pl
           ))}
         </nav>
         {plans.length > 0 && (
-          <label className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-muted focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15 sm:w-60">
+          <label data-tour="planner-filter" className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-muted focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15 sm:w-60">
             <Search className="size-3.5 shrink-0" aria-hidden />
             <input value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder="Filtrar plans" aria-label="Filtrar plans" className="w-full bg-transparent text-body text-ink outline-none" />
           </label>
@@ -122,7 +128,7 @@ export function PlansList({ filter, plans, canCreate }: { filter: PlanFilter; pl
       ) : shown.length === 0 ? (
         <EmptyState icon={<Search />} title={`Nenhum plan com “${q}”`} description="Tente outro termo ou limpe o filtro." />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul data-tour="planner-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((p) => (
             <li key={p.id}>
               <PlanCard plan={p} canCreate={canCreate} />
@@ -167,6 +173,7 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
   const router = useRouter();
   const [pending, start] = useTransition();
   const [confirm, setConfirm] = useState(false);
+  const [starred, setStarred] = useState(!!p.starred);
   const editor = p.access === "owner" || p.access === "editor";
   const owner = p.access === "owner";
   const href = p.isTemplate || p.publishedVersion != null || !editor ? `/plans/${p.id}` : `/plans/${p.id}/edit`;
@@ -185,7 +192,10 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
         <PlanThumb thumb={p.thumbnail} />
         <div className="flex flex-col gap-1.5 px-4 py-3.5">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="truncate text-lead font-semibold">{p.title}</h3>
+            <h3 className="flex min-w-0 items-center gap-1.5 text-lead font-semibold">
+              {starred && <Star className="size-3.5 shrink-0 fill-current text-amber-ink" aria-label="Importante" />}
+              <span className="truncate">{p.title}</span>
+            </h3>
             <StatusBadge p={p} />
           </div>
           <p className="flex items-center gap-1.5 text-body text-muted">
@@ -258,6 +268,21 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
                 <LayoutTemplate /> Salvar como template
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem
+              onSelect={() => {
+                const next = !starred;
+                setStarred(next);
+                start(async () => {
+                  const r = await toggleImportantAction("plan", p.id);
+                  if (!r.ok) {
+                    setStarred(!next);
+                    toast.error(r.error);
+                  } else toast.success(r.data ? "Marcado como importante." : "Removido de importantes.");
+                });
+              }}
+            >
+              {starred ? <StarOff /> : <Star />} {starred ? "Remover de importantes" : "Marcar como importante"}
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <a href={`/api/plans/${p.id}/export`} download>
                 <FileJson /> Exportar JSON
@@ -286,7 +311,7 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent title="Excluir plan?" description={p.title} className="max-w-[440px]">
           <DialogBody>
-            <p className="text-sm text-ink-2">O plan, seu histórico de versões e os links compartilhados serão removidos permanentemente. Esta ação não pode ser desfeita.</p>
+            <p className="text-sm text-ink-2">O plan vai para a lixeira e some de listas, buscas e links compartilhados. Por 30 dias você pode restaurá-lo em Configurações › Backup e dados › Lixeira; depois disso, ele é excluído de vez.</p>
           </DialogBody>
           <DialogFooter className="justify-end">
             <Button variant="secondary" onClick={() => setConfirm(false)}>
@@ -297,10 +322,15 @@ function PlanCard({ plan: p, canCreate }: { plan: PlanCardData; canCreate: boole
               disabled={pending}
               onClick={() => {
                 setConfirm(false);
-                act(() => deletePlanAction(p.id), "Plan excluído");
+                start(async () => {
+                  const r = await deletePlanAction(p.id);
+                  if (!r.ok) return void toast.error(r.error ?? "Algo deu errado.");
+                  trashedToast("Plan movido para a lixeira", [{ type: "plan", id: p.id }], { description: p.title, onUndone: () => router.refresh() });
+                  router.refresh();
+                });
               }}
             >
-              <Trash2 /> Excluir
+              <Trash2 /> Mover para a lixeira
             </Button>
           </DialogFooter>
         </DialogContent>

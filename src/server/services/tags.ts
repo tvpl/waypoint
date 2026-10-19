@@ -78,7 +78,7 @@ export function listTags(workspaceId: string, userId: string) {
       // Subqueries reference `tags.id` literally: a single-table select renders columns unqualified,
       // and a bare "id" would resolve to the inner table instead.
       links: sql<number>`(select count(*) from favorite_tags ft join favorites on favorites.id = ft.favorite_id where ft.tag_id = tags.id and favorites.archived_at is null and ${favoriteVisibleTo(workspaceId, userId)})`,
-      plans: sql<number>`(select count(*) from plan_tags pt join plans p on p.id = pt.plan_id where pt.tag_id = tags.id and p.archived_at is null)`,
+      plans: sql<number>`(select count(*) from plan_tags pt join plans p on p.id = pt.plan_id where pt.tag_id = tags.id and p.archived_at is null and p.deleted_at is null)`,
     })
     .from(schema.tags)
     .where(eq(schema.tags.workspaceId, workspaceId))

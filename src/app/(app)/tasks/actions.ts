@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
-import { requireWorkspace, UserError } from "@/server/services/workspaces";
+import { requireWorkspace, UserError, workspaceName } from "@/server/services/workspaces";
 import {
   archiveTask,
   changeTasks,
@@ -15,7 +15,14 @@ import {
   updateTask,
   previewTaskUpdates,
   applyTaskUpdates,
+  listTasks,
+  listTaskProjects,
 } from "@/server/services/tasks";
+import { addTaskNote, deleteTaskNote, historyForTasks, listTaskHistory } from "@/server/services/task-history";
+import { toggleImportant } from "@/server/services/marks";
+import { setPreference } from "@/server/services/preferences";
+import { listTaskLinks, setTaskLinks } from "@/server/services/task-links";
+import { buildTaskReport, reportOptionsSchema } from "@/domain/task-report";
 import type { TaskStatus } from "@/domain/tasks";
 import {
   scheduleTaskReminders,
@@ -161,4 +168,50 @@ export async function changeReminderAction(
   until?: number,
 ) {
   return run((actor) => changeTaskReminder(actor, id, version, action, until));
+}
+
+/** Archived tasks are loaded only when the "Arquivadas" view opens. */
+export async function archivedTasksAction() {
+  return run((actor) => listTasks(actor, { archived: true }), false);
+}
+export async function taskHistoryAction(id: string) {
+  return run((actor) => listTaskHistory(actor, z.string().parse(id)), false);
+}
+export async function addTaskNoteAction(id: string, body: string) {
+  return run((actor) => addTaskNote(actor, z.string().parse(id), body), false);
+}
+export async function deleteTaskNoteAction(id: string) {
+  return run((actor) => deleteTaskNote(actor, z.string().parse(id)), false);
+}
+/** Starring is personal: viewers may star tasks too. */
+export async function toggleTaskStarAction(id: string) {
+  return run((actor) => toggleImportant(actor, "task", z.string().parse(id)));
+}
+export async function taskReportAction(options: unknown) {
+  return run((ctx) => {
+    const parsed = reportOptionsSchema.parse(options);
+    const tasks = listTasks(ctx);
+    const included = tasks.filter(
+      (t) =>
+        (t.status === "done" && t.completedAt !== null) ||
+        (parsed.includeOpen && (t.status === "doing" || t.status === "waiting")),
+    );
+    return buildTaskReport({
+      tasks,
+      projects: listTaskProjects(ctx),
+      events: parsed.notes || parsed.history ? historyForTasks(ctx, included.map((t) => t.id)) : new Map(),
+      options: parsed,
+      workspaceName: workspaceName(ctx.workspaceId),
+    });
+  }, false);
+}
+/** Board display, folder hide rules and saved views follow the person across devices. */
+export async function saveTaskPreferencesAction(value: unknown) {
+  return run((actor) => setPreference(actor, "tasks.board", value), false);
+}
+export async function taskLinksAction(id: string) {
+  return run((actor) => listTaskLinks(actor, id), false);
+}
+export async function setTaskLinksAction(id: string, refs: unknown) {
+  return run((actor) => setTaskLinks(actor, id, refs));
 }

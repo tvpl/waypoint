@@ -62,7 +62,7 @@ export function pinnedPlans(userId: string, workspaceId: string) {
   return getDb()
     .select()
     .from(schema.plans)
-    .where(and(inArray(schema.plans.id, ids), eq(schema.plans.workspaceId, workspaceId), isNull(schema.plans.archivedAt)))
+    .where(and(inArray(schema.plans.id, ids), eq(schema.plans.workspaceId, workspaceId), isNull(schema.plans.archivedAt), isNull(schema.plans.deletedAt)))
     .all()
     .filter((p) => planAccess(userId, p));
 }

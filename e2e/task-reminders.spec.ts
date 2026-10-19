@@ -39,7 +39,7 @@ test("personal reminders: project batch, native options, snooze, persistence and
   await expect(
     page.getByText("2 tarefas receberão este lembrete.", { exact: true }),
   ).toBeVisible();
-  await page.screenshot({ path: "/private/tmp/waypoint-reminder-compose.png" });
+  await page.screenshot({ path: test.info().outputPath("waypoint-reminder-compose.png") });
   await page
     .getByRole("button", { name: "Agendar 2 lembretes", exact: true })
     .click();
@@ -76,7 +76,7 @@ test("personal reminders: project batch, native options, snooze, persistence and
     .click();
   await page.getByRole("button", { name: "1 h", exact: true }).click();
   await expect(page.getByText(/Adiado para/)).toHaveCount(2);
-  await page.screenshot({ path: "/private/tmp/waypoint-reminder-inbox.png" });
+  await page.screenshot({ path: test.info().outputPath("waypoint-reminder-inbox.png") });
   await page.getByRole("button", { name: "Fechar", exact: true }).click();
   await page
     .getByRole("article", { name: "Tarefa: Preparar lançamento", exact: true })

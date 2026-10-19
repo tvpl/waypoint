@@ -6,7 +6,7 @@ import type { PlanDocument, ResourceRef } from "@/domain/plan";
 import { domainOf } from "@/lib/utils";
 import { planAccess } from "./permissions";
 import { workspaceRole } from "./workspaces";
-import { collectionVisibleTo, favoriteVisibleTo } from "./links";
+import { collectionVisibleTo, favoriteNotTrashed, favoriteVisibleTo, getFavorite } from "./links";
 import { refKey, type ResolvedResource, type ResourceSearchItem } from "@/features/planner/resource-types";
 
 export type { ResolvedResource, ResourceSearchItem };
@@ -30,7 +30,7 @@ function collectionLinkCount(ids: string[]): Map<string, number> {
   const rows = getDb()
     .select({ id: schema.favorites.collectionId, n: sql<number>`count(*)` })
     .from(schema.favorites)
-    .where(and(inArray(schema.favorites.collectionId, ids), isNull(schema.favorites.archivedAt)))
+    .where(and(inArray(schema.favorites.collectionId, ids), isNull(schema.favorites.archivedAt), favoriteNotTrashed()))
     .groupBy(schema.favorites.collectionId)
     .all();
   return new Map(rows.map((r) => [r.id ?? "", r.n]));
@@ -55,6 +55,8 @@ export function resolveResource(ref: ResourceRef, userId: string | null, workspa
       const f = db.select().from(schema.favorites).where(eq(schema.favorites.id, ref.id)).get();
       if (!f) return unavailable("favorite", "Link removido", "Favorito");
       if (!canSeeWorkspace(f.workspaceId, userId, workspaceId)) return unavailable("favorite", "Link restrito", "Favorito");
+      // Trashed on its own or with its collection.
+      if (!getFavorite(f.id)) return unavailable("favorite", "Link na lixeira", "Favorito");
       return {
         kind: "favorite",
         title: f.title,
@@ -70,6 +72,7 @@ export function resolveResource(ref: ResourceRef, userId: string | null, workspa
       const c = db.select().from(schema.collections).where(eq(schema.collections.id, ref.id)).get();
       if (!c) return unavailable("collection", "Coleção removida", "Coleção");
       if (!canSeeWorkspace(c.workspaceId, userId, workspaceId)) return unavailable("collection", "Coleção restrita", "Coleção");
+      if (c.deletedAt) return unavailable("collection", "Coleção na lixeira", "Coleção");
       const n = collectionLinkCount([c.id]).get(c.id) ?? 0;
       const member = userId != null && workspaceRole(userId, c.workspaceId) != null;
       return {
@@ -85,6 +88,7 @@ export function resolveResource(ref: ResourceRef, userId: string | null, workspa
       const p = db.select().from(schema.plans).where(eq(schema.plans.id, ref.id)).get();
       if (!p) return unavailable("plan", "Plan removido", "Plan");
       if (!planAccess(userId, p)) return unavailable("plan", "Plan restrito", "Plan");
+      if (p.deletedAt) return unavailable("plan", "Plan na lixeira", "Plan");
       return { kind: "plan", title: p.title, subtitle: p.archivedAt ? "Plan · arquivado" : "Plan", href: `/plans/${p.id}`, external: false, description: p.description };
     }
     case "file": {
@@ -202,6 +206,7 @@ export function searchResources(
         and(
           eq(schema.plans.workspaceId, workspaceId),
           isNull(schema.plans.archivedAt),
+          isNull(schema.plans.deletedAt),
           eq(schema.plans.isTemplate, false),
           term ? likeAny(term, schema.plans.title, schema.plans.description) : undefined,
         ),

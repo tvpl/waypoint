@@ -11,13 +11,13 @@ import { COLLECTION_COLORS, colorOf, tagTint } from "@/features/links/collection
 import { cn } from "@/lib/utils";
 import { ask } from "@/components/ui/ask";
 
-type Tag = { id: string; name: string; links: number; plans: number; color: string | null };
+type Tag = { id: string; name: string; links: number; plans: number; tasks?: number; color: string | null };
 
 export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
   const [q, setQ] = useState("");
   const [, start] = useTransition();
   const shown = useMemo(() => tags.filter((t) => t.name.includes(q.trim().toLowerCase().replace(/^#/, ""))), [tags, q]);
-  const max = Math.max(1, ...tags.map((t) => t.links + t.plans));
+  const max = Math.max(1, ...tags.map((t) => t.links + t.plans + (t.tasks ?? 0)));
 
   if (tags.length === 0) {
     return (
@@ -31,13 +31,13 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <label className="flex h-9 w-full max-w-xs items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
+      <label data-tour="tags-filter" className="flex h-9 w-full max-w-xs items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
         <Search className="size-4" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar tags…" aria-label="Filtrar tags" className="w-full bg-transparent text-sm text-ink outline-none" />
       </label>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((t) => (
-          <div key={t.id} className="group relative flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise">
+      <div data-tour="tags-grid" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {shown.map((t, i) => (
+          <div key={t.id} data-tour={i === 0 ? "tags-card" : undefined} className="group relative flex flex-col gap-3 rounded-card border border-line bg-surface p-4 transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-raise">
             <Link href={`/tags/${encodeURIComponent(t.name)}`} className="absolute inset-0 rounded-card" aria-label={`Abrir tag ${t.name}`} />
             <div className="flex items-center justify-between gap-2">
               <span className={cn("truncate rounded-full text-lead font-semibold", t.color && "wp-tint -ml-1 px-2.5 py-0.5")} style={tagTint(t.color)}>
@@ -99,7 +99,7 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
                       onSelect={async () => {
                         const ok = await ask.confirm({
                           title: `Excluir #${t.name}?`,
-                          description: `A tag será removida de ${t.links} ${t.links === 1 ? "link" : "links"} e ${t.plans} ${t.plans === 1 ? "plan" : "plans"}.`,
+                          description: `A tag será removida de ${t.links} ${t.links === 1 ? "link" : "links"}, ${t.plans} ${t.plans === 1 ? "plan" : "plans"} e ${t.tasks ?? 0} ${t.tasks === 1 ? "tarefa" : "tarefas"}.`,
                           confirmLabel: "Excluir",
                           danger: true,
                         });
@@ -123,9 +123,14 @@ export function TagGrid({ tags, canEdit }: { tags: Tag[]; canEdit: boolean }) {
               <span>
                 <b className="font-semibold text-ink">{t.links}</b> links
               </span>
+              {t.tasks ? (
+                <span>
+                  <b className="font-semibold text-ink">{t.tasks}</b> {t.tasks === 1 ? "tarefa" : "tarefas"}
+                </span>
+              ) : null}
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
-              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, ((t.links + t.plans) / max) * 100)}%`, ...(t.color ? { background: colorOf(t.color).ink } : {}) }} />
+              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, ((t.links + t.plans + (t.tasks ?? 0)) / max) * 100)}%`, ...(t.color ? { background: colorOf(t.color).ink } : {}) }} />
             </div>
           </div>
         ))}

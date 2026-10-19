@@ -331,6 +331,13 @@
   border-radius: 6px;
 }
 
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
@@ -661,3 +668,13 @@
 .wp-task-lane[data-over-limit="true"] { box-shadow: inset 0 2px 0 var(--amber-ink); }
 .wp-task-board-card .wp-task-card-meta > button { padding-left: 3px; padding-right: 3px; gap: 3px; }
 .wp-task-board-card .wp-task-card-meta svg { width: 12px; height: 12px; }
+
+/* Guided tours (features/help/tour.tsx): the spotlight dims the page around one element. */
+.wp-tour-spotlight {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in oklab, var(--accent) 22%, transparent), 0 0 0 9999px var(--scrim);
+  transition: top 280ms var(--ease-out), left 280ms var(--ease-out), width 280ms var(--ease-out), height 280ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wp-tour-spotlight { transition: none; }
+}
+.wp-reduce-motion .wp-tour-spotlight { transition: none; }

@@ -44,7 +44,7 @@ function uniqueSlug(workspaceId: string, base: string, exceptId?: string) {
 
 type DocRow = { nodesJson: string; edgesJson: string; viewportJson: string; layersJson?: string | null };
 
-function parseDoc(row: DocRow): PlanDocument {
+export function parseDoc(row: DocRow): PlanDocument {
   const extra = row.layersJson ? (JSON.parse(row.layersJson) as Pick<PlanDocument, "layers" | "views" | "palette">) : {};
   return normalizeDocument({
     schemaVersion: 1,
@@ -65,8 +65,15 @@ export type { Thumb, ThumbNode } from "@/domain/plan-thumb";
 
 // ------------------------------------------------------------------ queries
 
-export function getPlan(id: string): PlanRow | undefined {
+/** A plan row, trashed or not (the trash needs the trashed ones). */
+export function getPlanRow(id: string): PlanRow | undefined {
   return getDb().select().from(schema.plans).where(eq(schema.plans.id, id)).get();
+}
+
+/** A live plan: trashed plans don't exist for the rest of the app (their URLs 404). */
+export function getPlan(id: string): PlanRow | undefined {
+  const plan = getPlanRow(id);
+  return plan && !plan.deletedAt ? plan : undefined;
 }
 
 export function getPlanWithAccess(id: string, userId: string | null, shareToken?: string | null) {
@@ -90,7 +97,7 @@ export function listPlans(userId: string, workspaceId: string, filter: PlanListF
     eq(schema.plans.workspaceId, workspaceId),
     memberPlanIds.length ? inArray(schema.plans.id, memberPlanIds) : undefined,
   );
-  const conds = [scope];
+  const conds = [scope, isNull(schema.plans.deletedAt)];
   if (filter === "archived") conds.push(isNotNull(schema.plans.archivedAt));
   else conds.push(isNull(schema.plans.archivedAt));
   if (filter === "templates") conds.push(eq(schema.plans.isTemplate, true));
@@ -305,10 +312,15 @@ function syncDocumentIndexes(planId: string, workspaceId: string, doc: PlanDocum
   });
 }
 
+/** Rebuilds the search entries (plan, nodes) and resource refs of these plans (e.g. after a restore). */
+export function reindexPlans(ids: string[]) {
+  for (const id of ids) indexPlan(id);
+}
+
 function indexPlan(planId: string) {
-  const plan = getPlan(planId);
+  const plan = getPlanRow(planId);
   if (!plan) return;
-  if (plan.archivedAt) {
+  if (plan.archivedAt || plan.deletedAt) {
     removePlanFromIndex(planId);
     return;
   }
@@ -391,7 +403,24 @@ export function archivePlan(planId: string, archived: boolean) {
   indexPlan(planId);
 }
 
-export function deletePlan(planId: string) {
+/** Moves a plan to the trash (purged after 30 days). */
+export function deletePlan(planId: string, at = new Date()) {
+  removePlanFromIndex(planId);
+  getDb()
+    .update(schema.plans)
+    .set({ deletedAt: at })
+    .where(and(eq(schema.plans.id, planId), isNull(schema.plans.deletedAt)))
+    .run();
+}
+
+/** Brings a plan back from the trash, searchable again. */
+export function restorePlan(planId: string) {
+  getDb().update(schema.plans).set({ deletedAt: null }).where(eq(schema.plans.id, planId)).run();
+  indexPlan(planId);
+}
+
+/** Deletes a plan for good (documents, versions, members… cascade). */
+export function purgePlan(planId: string) {
   removePlanFromIndex(planId);
   getDb().delete(schema.plans).where(eq(schema.plans.id, planId)).run();
 }
@@ -457,7 +486,7 @@ export function backlinks(targetType: "plan" | "favorite" | "collection", target
     })
     .from(schema.resourceRefs)
     .innerJoin(schema.plans, eq(schema.plans.id, schema.resourceRefs.sourcePlanId))
-    .where(and(eq(schema.resourceRefs.targetType, targetType), eq(schema.resourceRefs.targetId, targetId), isNull(schema.plans.archivedAt)))
+    .where(and(eq(schema.resourceRefs.targetType, targetType), eq(schema.resourceRefs.targetId, targetId), isNull(schema.plans.archivedAt), isNull(schema.plans.deletedAt)))
     .all()
     .filter((r) => planAccess(userId, r.plan) != null)
     .map(({ plan: _p, ...rest }) => rest);

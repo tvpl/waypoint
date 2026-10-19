@@ -50,6 +50,6 @@ test("links: add a link, find it with global search", async ({ page }) => {
   await expect(page.getByText("Referência E2E Waypoint").first()).toBeVisible();
 
   await page.keyboard.press("ControlOrMeta+k");
-  await page.getByPlaceholder(/Buscar plans/).fill("Referência E2E");
+  await page.getByPlaceholder(/Buscar tarefas, plans/).fill("Referência E2E");
   await expect(page.getByRole("option", { name: /Referência E2E Waypoint/ })).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check, Folder, Inbox, Layers, MessageSquare, Pin, Unlink, Upload, Workflow, Zap } from "lucide-react";
+import { ArrowRight, CalendarCheck, Check, Folder, Inbox, Layers, Link2, MessageSquare, Pin, Star, Unlink, Upload, Workflow, Zap } from "lucide-react";
 import { canEditWorkspace, requireWorkspace } from "@/server/services/workspaces";
 import { plansWithOpenThreads, recentPlans } from "@/server/services/home";
 import { listFavorites, pinnedCollections, quickAccess } from "@/server/services/links";
@@ -17,6 +17,16 @@ import { cn, timeAgo } from "@/lib/utils";
 import { after } from "next/server";
 import { recentlyBroken, sweepStaleLinks } from "@/server/services/link-health";
 import type { HomePlan } from "@/server/services/home";
+import { homeLayout, listShortcuts, todayTasks, weeklyReview } from "@/server/services/dashboard";
+import { WeekReview } from "@/features/home/week-review";
+import { importantItems } from "@/server/services/marks";
+import { HOME_WIDGETS, type HomeWidget } from "@/domain/dashboard";
+import { requestTimeZone } from "@/server/time";
+import { dayInZone } from "@/lib/timezone";
+import { ShortcutsPanel } from "@/features/home/shortcuts-panel";
+import { ImportantPanel } from "@/features/home/important-panel";
+import { TodayPanel } from "@/features/home/today-panel";
+import { CustomizeDashboard } from "@/features/home/customize-dashboard";
 
 export const metadata = { title: "Início" };
 
@@ -65,20 +75,148 @@ export default async function HomePage() {
   walk(tree);
   // Without pins, suggest the biggest top-level collections.
   const shownCols = pinnedCols.length ? pinnedCols : [...tree].sort((a, b) => b.totalCount - a.totalCount).slice(0, 6);
-  const empty = plans.length === 0 && dial.length === 0 && tree.length === 0;
+  const actor = { workspaceId: ctx.workspace.id, userId: ctx.user.id };
+  const layout = homeLayout(actor);
+  const timeZone = await requestTimeZone();
+  const today = dayInZone(new Date(), timeZone);
+  const shortcuts = listShortcuts(actor);
+  const important = importantItems(actor);
+  const due = todayTasks(actor, today);
+  const starredLinks = listFavorites(ctx.workspace.id, ctx.user.id, { scope: "starred", limit: 8 });
+  const canEdit = canEditWorkspace(ctx.role);
+  const empty = plans.length === 0 && dial.length === 0 && tree.length === 0 && due.total === 0 && important.length === 0;
   const attention = threads.length > 0 || signals.broken > 0 || signals.unsorted > 0;
+
+  const widgets: Record<HomeWidget, React.ReactNode> = {
+    shortcuts: <ShortcutsPanel initial={shortcuts} />,
+    week: <WeekReview review={weeklyReview(actor, new Date(), timeZone)} />,
+    important: (
+      <Panel title="Importantes" icon={<Star />} tour="home-important">
+        <ImportantPanel items={important} today={today} />
+      </Panel>
+    ),
+    today: (
+      <Panel title="Para hoje" icon={<CalendarCheck />} href="/tasks?scope=today" linkLabel={due.total ? `Meu dia (${due.total})` : "Meu dia"} tour="home-today">
+        <TodayPanel items={due.items} total={due.total} canEdit={canEdit} />
+      </Panel>
+    ),
+    links:
+      starredLinks.length > 0 ? (
+        <section className="flex flex-col gap-3" data-tour="home-links">
+          <SectionHeader title="Links importantes" icon={<Link2 />} href="/links?scope=starred" linkLabel="Todos com estrela" />
+          <div className="grid gap-1 rounded-card border border-line bg-surface p-1.5 sm:grid-cols-2 lg:grid-cols-4">
+            {starredLinks.map((l) => (
+              <LinkRow key={l.id} id={l.id} title={l.title} url={l.url} domain={l.domain} favicon={l.icon || l.favicon} openBehavior={l.openBehavior} when="" />
+            ))}
+          </div>
+        </section>
+      ) : null,
+    recent:
+      plans.length > 0 ? (
+        <section className="flex flex-col gap-3" data-tour="home-recent">
+          <SectionHeader title="Plans recentes" href="/plans" linkLabel="Todos os plans" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {plans.map((p) => (
+              <PlanCard key={p.id} plan={p} />
+            ))}
+          </div>
+        </section>
+      ) : null,
+    attention: (
+      <Panel title="Pede atenção" icon={<Zap />} tour="home-attention">
+        {attention ? (
+          <ul className="flex flex-col">
+            {threads.map((t) => (
+              <AttentionRow key={t.id} href={`/plans/${t.id}/edit`} icon={<MessageSquare />} tone="accent" meta={timeAgo(t.lastAt)}>
+                <b className="font-semibold">{t.threads}</b> {t.threads === 1 ? "conversa aberta" : "conversas abertas"} em <span className="font-medium">{t.title}</span>
+              </AttentionRow>
+            ))}
+            {signals.broken > 0 && (
+              <AttentionRow href="/links?scope=broken" icon={<Unlink />} tone="danger" meta={newlyBroken > 0 ? `${newlyBroken} esta semana` : undefined}>
+                <b className="font-semibold">{signals.broken}</b> {signals.broken === 1 ? "link quebrado" : "links quebrados"}
+              </AttentionRow>
+            )}
+            {signals.unsorted > 0 && (
+              <AttentionRow href="/links?scope=unsorted" icon={<Folder />}>
+                <b className="font-semibold">{signals.unsorted}</b> {signals.unsorted === 1 ? "link sem coleção" : "links sem coleção"}
+              </AttentionRow>
+            )}
+          </ul>
+        ) : (
+          <p className="flex items-center gap-2 px-4 py-6 text-body text-muted">
+            <Check className="size-4 text-success-ink" aria-hidden /> Tudo em dia: nenhuma conversa aberta nem link quebrado.
+          </p>
+        )}
+      </Panel>
+    ),
+    inbox: (
+      <Panel title="Caixa de entrada" icon={<Inbox />} href="/links?scope=inbox" linkLabel={signals.inbox ? `Organizar (${signals.inbox})` : "Abrir"} tour="home-inbox">
+        {inbox.length ? (
+          <div className="flex flex-col px-1 py-1">
+            {inbox.map((l) => (
+              <LinkRow key={l.id} id={l.id} title={l.title} url={l.url} domain={l.domain} favicon={l.icon || l.favicon} openBehavior={l.openBehavior} when={l.inboxAt ? timeAgo(l.inboxAt) : ""} />
+            ))}
+          </div>
+        ) : (
+          <p className="px-4 py-6 text-body leading-5 text-muted">Links salvos pela captura rápida ou pela extensão chegam aqui para você organizar depois.</p>
+        )}
+      </Panel>
+    ),
+    quick:
+      dial.length > 0 ? (
+        <section className="flex flex-col gap-3" data-tour="home-quick">
+          <SectionHeader title="Acesso rápido" icon={<Zap />} href="/links?sort=foryou" linkLabel="Para você" />
+          <SpeedDial links={dial} />
+        </section>
+      ) : null,
+    collections:
+      shownCols.length > 0 ? (
+        <section className="flex flex-col gap-3" data-tour="home-collections">
+          <SectionHeader title={pinnedCols.length ? "Coleções fixadas" : "Coleções"} icon={<Pin />} href="/links" linkLabel="Biblioteca" />
+          <div className="flex flex-wrap gap-2">
+            {shownCols.map((c) => (
+              <Link
+                key={c.id}
+                href={`/links?c=${c.id}`}
+                className="inline-flex h-11 items-center gap-2.5 rounded-xl border border-line bg-surface pl-2 pr-3.5 transition-[box-shadow,border-color] hover:border-line-2 hover:shadow-raise"
+              >
+                <CollectionTile icon={c.icon} color={c.color} size={28} />
+                <span className="max-w-[180px] truncate text-body font-medium">{c.name}</span>
+                <span className="text-caption tabular-nums text-muted">{counts.get(c.id) ?? 0}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null,
+  };
+  // Visible sections in the person's order; consecutive half-width panels share a row.
+  const half = new Set<HomeWidget>(HOME_WIDGETS.filter((w) => w.half).map((w) => w.id));
+  const rows: HomeWidget[][] = [];
+  for (const id of layout.order) {
+    if (layout.hidden.includes(id) || !widgets[id]) continue;
+    const last = rows.at(-1);
+    if (half.has(id) && last && last.length < layout.columns && half.has(last[0])) last.push(id);
+    else rows.push([id]);
+  }
 
   return (
     <main className="scrollbar-thin flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-9 px-6 pb-16 pt-10 sm:px-10 sm:pt-12">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <Greeting name={ctx.user.name} />
-          <WorkspaceSwitcher current={ctx.workspace} workspaces={ctx.workspaces} />
+          <div className="flex items-center gap-2">
+            <CustomizeDashboard layout={layout} />
+            <WorkspaceSwitcher current={ctx.workspace} workspaces={ctx.workspaces} />
+          </div>
         </header>
 
-        <SearchBar />
+        <div data-tour="home-search">
+          <SearchBar />
+        </div>
 
-        <QuickCreate canCreate={canEditWorkspace(ctx.role)} />
+        <div data-tour="home-create">
+          <QuickCreate canCreate={canEdit} />
+        </div>
 
         {empty && (
           <section className="grid gap-4 sm:grid-cols-3">
@@ -96,91 +234,31 @@ export default async function HomePage() {
           </section>
         )}
 
-        {plans.length > 0 && (
-          <section className="flex flex-col gap-3">
-            <SectionHeader title="Recentes" href="/plans" linkLabel="Todos os plans" />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {plans.map((p) => (
-                <PlanCard key={p.id} plan={p} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {!empty && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Panel title="Pede atenção" icon={<Zap />}>
-              {attention ? (
-                <ul className="flex flex-col">
-                  {threads.map((t) => (
-                    <AttentionRow key={t.id} href={`/plans/${t.id}/edit`} icon={<MessageSquare />} tone="accent" meta={timeAgo(t.lastAt)}>
-                      <b className="font-semibold">{t.threads}</b> {t.threads === 1 ? "conversa aberta" : "conversas abertas"} em <span className="font-medium">{t.title}</span>
-                    </AttentionRow>
-                  ))}
-                  {signals.broken > 0 && (
-                    <AttentionRow href="/links?scope=broken" icon={<Unlink />} tone="danger" meta={newlyBroken > 0 ? `${newlyBroken} esta semana` : undefined}>
-                      <b className="font-semibold">{signals.broken}</b> {signals.broken === 1 ? "link quebrado" : "links quebrados"}
-                    </AttentionRow>
-                  )}
-                  {signals.unsorted > 0 && (
-                    <AttentionRow href="/links?scope=unsorted" icon={<Folder />}>
-                      <b className="font-semibold">{signals.unsorted}</b> {signals.unsorted === 1 ? "link sem coleção" : "links sem coleção"}
-                    </AttentionRow>
-                  )}
-                </ul>
-              ) : (
-                <p className="flex items-center gap-2 px-4 py-6 text-body text-muted">
-                  <Check className="size-4 text-success-ink" aria-hidden /> Tudo em dia: nenhuma conversa aberta nem link quebrado.
-                </p>
-              )}
-            </Panel>
-            <Panel title="Caixa de entrada" icon={<Inbox />} href="/links?scope=inbox" linkLabel={signals.inbox ? `Organizar (${signals.inbox})` : "Abrir"}>
-              {inbox.length ? (
-                <div className="flex flex-col px-1 py-1">
-                  {inbox.map((l) => (
-                    <LinkRow key={l.id} id={l.id} title={l.title} url={l.url} domain={l.domain} favicon={l.icon || l.favicon} openBehavior={l.openBehavior} when={l.inboxAt ? timeAgo(l.inboxAt) : ""} />
-                  ))}
+        {rows.map((row) =>
+          row.length > 1 ? (
+            <div key={row.join("+")} className={cn("grid gap-4 md:grid-cols-2", row.length === 3 && "lg:grid-cols-3")}>
+              {row.map((id) => (
+                <div key={id} className={cn("flex min-w-0 flex-col [&>section]:flex-1", row.length === 3 && id === row[2] && "md:col-span-2 lg:col-span-1")}>
+                  {widgets[id]}
                 </div>
-              ) : (
-                <p className="px-4 py-6 text-body leading-5 text-muted">Links salvos pela captura rápida ou pela extensão chegam aqui para você organizar depois.</p>
-              )}
-            </Panel>
-          </div>
-        )}
-
-        {dial.length > 0 && (
-          <section className="flex flex-col gap-3">
-            <SectionHeader title="Acesso rápido" icon={<Zap />} href="/links?sort=foryou" linkLabel="Para você" />
-            <SpeedDial links={dial} />
-          </section>
-        )}
-
-        {shownCols.length > 0 && (
-          <section className="flex flex-col gap-3">
-            <SectionHeader title={pinnedCols.length ? "Coleções fixadas" : "Coleções"} icon={<Pin />} href="/links" linkLabel="Biblioteca" />
-            <div className="flex flex-wrap gap-2">
-              {shownCols.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/links?c=${c.id}`}
-                  className="inline-flex h-11 items-center gap-2.5 rounded-xl border border-line bg-surface pl-2 pr-3.5 transition-[box-shadow,border-color] hover:border-line-2 hover:shadow-raise"
-                >
-                  <CollectionTile icon={c.icon} color={c.color} size={28} />
-                  <span className="max-w-[180px] truncate text-body font-medium">{c.name}</span>
-                  <span className="text-caption tabular-nums text-muted">{counts.get(c.id) ?? 0}</span>
-                </Link>
               ))}
             </div>
-          </section>
+          ) : half.has(row[0]) ? (
+            <div key={row[0]} className="grid gap-4">
+              {widgets[row[0]]}
+            </div>
+          ) : (
+            <div key={row[0]}>{widgets[row[0]]}</div>
+          ),
         )}
       </div>
     </main>
   );
 }
 
-function Panel({ title, icon, href, linkLabel, children }: { title: string; icon: React.ReactNode; href?: string; linkLabel?: string; children: React.ReactNode }) {
+function Panel({ title, icon, href, linkLabel, tour, children }: { title: string; icon: React.ReactNode; href?: string; linkLabel?: string; tour?: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col overflow-hidden rounded-card border border-line bg-surface" aria-label={title}>
+    <section className="flex flex-col overflow-hidden rounded-card border border-line bg-surface shadow-rest" aria-label={title} data-tour={tour}>
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <h2 className="flex items-center gap-1.5 text-body font-semibold text-ink-2 [&_svg]:size-3.5 [&_svg]:text-muted">
           {icon}

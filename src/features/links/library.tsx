@@ -49,6 +49,7 @@ import {
   updateSavedSearchAction,
 } from "@/app/(app)/links/actions";
 import { ask } from "@/components/ui/ask";
+import { trashedToast } from "@/features/trash/undo-toast";
 import { prefersReducedMotion } from "@/lib/utils";
 import { highlightTerms, isEmptyQuery, matchesLinkQuery, parseLinkQuery } from "@/domain/link-query";
 import { CollectionsPanel, type PanelHandlers } from "./collections-panel";
@@ -719,46 +720,27 @@ export function LinksLibrary(props: LibraryProps) {
     [run],
   );
 
-  // Delete without a confirmation step: the links are archived right away and only
-  // deleted when the "Desfazer" toast goes away (closing the tab leaves them archived).
+  // Delete without a confirmation step: the links go to the trash right away;
+  // "Desfazer" (or the Lixeira, for 30 days) brings them back.
   const remove = React.useCallback(
     (ids: string[]) => {
       const n = ids.length;
-      let undone = false;
-      let finalized = false;
-      const wasArchived = archivedScope;
-      run({ type: "remove", ids }, () =>
-        wasArchived
-          ? Promise.resolve({ ok: true })
-          : bulkLinksAction({ op: "archive", ids, archived: true }),
-      );
       setSelected(new Set());
-      const finalize = () => {
-        if (undone || finalized) return;
-        finalized = true;
-        bulkLinksAction({ op: "delete", ids }).then(
-          (r) => !r.ok && toast.error(r.error),
-        );
-      };
-      toast(n === 1 ? "Link excluído" : `${n} links excluídos`, {
-        duration: 7000,
-        description:
-          "Blocos de plans que apontavam para eles deixam de encontrá-los.",
-        action: {
-          label: "Desfazer",
-          onClick: () => {
-            undone = true;
-            (wasArchived
-              ? Promise.resolve({ ok: true as const })
-              : bulkLinksAction({ op: "archive", ids, archived: false })
-            ).then(() => router.refresh());
+      run({ type: "remove", ids }, () => bulkLinksAction({ op: "delete", ids }), () =>
+        trashedToast(
+          n === 1 ? "Link movido para a lixeira" : `${n} links movidos para a lixeira`,
+          ids.map((id) => ({ type: "favorite" as const, id })),
+          {
+            description:
+              n === 1
+                ? "Fica lá por 30 dias. Enquanto isso, blocos de plans que apontam para ele não o encontram."
+                : "Ficam lá por 30 dias. Enquanto isso, blocos de plans que apontam para eles não os encontram.",
+            onUndone: () => router.refresh(),
           },
-        },
-        onAutoClose: finalize,
-        onDismiss: finalize,
-      });
+        ),
+      );
     },
-    [run, archivedScope, setSelected, router],
+    [run, setSelected, router],
   );
 
   const star = React.useCallback(
@@ -1013,28 +995,40 @@ export function LinksLibrary(props: LibraryProps) {
     remove: (node) =>
       setConfirm({
         title: `Excluir “${node.name}”?`,
-        description: (
+        description: node.totalCount ? (
           <>
             A coleção
-            {node.children.length
-              ? " e suas subcoleções serão excluídas"
-              : " será excluída"}
-            . Os {node.totalCount}{" "}
-            {node.totalCount === 1 ? "link irá" : "links irão"} para{" "}
+            {node.children.length ? " e suas subcoleções vão" : " vai"} para a
+            lixeira com {node.totalCount === 1 ? "o link" : `os ${node.totalCount} links`}{" "}
+            que {node.totalCount === 1 ? "está" : "estão"} nela. Por 30 dias você
+            restaura tudo de uma vez; se ela for excluída de vez, os links irão
+            para{" "}
             <strong>
               {node.parentId ? nameOf(node.parentId) : "Sem coleção"}
             </strong>{" "}
             — nenhum link é perdido.
           </>
+        ) : (
+          <>
+            A coleção
+            {node.children.length ? " e suas subcoleções vão" : " vai"} para a
+            lixeira. Por 30 dias você pode restaurá-la; depois disso, ela é
+            excluída de vez.
+          </>
         ),
-        confirmLabel: "Excluir coleção",
+        confirmLabel: "Mover para a lixeira",
         danger: true,
         run: async () => {
           const wasCurrent = isInCurrent(node);
           const ok = await run(
             null,
             () => deleteCollectionAction(node.id),
-            "Coleção excluída",
+            () =>
+              trashedToast(
+                `Coleção “${node.name}” movida para a lixeira`,
+                [{ type: "collection", id: node.id }],
+                { onUndone: () => router.refresh() },
+              ),
           );
           if (ok && wasCurrent)
             router.push(node.parentId ? `/links?c=${node.parentId}` : "/links");
@@ -1309,6 +1303,7 @@ export function LinksLibrary(props: LibraryProps) {
                   {canEdit && (
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
+                        data-tour="links-batch"
                         size="sm"
                         variant="secondary"
                         onClick={() => setBatchText("")}

@@ -1,4 +1,5 @@
 "use client";
+import { TaskBacklinks } from "@/features/tasks/task-references";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -394,13 +395,14 @@ export function PlanDetailsButton() {
     <Popover>
       <Tooltip content="Detalhes do plan">
         <PopoverTrigger asChild>
-          <button type="button" aria-label="Detalhes do plan" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-4">
+          <button type="button" data-tour="editor-details" aria-label="Detalhes do plan" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink [&_svg]:size-4">
             <Info />
           </button>
         </PopoverTrigger>
       </Tooltip>
       <PopoverContent align="start" className="flex max-h-[min(640px,80vh)] w-[340px] flex-col overflow-hidden p-0">
         <PlanInspector key={`${ed.meta.title}|${ed.meta.description ?? ""}`} />
+        <TaskBacklinks type="plan" id={ed.planId} className="border-t border-line px-[18px] py-3" />
       </PopoverContent>
     </Popover>
   );

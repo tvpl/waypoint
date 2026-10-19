@@ -140,6 +140,7 @@ export function Toolbar({
           <PopoverTrigger asChild>
             <button
               type="button"
+              data-tour="links-tag-filter"
               className="inline-flex h-7 items-center gap-1.5 rounded-full border border-dashed border-line-2 px-2.5 text-xs text-ink-2 hover:border-ink-2 hover:text-ink"
             >
               <Filter className="size-[13px]" aria-hidden />
@@ -214,7 +215,7 @@ function DisplayOptions({
   onView: (v: ViewMode) => void;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div data-tour="links-view" className="flex items-center gap-1.5">
       <Segmented<ViewMode>
         label="Modo de visualização"
         value={view}
@@ -363,7 +364,7 @@ function QueryField({
   const sync = (el: HTMLInputElement) => setCaret(el.selectionStart ?? el.value.length);
 
   return (
-    <div className="relative w-full sm:w-auto sm:min-w-[300px] sm:flex-[0_1_420px]">
+    <div data-tour="links-search" className="relative w-full sm:w-auto sm:min-w-[300px] sm:flex-[0_1_420px]">
       <label className="flex h-9 items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-muted transition-[border,box-shadow] focus-within:border-accent focus-within:ring-3 focus-within:ring-accent/15">
         <Search className="size-4 shrink-0" aria-hidden />
         <input

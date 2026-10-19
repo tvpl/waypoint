@@ -74,6 +74,9 @@ export const taskInputSchema = z
     color: z.enum(TASK_COLORS).default("neutral"),
     dueDate: dateSchema.nullable().default(null),
     followUpDate: dateSchema.nullable().default(null),
+    recurrence: z
+      .enum(["", "daily", "weekdays", "weekly", "monthly"])
+      .default(""),
     dependsOn: z
       .array(z.string().min(1).max(64))
       .max(50, "Vincule até 50 dependências.")
@@ -113,6 +116,7 @@ export type Task = TaskInput & {
   completedAt: number | null;
   archivedAt: number | null;
   updatedAt: number;
+  createdAt: number;
 };
 export type TaskProject = { id: string; name: string; color: TaskColor };
 export const projectInputSchema = z.object({

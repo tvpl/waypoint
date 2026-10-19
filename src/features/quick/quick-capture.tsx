@@ -1,4 +1,5 @@
 "use client";
+import { QuickTaskItem, quickTaskText } from "@/features/tasks/quick-task-item";
 import * as React from "react";
 import { Command } from "cmdk";
 import { ArrowUpRight, Boxes, CheckCircle2, ClipboardPaste, FolderClosed, Inbox, Search, Tag, Workflow } from "lucide-react";
@@ -66,7 +67,8 @@ export function QuickCapture({ workspaceName, canEdit }: { workspaceName: string
   }, []);
 
   const typedUrl = pastedUrl(query);
-  const q = typedUrl ? "" : query.trim();
+  const taskText = quickTaskText(query);
+  const q = typedUrl || taskText !== null ? "" : query.trim();
 
   React.useEffect(() => {
     if (!q) return setData(null);
@@ -144,7 +146,7 @@ export function QuickCapture({ workspaceName, canEdit }: { workspaceName: string
                 setQuery(v);
                 setError(null);
               }}
-              placeholder="Cole um link para salvar ou digite para buscar…"
+              placeholder="Cole um link, digite para buscar ou + para criar tarefa…"
               className="no-drag h-full flex-1 bg-transparent text-lead outline-none placeholder:text-muted"
             />
             {saving && <span className="size-3 animate-spin rounded-full border-2 border-line-2 border-t-accent" aria-label="Salvando" />}
@@ -152,6 +154,14 @@ export function QuickCapture({ workspaceName, canEdit }: { workspaceName: string
           </div>
           <Command.List className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5">
             {error && <p className="mx-1 mb-1 rounded-control bg-danger-soft px-3 py-2 text-body text-danger">{error}</p>}
+            {taskText && canEdit && (
+              <Command.Group heading="Criar" className={groupCls}>
+                <QuickTaskItem text={taskText} className={itemCls} onDone={() => {
+                    setQuery("");
+                    hideTimer.current = window.setTimeout(hide, 1200);
+                  }} />
+              </Command.Group>
+            )}
             {saveUrl && canEdit && (
               <Command.Group heading={typedUrl ? "Salvar" : "Na área de transferência"} className={groupCls}>
                 <Command.Item value="save" onSelect={() => void save(saveUrl)} className={itemCls}>
@@ -215,10 +225,10 @@ export function QuickCapture({ workspaceName, canEdit }: { workspaceName: string
             {q && data && data.plans.length + data.nodes.length + data.links.length + data.collections.length + data.tags.length === 0 && (
               <p className="px-3 py-8 text-center text-body text-muted">Nada encontrado para “{q}”.</p>
             )}
-            {!q && !saveUrl && (
+            {!q && !saveUrl && taskText === null && (
               <div className="flex flex-col items-center gap-1.5 px-6 py-8 text-center">
                 <p className="text-body font-medium text-ink-2">Guarde um link sem sair do que está fazendo</p>
-                <p className="text-body text-muted">Copie o endereço e abra esta janela: ele aparece aqui pronto para salvar.</p>
+                <p className="text-body text-muted">Copie o endereço e abra esta janela: ele aparece aqui pronto para salvar. Ou digite + e o título para criar uma tarefa.</p>
               </div>
             )}
           </Command.List>

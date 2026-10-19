@@ -1,4 +1,5 @@
 "use client";
+import { TaskBacklinksChip } from "@/features/tasks/task-references";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -201,6 +202,9 @@ export function LibraryHeader({
                 onSave={onDescribe}
                 inputClassName="px-1.5 py-1 -mx-1.5 text-sm text-ink resize-none"
               />
+              <div className="pt-1 empty:hidden">
+                <TaskBacklinksChip key={current.id} type="collection" id={current.id} />
+              </div>
             </div>
           ) : (
             subtitle && <p className="text-sm text-muted">{subtitle}</p>
@@ -217,7 +221,7 @@ export function LibraryHeader({
           <DropdownMenu modal={false}>
             <Tooltip content="Mais ações">
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" aria-label="Mais ações" className="h-9 w-9">
+                <Button data-tour="links-more" size="icon" variant="ghost" aria-label="Mais ações" className="h-9 w-9">
                   <MoreHorizontal className="!size-[18px]" />
                 </Button>
               </DropdownMenuTrigger>
@@ -290,7 +294,7 @@ export function LibraryHeader({
             </DropdownMenuContent>
           </DropdownMenu>
           {canEdit && (
-            <Button variant="primary" onClick={onAdd} className="ml-1">
+            <Button data-tour="links-add" variant="primary" onClick={onAdd} className="ml-1">
               <Plus />
               Adicionar link
             </Button>

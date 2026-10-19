@@ -1,4 +1,5 @@
 "use client";
+import { TaskBacklinks } from "@/features/tasks/task-references";
 import * as React from "react";
 import Link from "next/link";
 import { Dialog as D } from "radix-ui";
@@ -769,6 +770,7 @@ function InfoPanel({
           ))
         )}
       </section>
+      <TaskBacklinks type="favorite" id={link.id} />
       <div className="flex-1" />
       <div className="flex flex-col gap-3">
         {onEdit && (

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const planIds = [...new Set(hits.flatMap((h) => (h.type === "plan" ? [h.id] : h.type === "node" && h.parentId ? [h.parentId] : [])))];
   const plans = planIds.length
-    ? db.select().from(schema.plans).where(and(inArray(schema.plans.id, planIds), isNull(schema.plans.archivedAt))).all()
+    ? db.select().from(schema.plans).where(and(inArray(schema.plans.id, planIds), isNull(schema.plans.archivedAt), isNull(schema.plans.deletedAt))).all()
     : [];
   const visible = new Map(plans.filter((p) => planAccess(ctx.user.id, p)).map((p) => [p.id, p]));
 

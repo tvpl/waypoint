@@ -67,7 +67,7 @@ npm run db:seed   # opcional: cria demo@waypoint.local / waypoint123 com dados d
 npm run dev       # http://localhost:3000
 ```
 
-O banco fica em `data/waypoint.db` (configurável com `DATABASE_PATH`). As migrações rodam automaticamente na primeira conexão. Os uploads ficam em `data/uploads` (configurável com `UPLOADS_DIR`).
+O banco fica em `data/waypoint.db` (configurável com `DATABASE_PATH`). Um banco novo é criado já na versão atual. Quando uma versão nova muda a estrutura dos dados, o Waypoint pausa e mostra **Atualizar os dados**: faz um backup completo antes (recomendado; no desktop vai para a central de backups) e aplica a atualização de uma vez só, sem alterar nada se algo falhar (veja `docs/backups.md`). Em servidores sem ninguém para clicar, `WAYPOINT_AUTO_UPDATE=1` faz o backup e atualiza sozinho ao iniciar. Os uploads ficam em `data/uploads` (configurável com `UPLOADS_DIR`).
 
 | Script | O que faz |
 | --- | --- |

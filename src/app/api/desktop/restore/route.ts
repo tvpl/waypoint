@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
-import { closeDb, getDb } from "@/server/db";
+import { closeDb, getClient } from "@/server/db";
 import { hasDesktopKey } from "@/server/desktop";
 
 const SQLITE_MAGIC = "SQLite format 3\0";
@@ -27,7 +27,8 @@ function looksLikeWaypoint(file: string): boolean {
 /**
  * POST /api/desktop/restore { file } → { ok }
  * Desktop mode only, called by the shell with its key after it saved a safety backup: replaces
- * the live database with `file` and reopens it (migrations bring an older backup up to date).
+ * the live database with `file` and reopens it. An older backup then waits for the update dialog
+ * (the shell reloads the windows), which offers a backup of it before updating.
  */
 export async function POST(req: Request) {
   if (!hasDesktopKey(req)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -40,6 +41,6 @@ export async function POST(req: Request) {
   closeDb();
   for (const suffix of ["-wal", "-shm"]) fs.rmSync(target + suffix, { force: true });
   fs.copyFileSync(file, target);
-  getDb();
+  getClient();
   return NextResponse.json({ ok: true });
 }

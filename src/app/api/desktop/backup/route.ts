@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-import { getDb } from "@/server/db";
+import { getClient } from "@/server/db";
 import { hasDesktopKey } from "@/server/desktop";
 
 /**
@@ -15,6 +15,7 @@ export async function POST(req: Request) {
   if (typeof file !== "string" || !path.isAbsolute(file) || !file.endsWith(".db") || !fs.existsSync(path.dirname(file)) || fs.existsSync(file)) {
     return NextResponse.json({ error: "Destino inválido." }, { status: 400 });
   }
-  await getDb().$client.backup(file);
+  // The raw connection: also works while an update is pending (the backup taken before it).
+  await getClient().backup(file);
   return NextResponse.json({ file, size: fs.statSync(file).size });
 }

@@ -24,6 +24,18 @@ Tudo o que pertence ao workspace: plans (rascunho, versões publicadas, membros,
 - **Pasta:** com `WAYPOINT_BACKUP_DIR` (caminho absoluto) definido no servidor, cada ponto de restauração também é gravado em `<pasta>/workspace-<id>/<data>-<tipo>-<id>.json.gz`, e os arquivos acompanham a retenção. Use uma pasta sincronizada ou outro disco.
 - **Senha:** **Baixar protegido por senha** gera o mesmo arquivo criptografado com AES-256-GCM e chave derivada da senha (scrypt). Ao enviar um arquivo protegido, o Waypoint pede a senha. Sem ela, não há como abrir.
 
+## Atualização dos dados
+
+Quando uma versão do Waypoint muda a estrutura do banco (migrações em `drizzle/`) ou o formato do que está salvo (atualizações de dados em `src/server/db/upgrades.ts`), um banco existente **não é alterado ao abrir**. Até a atualização, o app inteiro mostra o diálogo **Atualizar os dados** e nenhuma consulta roda contra a estrutura antiga.
+
+- **Backup antes** (marcado por padrão): no desktop, um backup completo na central de backups, com a nota "Antes de atualizar" (não entra na limpeza automática). No servidor, uma cópia do arquivo do banco em `backups/pre-update-<data>-v<versão>.db`, ao lado dele, e em `WAYPOINT_BACKUP_DIR/database/` quando definida.
+- **Atualização:** todas as migrações e atualizações de dados rodam numa única transação, com as chaves estrangeiras conferidas no fim. Se algo falhar, nada muda e o diálogo continua lá.
+- **Quem pode:** no desktop, a janela do app. No servidor, qualquer pessoa com conta, já conectada ou confirmando e-mail e senha no diálogo.
+- **Voltar atrás:** restaure o backup (desktop) ou ponha a cópia `.db` no lugar do banco com o servidor parado. Um backup antigo continua valendo: ao abrir, ele passa pela mesma atualização.
+- **Sem diálogo:** `WAYPOINT_AUTO_UPDATE=1` faz a cópia e atualiza ao iniciar, para servidores sem ninguém para clicar. Um banco vazio (instalação nova) é sempre criado direto.
+
+Para quem desenvolve: mudanças de estrutura seguem em `schema.ts` + `npm run db:generate`. Para converter conteúdo (por exemplo, subir `PLAN_SCHEMA_VERSION`), adicione uma entrada em `DATA_UPGRADES` com o `after` apontando para a migração mais recente. Ela roda uma vez, logo depois dessa migração e na mesma transação. Uma atualização que já foi publicada nunca deve ser editada nem removida.
+
 ## Lixeira
 
 Plans, coleções e links excluídos vão para a **Lixeira** (`/trash`, também em Configurações › Backup e dados) por 30 dias, com Restaurar e Excluir definitivamente; depois disso são apagados. A recuperação de backups trata um item que ainda está na lixeira como excluído e o tira de lá.

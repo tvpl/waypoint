@@ -4,8 +4,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AskHost } from "@/components/ui/ask";
 import { DesktopChrome } from "@/components/shell/desktop-chrome";
+import { DatabaseUpdate } from "@/components/shell/database-update";
 import { isDesktop } from "@/server/desktop";
 import { desktopSecurity } from "@/server/desktop-security";
+import { pendingUpdate } from "@/server/services/database-update";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
@@ -29,6 +31,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // without it. The server runs on the same machine as the window, so its platform is the window's.
   await connection();
   const desktop = isDesktop();
+  // A new version that changes the stored data waits here for the update (backup first);
+  // meanwhile src/server/db refuses every query, so pages can't touch the older schema.
+  const update = await pendingUpdate();
   return (
     <html
       lang="pt-BR"
@@ -40,8 +45,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        {desktop && <DesktopChrome platform={process.platform} security={desktopSecurity()} />}
-        {children}
+        {desktop && <DesktopChrome platform={process.platform} security={desktopSecurity()} bare={!!update} />}
+        {update ? <DatabaseUpdate update={update} /> : children}
         <AskHost />
         {/* Above the phone tab bar (64px + safe area); colors come from the theme tokens. */}
         <Toaster

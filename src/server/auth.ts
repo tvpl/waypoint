@@ -28,7 +28,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return crypto.timingSafeEqual(key, expected);
 }
 
-const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
+export const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 
 export async function createSession(userId: string) {
   const token = newToken();

@@ -8,6 +8,9 @@ const PUBLIC = [
   /^\/api\/share\//,
   /^\/api\/assets\//,
   /^\/api\/embed-check$/,
+  // the database update dialog: the route checks access itself (services/database-update.ts)
+  /^\/update$/,
+  /^\/api\/update$/,
   // public REST API: authenticates itself with Bearer tokens (see app/api/v1/_lib/http.ts)
   /^\/api\/v1\//,
 ];
@@ -28,6 +31,8 @@ function desktopGate(req: NextRequest, secret: string) {
   const key = req.cookies.get(DESKTOP_COOKIE)?.value ?? req.headers.get("x-waypoint-desktop") ?? undefined;
   if (!sameSecret(key, secret)) return new NextResponse(FORBIDDEN_HTML, { status: 403, headers: { "content-type": "text/html; charset=utf-8" } });
   if (pathname.startsWith("/api/desktop/")) return NextResponse.next();
+  // The database update dialog comes before signing in (src/app/update).
+  if (pathname === "/update" || pathname === "/api/update") return NextResponse.next();
   // The lock screen: the page signs straight in when the app lock is off.
   if (/^\/login/.test(pathname)) return NextResponse.next();
   if (/^\/signup/.test(pathname)) return NextResponse.redirect(new URL("/", req.url));

@@ -556,7 +556,8 @@ ipcMain.handle("wp:backups", async (e, action: unknown, arg: unknown) => {
     case "state":
       break;
     case "create":
-      await backups.create();
+      // A note (e.g. "Antes de atualizar") also keeps the backup out of the automatic cleanup.
+      await backups.create(id ? { note: id.slice(0, 80) } : {});
       break;
     case "restore":
       await backups.restore(id);

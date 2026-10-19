@@ -618,3 +618,12 @@ export const taskLinks = sqliteTable("task_links", {
   targetId: text("target_id").notNull(),
   createdAt: createdAt(),
 }, (t) => [primaryKey({ columns: [t.taskId, t.targetType, t.targetId] }), index("task_links_target_idx").on(t.targetType, t.targetId)]);
+
+/**
+ * Data upgrades already applied (src/server/db/upgrades.ts): changes to stored content that SQL
+ * migrations can't express, run by the database update together with the migrations.
+ */
+export const dataUpgrades = sqliteTable("data_upgrades", {
+  id: id(),
+  appliedAt: integer("applied_at", { mode: "timestamp_ms" }).notNull(),
+});

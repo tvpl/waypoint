@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { redirect } from "next/navigation";
 import { createSession, getCurrentUser } from "@/server/auth";
+import { databaseStatus } from "@/server/db";
 import { ensureDesktopUser, hasDesktopKey } from "@/server/desktop";
 import { desktopSecurity } from "@/server/desktop-security";
 
@@ -14,6 +15,8 @@ const safeNext = (v: string | null) => (v && v.startsWith("/") && !v.startsWith(
 export async function GET(req: Request) {
   if (!hasDesktopKey(req)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const next = safeNext(new URL(req.url).searchParams.get("next"));
+  // A new version waits for its database update (backup first): the dialog, before any session.
+  if (databaseStatus().state === "pending") redirect(`/update?next=${encodeURIComponent(next)}`);
   if (!(await getCurrentUser())) {
     // App lock on: the person unlocks with their password on the lock screen.
     if (desktopSecurity().lock) redirect(`/login?next=${encodeURIComponent(next)}`);
